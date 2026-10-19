@@ -148,6 +148,9 @@ export async function render(el) {
       <p class="muted" style="margin-top:0">لما يتفعّل، الموظف ميقدرش يسجل حضور أو انصراف غير وهو جوه المحل (بالـ GPS بتاع موبايله، أو لو متصل بإنترنت المحل). إنت كمدير مستثنى.</p>
       <p class="small muted" style="margin-top:-6px">ℹ️ الموظف هيظهرله طلب سماح <b>للموقع</b> بس — الواي فاي مالوش طلب، السيستم بيعرف إنه على إنترنت المحل لوحده.</p>
       <div class="form-grid">
+        <label class="field full"><span>قفل السيستم</span><select class="input" id="z-lock">
+          <option value="0" ${st.require_shift !== '2' ? 'selected' : ''}>الموظف يشوف السيستم عادي</option>
+          <option value="2" ${st.require_shift === '2' ? 'selected' : ''}>🔒 السيستم مقفول للموظف لحد ما يسجل حضور</option></select></label>
         <label class="field full"><span>تسجيل الحضور</span><select class="input" id="z-on">
           <option value="0" ${st.attendance_zone !== '1' ? 'selected' : ''}>من أي مكان</option>
           <option value="1" ${st.attendance_zone === '1' ? 'selected' : ''}>من جوه المحل بس</option></select></label>
@@ -192,7 +195,11 @@ export async function render(el) {
     card.querySelector('#z-save').addEventListener('click', (e) => busy(e.currentTarget, async () => {
       const on = card.querySelector('#z-on').value;
       if (on === '1' && !hasLoc && !net.saved.length && cloud) throw new Error('حدد موقع المحل الأول (خطوة 1)');
-      state.settings = await api.put('/settings', { attendance_zone: on, zone_radius: card.querySelector('#z-radius').value });
+      const lock = card.querySelector('#z-lock').value;
+      state.settings = await api.put('/settings', {
+        attendance_zone: on, zone_radius: card.querySelector('#z-radius').value,
+        ...(lock === '2' || st.require_shift === '2' ? { require_shift: lock } : {}),
+      });
       toast('تم الحفظ', 'ok');
       loadZone();
     }));

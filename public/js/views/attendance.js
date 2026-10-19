@@ -1,4 +1,4 @@
-import { api, icon, esc, fmtDate, modal, toast, toastErr, busy, emptyRow, downloadCsv, ROLE_NAMES } from '../core.js';
+import { api, state, can, icon, esc, fmtDate, modal, toast, toastErr, busy, emptyRow, downloadCsv, ROLE_NAMES } from '../core.js';
 import { RANGES, RANGE_NAMES } from './sales.js';
 
 const dur = (m) => `${Math.floor(m / 60)} س ${String(m % 60).padStart(2, '0')} د`;
@@ -15,6 +15,7 @@ export async function render(el, { actions }) {
   actions.innerHTML = `<button class="btn btn-outline btn-sm" id="csv">${icon('download')} تصدير Excel</button>`;
 
   el.innerHTML = `
+    ${can('settings.manage') ? '<div class="card" id="rules"></div>' : ''}
     <div class="card" id="now"></div>
     <div class="card">
       <div class="toolbar">
@@ -104,7 +105,53 @@ export async function render(el, { actions }) {
     if (done) reload();
   }
 
-  const reload = () => Promise.all([loadNow(), load()]).catch(toastErr);
+  // ---------- the two attendance rules, right where the owner looks ----------
+  async function loadRules() {
+    const box = $('#rules');
+    if (!box) return;
+    const st = await api.get('/settings');
+    const locked = st.require_shift === '2';
+    const zone = st.attendance_zone === '1';
+    const shopSet = st.shop_lat !== '' && st.shop_lng !== '';
+    box.innerHTML = `
+      <div class="card-head"><h2>${icon('settings', '')} قواعد الحضور</h2></div>
+      <div class="rules">
+        <label class="rule ${locked ? 'on' : ''}">
+          <input type="checkbox" id="r-lock" ${locked ? 'checked' : ''}>
+          <span class="switch"></span>
+          <span><b>🔒 السيستم مقفول لحد ما الموظف يسجل حضور</b>
+            <span class="small muted">الموظف مش هيشوف أي قوايم غير شاشة "بدء الشيفت"، ويتقفل تاني بعد الانصراف.</span></span>
+        </label>
+        <label class="rule ${zone ? 'on' : ''}">
+          <input type="checkbox" id="r-zone" ${zone ? 'checked' : ''}>
+          <span class="switch"></span>
+          <span><b>📍 الحضور والانصراف من جوه المحل بس</b>
+            <span class="small muted">${shopSet ? 'موقع المحل متحدد ✓' : '<b style="color:var(--danger)">لازم تحدد موقع المحل الأول</b> — من <a href="#/settings">الإعدادات</a> وإنت جوه المحل.'}</span></span>
+        </label>
+      </div>
+      <p class="small muted" style="margin:10px 0 0">المدير مستثنى من القاعدتين. التغيير بيطبق على الموظفين فوراً.</p>`;
+    box.querySelector('#r-lock').addEventListener('change', async (e) => {
+      try {
+        state.settings = await api.put('/settings', { require_shift: e.target.checked ? '2' : '0' });
+        toast(e.target.checked ? '🔒 تم — الموظفين مش هيشوفوا حاجة غير لما يسجلوا حضور' : 'تم إلغاء القفل', 'ok');
+      } catch (err) { toastErr(err); }
+      loadRules();
+    });
+    box.querySelector('#r-zone').addEventListener('change', async (e) => {
+      if (e.target.checked && !shopSet) {
+        e.target.checked = false;
+        toast('حدد موقع المحل الأول من الإعدادات (وإنت جوه المحل)', 'err');
+        return;
+      }
+      try {
+        state.settings = await api.put('/settings', { attendance_zone: e.target.checked ? '1' : '0' });
+        toast(e.target.checked ? '📍 تم — الحضور من جوه المحل بس' : 'الحضور مسموح من أي مكان', 'ok');
+      } catch (err) { toastErr(err); }
+      loadRules();
+    });
+  }
+
+  const reload = () => Promise.all([loadRules(), loadNow(), load()]).catch(toastErr);
 
   $('#range').addEventListener('click', (e) => {
     const b = e.target.closest('button');

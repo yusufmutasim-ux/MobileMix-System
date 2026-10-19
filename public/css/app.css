@@ -551,3 +551,15 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .lock-screen { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: var(--cloud); }
 .lock-box { background: var(--snow); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 32px 24px; width: 100%; max-width: 420px; text-align: center; }
 .lock-box h1 { font-size: 28px; font-weight: 300; margin: 22px 0 6px; letter-spacing: -0.5px; }
+
+/* On/off rule switches */
+.rules { display: grid; gap: 10px; }
+.rule { display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; border-radius: var(--r-md); background: var(--cloud); cursor: pointer; }
+.rule.on { background: var(--mint); }
+.rule > span:last-child { display: flex; flex-direction: column; gap: 3px; }
+.rule input { position: absolute; opacity: 0; pointer-events: none; }
+.switch { flex-shrink: 0; width: 46px; height: 26px; border-radius: 99px; background: var(--fog); position: relative; transition: background .15s; margin-top: 2px; }
+.switch::after { content: ''; position: absolute; top: 3px; inset-inline-start: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: inset-inline-start .15s; }
+.rule input:checked + .switch { background: var(--violet); }
+.rule input:checked + .switch::after { inset-inline-start: 23px; }
+.rule input:focus-visible + .switch { outline: 2px solid var(--violet); outline-offset: 2px; }
