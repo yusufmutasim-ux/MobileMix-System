@@ -2,7 +2,7 @@ import { api, state, can, icon, esc, LOGO, ROLE_NAMES, toastErr, modal, busy, to
 
 const NAV = [
   { path: '/', title: 'الرئيسية', icon: 'home', view: 'dashboard' },
-  { path: '/pos', title: 'نقطة البيع', icon: 'cart', view: 'pos', perm: 'sales.create' },
+  { path: '/pos', title: 'نقطة البيع', short: 'البيع', icon: 'cart', view: 'pos', perm: 'sales.create' },
   { path: '/sales', title: 'الفواتير', icon: 'receipt', view: 'sales', perm: 'sales.create' },
   { path: '/repairs', title: 'الصيانة', icon: 'wrench', view: 'repairs', perm: 'repairs.view' },
   { sep: 'المخزن' },
@@ -78,7 +78,7 @@ async function route() {
   if (!item) { location.hash = '#/'; return; }
   if (!document.querySelector('.shell')) shell();
 
-  document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + item.path));
+  document.querySelectorAll('.nav a, .tabbar a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + item.path));
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('page-title').textContent = item.title;
   document.title = `${item.title} — ${state.settings.shop_name || 'Mobile Mix'}`;
@@ -129,13 +129,56 @@ function shell() {
           ضيف Volume للخدمة من Railway (الخطوات في الإعدادات).</div></div>` : ''}
       <section class="content" id="view"></section>
     </main>
+    <div class="scrim" id="scrim"></div>
+    <nav class="tabbar" id="tabbar">
+      ${tabs().map((n) => `<a href="#${n.path}">${icon(n.icon)}<span>${n.short || n.title}</span></a>`).join('')}
+      <button id="more">${icon('menu')}<span>المزيد</span></button>
+    </nav>
   </div>`;
   document.getElementById('logout').addEventListener('click', async () => {
     await api.post('/auth/logout').catch(() => {});
     location.hash = '#/';
     location.reload();
   });
-  document.getElementById('menu').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
+  const toggleMenu = () => document.querySelector('.sidebar').classList.toggle('open');
+  document.getElementById('menu').addEventListener('click', toggleMenu);
+  document.getElementById('more').addEventListener('click', toggleMenu);
+  document.getElementById('scrim').addEventListener('click', toggleMenu);
 }
+
+/** The 4 most-used screens this person can open, for the phone's bottom bar. */
+function tabs() {
+  const order = ['/', '/pos', '/repairs', '/sales', '/products', '/reports'];
+  return order.map((p) => NAV.find((n) => n.path === p && (!n.perm || can(n.perm)))).filter(Boolean).slice(0, 4);
+}
+
+/**
+ * On phones, wide tables are shown as cards: each cell gets its column title as a label.
+ * Runs on every change so all screens and windows get it without extra code.
+ */
+function cardify(root = document) {
+  for (const table of root.querySelectorAll('table.table')) {
+    const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    if (heads.length < 4) continue;
+    table.classList.add('cardify');
+    for (const tr of table.querySelectorAll('tbody tr, tfoot tr')) {
+      let col = 0;
+      for (const td of tr.children) {
+        const label = heads[col] || '';
+        if (label && !td.hasAttribute('colspan')) td.dataset.label = label;
+        else td.removeAttribute('data-label');
+        if (!label && td.querySelector('button, a.btn')) td.classList.add('cell-actions');
+        if (!td.textContent.trim() && !td.querySelector('button, a, input, select, svg, img')) td.classList.add('cell-empty');
+        col += Number(td.getAttribute('colspan')) || 1;
+      }
+    }
+  }
+}
+let cardifyQueued = false;
+new MutationObserver(() => {
+  if (cardifyQueued) return;
+  cardifyQueued = true;
+  requestAnimationFrame(() => { cardifyQueued = false; cardify(); });
+}).observe(document.body, { childList: true, subtree: true });
 
 boot();

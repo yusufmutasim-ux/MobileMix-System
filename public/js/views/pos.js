@@ -12,6 +12,7 @@ export async function render(el) {
   const cats = await api.get('/categories');
 
   el.innerHTML = `
+  <button class="cart-bar empty" id="cart-toggle"><span><span class="count" id="cart-count">0</span>عرض الفاتورة</span><span id="cart-sum"></span></button>
   <div class="pos">
     <div>
       <div class="card" style="padding:16px">
@@ -26,7 +27,8 @@ export async function render(el) {
     </div>
 
     <div class="card pos-cart">
-      <div class="card-head" style="margin-bottom:4px"><h2>الفاتورة</h2><button class="btn btn-ghost btn-sm" id="clear">${icon('trash')} تفريغ</button></div>
+      <div class="card-head" style="margin-bottom:4px"><h2>الفاتورة</h2><button class="btn btn-ghost btn-sm" id="clear">${icon('trash')} تفريغ</button>
+        <button class="btn btn-ghost btn-icon cart-close" id="cart-close" title="رجوع للمنتجات">${icon('x')}</button></div>
       <div class="lines" id="lines"></div>
       <div class="totals">
         <div class="form-grid" style="gap:10px;margin-bottom:10px">
@@ -55,6 +57,13 @@ export async function render(el) {
 
   const $ = (s) => el.querySelector(s);
   const scan = $('#scan');
+  // On phones/tablets don't pop the keyboard up after every tap
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const focusScan = () => { if (!touch) scan.focus(); };
+  const cartEl = el.querySelector('.pos-cart');
+  const openCart = (open) => { cartEl.classList.toggle('open', open); document.body.style.overflow = open ? 'hidden' : ''; };
+  $('#cart-toggle').addEventListener('click', () => openCart(true));
+  $('#cart-close').addEventListener('click', () => openCart(false));
 
   // ---------- product grid ----------
   async function loadProducts(q = '') {
@@ -121,7 +130,7 @@ export async function render(el) {
       else cart.push({ product_id: p.id, name: p.name, unit_price: p.sell_price, list_price: p.sell_price, qty: 1, has_serial: false, stock: p.qty });
     }
     draw();
-    scan.focus();
+    focusScan();
   }
 
   async function pickSerial(p) {
@@ -177,6 +186,10 @@ export async function render(el) {
     $('#change-label').textContent = diff > 0 ? 'الباقي للعميل' : 'متبقي على العميل';
     $('#change').innerHTML = money(Math.abs(diff));
     $('#checkout').disabled = !cart.length;
+    const units = cart.reduce((n, l) => n + l.qty, 0);
+    $('#cart-count').textContent = units;
+    $('#cart-sum').innerHTML = cart.length ? moneyText(t.total) : '';
+    $('#cart-toggle').classList.toggle('empty', !cart.length);
   }
 
   $('#lines').addEventListener('click', (e) => {
@@ -205,7 +218,7 @@ export async function render(el) {
     pay = b.dataset.p;
     $('#pay').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
   });
-  $('#clear').addEventListener('click', () => { cart = []; $('#discount').value = 0; $('#paid').value = ''; draw(); scan.focus(); });
+  $('#clear').addEventListener('click', () => { cart = []; $('#discount').value = 0; $('#paid').value = ''; draw(); focusScan(); });
 
   // ---------- checkout ----------
   async function checkout() {
@@ -226,8 +239,9 @@ export async function render(el) {
       ['#discount', '#paid', '#cname', '#cphone', '#notes'].forEach((s) => { $(s).value = s === '#discount' ? 0 : ''; });
       draw();
       loadProducts().catch(() => {});
+      openCart(false);
       await successModal(sale);
-      scan.focus();
+      focusScan();
     });
   }
   $('#checkout').addEventListener('click', checkout);
@@ -239,8 +253,8 @@ export async function render(el) {
 
   draw();
   await loadProducts();
-  scan.focus();
-  return () => document.removeEventListener('keydown', onKey);
+  focusScan();
+  return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
 }
 
 function successModal(sale) {

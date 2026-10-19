@@ -385,3 +385,139 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
 .seg::-webkit-scrollbar { display: none; }
 .seg button { white-space: nowrap; flex-shrink: 0; }
+
+/* =====================================================================
+   Mobile (phones & small tablets)
+   ===================================================================== */
+.pos > * { min-width: 0; }
+.tabbar, .scrim, .cart-bar, .cart-close { display: none; }
+
+@media (max-width: 860px) {
+  body { font-size: 15px; -webkit-tap-highlight-color: transparent; }
+  /* 16px inputs stop iOS from zooming in on focus */
+  .input, select.input, textarea.input { font-size: 16px; min-height: 46px; }
+
+  /* ---- shell ---- */
+  .topbar { padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top)); flex-wrap: wrap; gap: 8px; }
+  .topbar h1 { font-size: 21px; }
+  .menu-btn { display: none; }
+  #page-actions { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  #page-actions::-webkit-scrollbar { display: none; }
+  #page-actions .btn { padding: 8px 14px; font-size: 14px; }
+  .content { padding: 4px 12px calc(96px + env(safe-area-inset-bottom)); }
+  .card { padding: 16px; border-radius: 20px; }
+  .card + .card { margin-top: 16px; }
+  .grid { gap: 12px; }
+  .card-head { margin-bottom: 12px; }
+  .card-head h2 { font-size: 17px; }
+
+  /* drawer menu */
+  .sidebar { width: min(300px, 84vw); padding-top: max(20px, env(safe-area-inset-top)); }
+  .scrim { position: fixed; inset: 0; background: rgba(41,44,64,.35); z-index: 45; }
+  .sidebar.open ~ .scrim { display: block; }
+
+  /* bottom tab bar */
+  .tabbar {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    position: fixed; inset-inline: 0; bottom: 0; z-index: 40; background: rgba(255,255,255,.96);
+    backdrop-filter: blur(10px); border-top: 1px solid var(--pebble);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  }
+  .tabbar a, .tabbar button {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border: 0; background: none;
+    color: var(--iron); font-size: 11px; font-weight: 500; border-radius: 12px; cursor: pointer; font-family: inherit;
+  }
+  .tabbar svg { width: 23px; height: 23px; }
+  .tabbar .active { color: var(--violet); background: var(--periwinkle); }
+
+  /* ---- KPI tiles ---- */
+  .kpi { min-height: 0; padding: 14px 16px; border-radius: 18px; }
+  .kpi .label { font-size: 13px; }
+  .kpi .value { font-size: 24px; margin-top: 6px; }
+  .grid-4, .grid-3, .quick { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .quick a { min-height: 0; padding: 14px; gap: 12px; border-radius: 18px; font-size: 14px; }
+
+  /* ---- toolbars ---- */
+  .toolbar { gap: 8px; }
+  .toolbar .search { flex-basis: 100%; }
+  .toolbar > .input, .toolbar > select.input { flex: 1 1 140px; min-width: 0; }
+
+  /* ---- tables become cards ---- */
+  .table-wrap { margin: 0; overflow: visible; }
+  table.cardify, .cardify tbody, .cardify tfoot, .cardify tr, .cardify td { display: block; width: 100%; }
+  .cardify thead { display: none; }
+  .cardify tr { background: var(--cloud); border-radius: 16px; padding: 10px 14px; margin-bottom: 10px; }
+  .cardify tr.click:hover td { background: none; }
+  .cardify td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 0; border: 0; text-align: start !important; min-width: 0; }
+  .cardify td > * { min-width: 0; }
+  .cardify td[data-label]::before { content: attr(data-label); color: var(--iron); font-size: 12px; font-weight: 400; flex-shrink: 0; }
+  .cardify td:first-child { font-size: 15px; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--pebble); }
+  .cardify td:first-child::before { display: none; }
+  .cardify td:empty, .cardify td.cell-empty { display: none; }
+  .cardify td.cell-actions { justify-content: flex-end; }
+  .cardify td.empty { justify-content: center; }
+  .cardify tfoot tr { background: var(--periwinkle); }
+  .table:not(.cardify) td, .table:not(.cardify) th { padding: 10px 6px; }
+
+  /* ---- windows become full-screen sheets ---- */
+  .modal-back { padding: 0; place-items: end stretch; }
+  .modal, .modal.wide { max-width: none; width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; animation: sheet .22s; }
+  .modal-head { padding: max(14px, env(safe-area-inset-top)) 16px 10px; border-bottom: 1px solid var(--cloud); }
+  .modal-head h3 { font-size: 18px; }
+  .modal-body { padding: 14px 16px; flex: 1; }
+  .modal-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .modal-foot .btn { flex: 1 1 auto; }
+  .modal-foot > span[style*="flex:1"] { display: none; }
+  .info-grid > div[style*="grid-column"] { grid-column: 1 / -1 !important; }
+
+  .toasts { left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); align-items: center; }
+  .toast { max-width: 100%; }
+
+  /* ---- POS: products full width, invoice as a bottom sheet ---- */
+  .products-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pcard { padding: 12px; }
+  .pcard .t { font-size: 14px; min-height: 38px; }
+  .pcard .p { font-size: 15px; }
+  .scan-hint { display: none; }
+  .cart-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: fixed; inset-inline: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 39;
+    background: var(--violet); color: var(--snow); border: 0; border-radius: var(--r-pill); padding: 14px 20px;
+    font-weight: 500; font-size: 15px; box-shadow: var(--shadow-elevated); cursor: pointer; font-family: inherit;
+  }
+  .cart-bar .count { background: var(--snow); color: var(--violet); border-radius: 99px; min-width: 26px; height: 26px; display: inline-grid; place-items: center; padding: 0 6px; margin-inline-end: 8px; }
+  .cart-bar.empty { background: var(--slate); }
+  .pos-cart {
+    position: fixed; inset: 0; z-index: 60; border-radius: 0; max-height: none; height: 100dvh;
+    padding: max(14px, env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    transform: translateY(100%); transition: transform .25s; display: flex;
+  }
+  .pos-cart.open { transform: none; }
+  .cart-close { display: inline-flex; }
+  .pay-methods { grid-template-columns: repeat(3, 1fr); }
+  .totals .grand { font-size: 24px; }
+  .price-in { width: 90px; }
+
+  .money-box .v { font-size: 17px; }
+  .status-actions { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .status-actions .btn { flex-shrink: 0; }
+  .label-preview { overflow-x: auto; flex-wrap: nowrap; }
+  .bars { gap: 4px; }
+}
+@keyframes sheet { from { transform: translateY(24px); opacity: 0; } }
+.toolbar .search .input { width: 100%; }
+@media (max-width: 860px) {
+  .search { min-width: 0; }
+  /* Home KPIs two per row */
+  #view .grid[style*="auto-fit"] { grid-template-columns: 1fr 1fr !important; }
+  /* Invoice sheet scrolls as a whole so items never get squeezed */
+  .pos-cart { overflow-y: auto; }
+  .pos-cart .lines { flex: none; overflow: visible; }
+}
+@media (max-width: 860px) {
+  /* label on one side, the value (number + currency together) on the other */
+  .cardify td { justify-content: flex-start; gap: 4px; }
+  .cardify td[data-label]::before { margin-inline-end: auto; padding-inline-end: 12px; }
+  .cardify td.cell-actions { justify-content: flex-end; }
+}
+@media (max-width: 860px) { .cardify td.num { direction: rtl; unicode-bidi: normal; } }
