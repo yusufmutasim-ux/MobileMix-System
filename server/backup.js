@@ -41,6 +41,17 @@ function runBackup(db, dataDir, { force = false } = {}) {
   return { file, skipped: false };
 }
 
+/** One-off copy before something drastic (kept until deleted by hand). */
+function snapshot(db, dataDir, label) {
+  const dir = backupDir(db, dataDir);
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 23);
+  let file = path.join(dir, `mobilemix-${label}-${stamp}.db`);
+  for (let i = 2; fs.existsSync(file); i++) file = path.join(dir, `mobilemix-${label}-${stamp}-${i}.db`);
+  db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  return file;
+}
+
 function scheduleBackups(db, dataDir) {
   const tick = () => {
     try {
@@ -54,4 +65,4 @@ function scheduleBackups(db, dataDir) {
   return setInterval(tick, 60 * 60 * 1000).unref();
 }
 
-module.exports = { runBackup, listBackups, backupDir, scheduleBackups };
+module.exports = { runBackup, listBackups, backupDir, scheduleBackups, snapshot };

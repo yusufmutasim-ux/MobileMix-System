@@ -7,7 +7,8 @@ const {
 } = require('../auth');
 const { bad, notFound, str, audit, getSettings, today } = require('../util');
 const { DEFAULT_SETTINGS } = require('../db');
-const { runBackup, listBackups, backupDir } = require('../backup');
+const { runBackup, listBackups, backupDir, snapshot } = require('../backup');
+const { tx } = require('../db');
 const hosting = require('../hosting');
 
 /** Same machine or the shop's own network (not coming in through the internet). */
@@ -216,6 +217,110 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     } catch (e) {
       throw bad(`فشل النسخ: ${e.message}`);
     }
+  });
+
+  // ---------- start over: wipe test data, keep staff and shop settings ----------
+  const RESET_PARTS = {
+    sales: ['sale_items', 'returns', 'sales'],
+    repairs: ['repair_parts', 'repair_payments', 'repair_events', 'repairs'],
+    products: ['stocktake_serials', 'stocktake_items', 'stocktakes', 'stock_movements', 'serials', 'products'],
+    attendance: ['shifts'],
+    log: ['notifications', 'audit_log'],
+    categories: ['categories'],
+  };
+
+  api.get('/system/data-counts', requirePerm('data.reset'), (_req, res) => {
+    const count = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
+    res.json({
+      sales: count('sales'), repairs: count('repairs'), products: count('products'), attendance: count('shifts'),
+      log: count('notifications') + count('audit_log'), categories: count('categories'), users: count('users'),
+    });
+  });
+
+  api.post('/system/reset', requirePerm('data.reset'), (req, res) => {
+    const b = req.body || {};
+    if (String(b.confirm || '').trim() !== 'امسح') throw bad('اكتب كلمة "امسح" للتأكيد');
+    const me = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!verifyPassword(String(b.password || ''), me.password_hash)) throw bad('كلمة السر غلط');
+    const parts = new Set((Array.isArray(b.parts) ? b.parts : []).filter((p) => RESET_PARTS[p]));
+    // Products can't go without the sales, repairs and counts that point at them
+    if (parts.has('categories')) parts.add('products');
+    if (parts.has('products')) { parts.add('sales'); parts.add('repairs'); }
+    if (!parts.size) throw bad('اختار حاجة تتمسح');
+
+    let file;
+    try { file = snapshot(db, dataDir, 'before-reset'); } catch (e) { throw bad(`مقدرناش ناخد نسخة احتياطية قبل المسح: ${e.message}`); }
+
+    const order = ['log', 'attendance', 'sales', 'repairs', 'products', 'categories'];
+    const deleted = {};
+    tx(db, () => {
+      for (const part of order) {
+        if (!parts.has(part)) continue;
+        for (const table of RESET_PARTS[part]) {
+          deleted[table] = db.prepare(`DELETE FROM ${table}`).run().changes;
+        }
+      }
+      // Sales gone but products kept: phones sold in those sales stay out of stock, just unlinked
+      if (parts.has('sales') && !parts.has('products')) db.prepare('UPDATE serials SET sale_id = NULL WHERE sale_id IS NOT NULL').run();
+    });
+    audit(db, req.user.id, 'data.reset', { parts: [...parts], backup: path.basename(file) });
+    res.json({ ok: true, parts: [...parts], deleted, backup: path.basename(file) });
+  });
+
+  // ---------- backups: list, download, restore ----------
+  const BACKUP_NAME = /^mobilemix-[\w-]+\.db$/;
+  const allBackups = () => {
+    const dir = backupDir(db, dataDir);
+    try {
+      return fs.readdirSync(dir).filter((f) => BACKUP_NAME.test(f)).map((f) => {
+        const st = fs.statSync(path.join(dir, f));
+        return { file: f, size: st.size, at: st.mtime.toISOString(), kind: /before-reset/.test(f) ? 'reset' : /before-restore/.test(f) ? 'restore' : 'daily' };
+      }).sort((a, b) => b.at.localeCompare(a.at));
+    } catch { return []; }
+  };
+
+  api.get('/system/backups', requirePerm('data.reset'), (_req, res) => res.json(allBackups()));
+
+  api.get('/system/backups/:file', requirePerm('data.reset'), (req, res) => {
+    const f = String(req.params.file);
+    if (!BACKUP_NAME.test(f) || !allBackups().some((b) => b.file === f)) throw notFound('النسخة غير موجودة');
+    res.download(path.join(backupDir(db, dataDir), f), f);
+  });
+
+  /**
+   * Bring back a backup's data. Sessions, push devices and server keys are left as they are,
+   * so nobody is logged out. The current data is saved first, so a restore can be undone too.
+   */
+  api.post('/system/restore', requirePerm('data.reset'), (req, res) => {
+    const b = req.body || {};
+    const f = String(b.file || '');
+    if (!BACKUP_NAME.test(f) || !allBackups().some((x) => x.file === f)) throw notFound('النسخة غير موجودة');
+    const me = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!verifyPassword(String(b.password || ''), me.password_hash)) throw bad('كلمة السر غلط');
+    const before = snapshot(db, dataDir, 'before-restore');
+    const src = path.join(backupDir(db, dataDir), f);
+    const KEEP = new Set(['sessions', 'push_subscriptions', 'secrets', 'sqlite_sequence']);
+    db.exec(`ATTACH DATABASE '${src.replace(/'/g, "''")}' AS bk`);
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      tx(db, () => {
+        const tables = db.prepare("SELECT name FROM bk.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()
+          .map((t) => t.name).filter((t) => !KEEP.has(t));
+        for (const t of tables) {
+          const mine = db.prepare(`PRAGMA main.table_info(${t})`).all().map((c) => c.name);
+          if (!mine.length) continue; // table no longer exists
+          const theirs = new Set(db.prepare(`PRAGMA bk.table_info(${t})`).all().map((c) => c.name));
+          const cols = mine.filter((c) => theirs.has(c)).map((c) => `"${c}"`).join(', ');
+          db.exec(`DELETE FROM main.${t}`);
+          db.exec(`INSERT INTO main.${t} (${cols}) SELECT ${cols} FROM bk.${t}`);
+        }
+      });
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+      db.exec('DETACH DATABASE bk');
+    }
+    audit(db, req.user.id, 'data.restore', { from: f, saved_current_as: path.basename(before) });
+    res.json({ ok: true, restored: f, backup: path.basename(before) });
   });
 
   api.get('/audit', requirePerm('audit.view'), (_req, res) => {

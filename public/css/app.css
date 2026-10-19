@@ -563,3 +563,5 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .rule input:checked + .switch { background: var(--violet); }
 .rule input:checked + .switch::after { inset-inline-start: 23px; }
 .rule input:focus-visible + .switch { outline: 2px solid var(--violet); outline-offset: 2px; }
+.reset-parts { display: grid; gap: 10px; }
+.reset-parts .check input:disabled + * { opacity: .6; }

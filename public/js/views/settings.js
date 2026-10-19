@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow } from '../core.js';
+import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow, modal } from '../core.js';
 import { LABEL_SIZES } from '../print.js';
 import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition, locationPermission, locationHelp } from '../live.js';
 
@@ -6,7 +6,7 @@ const AUDIT_NAMES = {
   login: 'تسجيل دخول', 'password.change': 'تغيير كلمة السر', 'user.create': 'إضافة موظف', 'user.update': 'تعديل موظف',
   'settings.update': 'تعديل الإعدادات', 'backup.download': 'نسخة احتياطية', 'product.create': 'إضافة منتج',
   'product.price': 'تغيير سعر', 'product.deactivate': 'إيقاف منتج', 'sale.return': 'مرتجع',
-  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'zone.network': 'تسجيل إنترنت المحل', 'shift.denied': 'محاولة حضور مرفوضة', 'backup.auto': 'نسخة احتياطية',
+  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'zone.network': 'تسجيل إنترنت المحل', 'shift.denied': 'محاولة حضور مرفوضة', 'data.reset': 'مسح البيانات', 'data.restore': 'استرجاع نسخة', 'backup.auto': 'نسخة احتياطية',
 };
 
 export async function render(el) {
@@ -83,6 +83,15 @@ export async function render(el) {
       </div>
     </div>
     ${admin ? `<div class="card" style="margin-top:24px" id="remote"><div class="empty">…</div></div>` : ''}
+    ${can('data.reset') ? `
+    <div class="card" id="danger-card" style="margin-top:24px;border:1px solid var(--danger-wash)">
+      <div class="card-head"><h2>🧹 البدء من جديد</h2></div>
+      <p style="margin-top:0">خلصت تجربة؟ امسح البيانات الوهمية (منتجات، فواتير، صيانة، حضور…) وابدأ على نضيف.
+        <b>الموظفين وإعدادات المحل مش بيتمسحوا</b>، والسيستم بياخد نسخة احتياطية قبل المسح عشان تقدر ترجّعها.</p>
+      <button class="btn btn-danger" id="reset-btn">🧹 مسح البيانات والبدء من جديد</button>
+      <div class="section-title">💾 النسخ الاحتياطية (تقدر ترجّع أي واحدة)</div>
+      <div id="backup-list"><div class="muted small">…</div></div>
+    </div>` : ''}
     ${can('audit.view') ? `
     <div class="card" style="margin-top:24px">
       <div class="card-head"><h2>${icon('history', '')} سجل العمليات</h2><span class="muted small">آخر 300 عملية</span></div>
@@ -233,6 +242,89 @@ export async function render(el) {
       ${posErr && !t.ok ? `<div class="card bg-periwinkle" style="box-shadow:none;padding:12px 14px;margin-top:10px">${locationHelp(posErr)}</div>` : ''}`;
   }));
   loadNotif().catch(toastErrLocal);
+
+  // ---------- start over / restore ----------
+  async function loadBackups() {
+    const box = el.querySelector('#backup-list');
+    if (!box) return;
+    const list = await api.get('/system/backups');
+    const KIND = { reset: '<span class="pill pill-warn">قبل المسح</span>', restore: '<span class="pill pill-info">قبل الاسترجاع</span>', daily: '<span class="pill pill-gray">يومية</span>' };
+    box.innerHTML = list.length ? `<table class="table"><tbody>${list.slice(0, 15).map((b) => `<tr>
+        <td class="small">${fmtDate(b.at)}</td><td>${KIND[b.kind]}</td><td class="small muted num">${(b.size / 1024 / 1024).toFixed(1)} MB</td>
+        <td class="end" style="white-space:nowrap">
+          <a class="btn btn-ghost btn-sm" href="/api/system/backups/${encodeURIComponent(b.file)}" download title="تحميل">${icon('download')}</a>
+          <button class="btn btn-outline btn-sm" data-restore="${esc(b.file)}" data-at="${esc(b.at)}">↩️ رجّعها</button></td></tr>`).join('')}</tbody></table>`
+      : '<div class="muted small">لسه مفيش نسخ</div>';
+    box.querySelectorAll('[data-restore]').forEach((btn) => btn.addEventListener('click', () => restoreModal(btn.dataset.restore, btn.dataset.at)));
+  }
+
+  function restoreModal(file, at) {
+    modal({
+      title: '↩️ استرجاع نسخة احتياطية',
+      body: `<p style="margin-top:0">كل البيانات هترجع زي ما كانت يوم <b>${fmtDate(at)}</b> (منتجات، فواتير، صيانة، موظفين، إعدادات).</p>
+        <p class="small muted">البيانات اللي موجودة دلوقتي هتتحفظ في نسخة الأول، فتقدر ترجعلها لو غيرت رأيك.</p>
+        <label class="field"><span>كلمة السر بتاعتك</span><input class="input ltr" type="password" id="rs-pw" autocomplete="current-password"></label>`,
+      foot: '<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>↩️ استرجاع</button>',
+      onMount: (m, close) => m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        await api.post('/system/restore', { file, password: m.querySelector('#rs-pw').value });
+        close(true);
+        toast('تم الاسترجاع ✅', 'ok');
+        setTimeout(() => location.reload(), 900);
+      })),
+    });
+  }
+
+  el.querySelector('#reset-btn')?.addEventListener('click', async () => {
+    const c = await api.get('/system/data-counts');
+    const PARTS = [
+      ['sales', 'الفواتير والمرتجعات', c.sales, true],
+      ['repairs', 'تذاكر الصيانة', c.repairs, true],
+      ['products', 'المنتجات والمخزن والجرد', c.products, true],
+      ['attendance', 'الحضور والانصراف', c.attendance, true],
+      ['log', 'الإشعارات وسجل العمليات', c.log, true],
+      ['categories', 'الأقسام (موبايلات، إكسسوارات…)', c.categories, false],
+    ];
+    modal({
+      title: '🧹 مسح البيانات والبدء من جديد',
+      body: `<p style="margin-top:0">اختار اللي عايز تمسحه:</p>
+        <div class="reset-parts">${PARTS.map(([k, label, n, on]) => `
+          <label class="check"><input type="checkbox" data-part="${k}" ${on ? 'checked' : ''}> ${label} <span class="muted small">(${n})</span></label>`).join('')}</div>
+        <div class="card bg-mint" style="box-shadow:none;padding:10px 14px;margin:12px 0">✅ مش هيتمسح: <b>الموظفين (${c.users})</b>، إعدادات المحل، موقع المحل، والإشعارات المفعّلة على الموبايلات.</div>
+        <p class="small muted" style="margin:0 0 12px">💾 هتتاخد نسخة احتياطية تلقائي قبل المسح، وتقدر ترجّعها من نفس الصفحة.</p>
+        <label class="field"><span>كلمة السر بتاعتك</span><input class="input ltr" type="password" id="rz-pw" autocomplete="current-password"></label>
+        <label class="field" style="margin-top:10px"><span>اكتب كلمة <b>امسح</b> للتأكيد</span><input class="input" id="rz-confirm" autocomplete="off"></label>`,
+      foot: '<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-danger" data-ok disabled>🧹 امسح</button>',
+      onMount: (m, close) => {
+        const boxes = () => [...m.querySelectorAll('[data-part]')];
+        const get = (k) => m.querySelector(`[data-part="${k}"]`);
+        // Products need their sales and repairs gone too; categories need products gone
+        const sync = () => {
+          if (get('categories').checked) { get('products').checked = true; }
+          const prod = get('products').checked;
+          for (const k of ['sales', 'repairs']) { if (prod) get(k).checked = true; get(k).disabled = prod; }
+          get('products').disabled = get('categories').checked;
+          const ready = m.querySelector('#rz-confirm').value.trim() === 'امسح' && m.querySelector('#rz-pw').value && boxes().some((b) => b.checked);
+          m.querySelector('[data-ok]').disabled = !ready;
+        };
+        boxes().forEach((b) => b.addEventListener('change', sync));
+        m.querySelector('#rz-confirm').addEventListener('input', sync);
+        m.querySelector('#rz-pw').addEventListener('input', sync);
+        sync();
+        m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+          await api.post('/system/reset', {
+            parts: boxes().filter((b) => b.checked).map((b) => b.dataset.part),
+            password: m.querySelector('#rz-pw').value,
+            confirm: m.querySelector('#rz-confirm').value,
+          });
+          close(true);
+          try { localStorage.removeItem('mm_cart'); localStorage.removeItem('mm_label_queue'); } catch { /* ignore */ }
+          toast('تم المسح ✅ — السيستم نضيف وجاهز', 'ok');
+          setTimeout(() => location.reload(), 1200);
+        }));
+      },
+    });
+  });
+  loadBackups().catch(() => {});
 
   el.querySelector('#logout-others').addEventListener('click', (e) => busy(e.currentTarget, async () => {
     const r = await api.post('/auth/logout-others');
