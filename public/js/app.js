@@ -1,9 +1,10 @@
-import { api, state, can, icon, esc, LOGO, ROLE_NAMES, toastErr } from './core.js';
+import { api, state, can, icon, esc, LOGO, ROLE_NAMES, toastErr, modal, busy, toast } from './core.js';
 
 const NAV = [
   { path: '/', title: 'الرئيسية', icon: 'home', view: 'dashboard' },
   { path: '/pos', title: 'نقطة البيع', icon: 'cart', view: 'pos', perm: 'sales.create' },
   { path: '/sales', title: 'الفواتير', icon: 'receipt', view: 'sales', perm: 'sales.create' },
+  { path: '/repairs', title: 'الصيانة', icon: 'wrench', view: 'repairs', perm: 'repairs.view' },
   { sep: 'المخزن' },
   { path: '/products', title: 'المنتجات', icon: 'box', view: 'products', perm: 'products.view' },
   { path: '/stocktake', title: 'الجرد', icon: 'clipboard', view: 'stocktake', perm: 'stocktake' },
@@ -19,12 +20,39 @@ let cleanup = null;
 async function boot() {
   try {
     const me = await api.get('/auth/me');
-    Object.assign(state, { user: me.user, permissions: me.permissions, settings: me.settings });
+    Object.assign(state, { user: me.user, permissions: me.permissions, settings: me.settings, mustChangePassword: me.must_change_password });
   } catch {
     state.user = null;
   }
   window.addEventListener('hashchange', route);
-  route();
+  await route();
+  if (state.user && state.mustChangePassword) forcePasswordChange();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+/** The factory password can't stay — the system may be reachable from the internet. */
+function forcePasswordChange() {
+  modal({
+    title: 'غيّر كلمة السر الأول 🔒',
+    body: `<p class="muted" style="margin-top:0">إنت داخل بكلمة السر الافتراضية <b class="num">admin123</b>. لازم تغيرها قبل ما تستخدم السيستم،
+      خصوصاً إنه ممكن يتفتح من برة المحل.</p>
+      <div class="form-grid">
+        <label class="field full"><span>كلمة السر الجديدة (6 حروف أو أكتر)</span><input class="input ltr" type="password" id="np" autocomplete="new-password" autofocus></label>
+        <label class="field full"><span>اكتبها تاني</span><input class="input ltr" type="password" id="np2" autocomplete="new-password"></label>
+      </div>`,
+    foot: '<button class="btn btn-primary" data-ok>حفظ</button>',
+    locked: true,
+    onMount: (m, close) => {
+      m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        const a = m.querySelector('#np').value;
+        if (a !== m.querySelector('#np2').value) throw new Error('الكلمتين مش زي بعض');
+        await api.post('/auth/password', { current: 'admin123', password: a });
+        state.mustChangePassword = false;
+        toast('تم تغيير كلمة السر', 'ok');
+        close(true);
+      }));
+    },
+  });
 }
 
 function parse() {

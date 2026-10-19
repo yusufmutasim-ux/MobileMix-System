@@ -1,5 +1,6 @@
 import { api, state, icon, esc, money, n, fmtDate, toastErr, emptyRow, downloadCsv, PAY_NAMES } from '../core.js';
 import { RANGES, RANGE_NAMES } from './sales.js';
+import { REPAIR_STATUS } from '../print.js';
 
 const MOVE_NAMES = { purchase: 'إضافة بضاعة', sale: 'بيع', return: 'مرتجع', adjust: 'تعديل يدوي', stocktake: 'جرد' };
 
@@ -13,7 +14,7 @@ export async function render(el, { actions }) {
 
   el.innerHTML = `
     <div class="toolbar">
-      <div class="seg" id="tabs"><button data-t="sales" class="on">المبيعات والأرباح</button><button data-t="inventory">المخزن</button><button data-t="movements">حركة المخزن</button></div>
+      <div class="seg" id="tabs"><button data-t="sales" class="on">المبيعات والأرباح</button><button data-t="inventory">المخزن</button><button data-t="repairs">الصيانة</button><button data-t="movements">حركة المخزن</button></div>
       <span style="flex:1"></span>
       <div class="seg" id="range">${Object.entries(RANGE_NAMES).map(([k, v]) => `<button data-r="${k}" class="${k === 'month' ? 'on' : ''}">${v}</button>`).join('')}</div>
       <input class="input num" type="date" id="from" value="${from}"><input class="input num" type="date" id="to" value="${to}">
@@ -28,6 +29,12 @@ export async function render(el, { actions }) {
     const isInv = tab === 'inventory';
     ['#range', '#from', '#to'].forEach((s) => $(s).classList.toggle('hidden', isInv));
     $('#user').classList.toggle('hidden', tab !== 'sales');
+    if (tab === 'repairs') {
+      last = await api.get(`/reports/repairs?from=${from}&to=${to}`);
+      $('#out').innerHTML = repairsReport(last);
+      $('#mtype').classList.add('hidden');
+      return;
+    }
     $('#mtype').classList.toggle('hidden', tab !== 'movements');
     $('#out').innerHTML = '<div class="empty">جاري التحميل…</div>';
     if (tab === 'sales') {
@@ -77,6 +84,9 @@ export async function render(el, { actions }) {
     if (tab === 'sales') {
       downloadCsv(`sales-report-${from}-${to}.csv`, ['اليوم', 'عدد الفواتير', 'المبيعات', 'الربح'],
         last.by_day.map((d) => [d.day, d.invoices, d.total, d.profit]));
+    } else if (tab === 'repairs') {
+      downloadCsv(`repairs-report-${from}-${to}.csv`, ['الفني', 'اتسلم', 'اتصلح', 'الإيراد', 'الربح'],
+        last.by_technician.map((t) => [t.full_name, t.delivered, t.repaired, t.revenue, t.profit]));
     } else if (tab === 'inventory') {
       downloadCsv('inventory-report.csv', ['القسم', 'الأصناف', 'القطع', 'القيمة بسعر الشراء', 'القيمة بسعر البيع'],
         last.by_category.map((c) => [c.category, c.products, c.qty, c.cost_value, c.sell_value]));
@@ -172,4 +182,36 @@ function movementsReport(rows) {
       <td class="num" style="color:${m.qty_change < 0 ? 'var(--danger)' : 'var(--ok)'}">${m.qty_change > 0 ? '+' : ''}${m.qty_change}</td>
       <td class="num">${m.qty_after}</td><td class="small">${esc(m.note || '')}</td><td class="small">${esc(m.user_name || '')}</td></tr>`).join('') || emptyRow(7, 'مفيش حركات في الفترة دي')}</tbody>
   </table></div></div>`;
+}
+
+function repairsReport(d) {
+  const t = d.totals;
+  const cur = esc(state.settings.currency);
+  return `
+    <div class="grid grid-4">
+      ${kpi('bg-mint', 'إيراد الصيانة', `${n(t.revenue)} <small>${cur}</small>`, `${t.delivered} جهاز اتسلم — ${t.repaired} اتصلح`)}
+      ${kpi('bg-lavender', 'ربح الصيانة', `${n(t.profit)} <small>${cur}</small>`, `قطع غيار ${n(t.parts_cost)} — خارجي ${n(t.extra_cost)}`)}
+      ${kpi('bg-sky', 'الفلوس اللي دخلت', `${n(t.cash_in)} <small>${cur}</small>`, `عربون محجوز على أجهزة مفتوحة: ${n(t.deposits_held)}`)}
+      ${kpi(t.dues ? 'bg-peony' : 'bg-periwinkle', 'فلوس آجلة على العملاء', `${n(t.dues)} <small>${cur}</small>`, `استلام في الفترة: ${t.received} جهاز`)}
+    </div>
+    <p class="muted small" style="margin:12px 4px 0">الإيراد والربح بيتحسبوا يوم تسليم الجهاز. "الفلوس اللي دخلت" = العربون والدفعات اللي اتحصلت فعلاً في الفترة.</p>
+    <div class="grid grid-2" style="margin-top:24px">
+      <div class="card"><div class="card-head"><h2>أداء الفنيين</h2></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>الفني</th><th>اتسلم</th><th>اتصلح</th><th>الإيراد</th><th class="end">الربح</th></tr></thead>
+        <tbody>${d.by_technician.map((x) => `<tr><td>${esc(x.full_name)}</td><td class="num">${x.delivered}</td><td class="num">${x.repaired}</td><td>${money(x.revenue)}</td><td class="end">${money(x.profit)}</td></tr>`).join('') || emptyRow(5)}</tbody></table></div>
+      </div>
+      <div class="card"><div class="card-head"><h2>التحصيل حسب طريقة الدفع</h2></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>الطريقة</th><th>عمليات</th><th class="end">المبلغ</th></tr></thead>
+        <tbody>${d.cash.map((c) => `<tr><td>${PAY_NAMES[c.method] || esc(c.method)}</td><td class="num">${c.count}</td><td class="end">${money(c.total)}</td></tr>`).join('') || emptyRow(3)}</tbody></table></div>
+      </div>
+    </div>
+    <div class="grid grid-2" style="margin-top:24px">
+      <div class="card"><div class="card-head"><h2>الأجهزة المفتوحة دلوقتي</h2></div>
+        <div class="table-wrap"><table class="table"><tbody>${d.open.map((o) => `<tr><td><span class="pill st-${o.status}">${REPAIR_STATUS[o.status]}</span></td><td class="end num">${o.n}</td></tr>`).join('') || emptyRow(2, 'مفيش أجهزة مفتوحة')}</tbody></table></div>
+      </div>
+      <div class="card"><div class="card-head"><h2>آجل على العملاء</h2></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>التذكرة</th><th>العميل</th><th>الجهاز</th><th class="end">المتبقي</th></tr></thead>
+        <tbody>${d.dues.map((x) => `<tr class="click" onclick="location.hash='#/repairs?open=${x.id}'"><td class="num">${esc(x.ticket_no)}</td><td>${esc(x.customer_name)}<div class="muted small num">${esc(x.customer_phone)}</div></td><td>${esc(x.device)}</td><td class="end">${money(x.due)}</td></tr>`).join('') || emptyRow(4, 'مفيش فلوس آجلة 👌')}</tbody></table></div>
+      </div>
+    </div>`;
 }

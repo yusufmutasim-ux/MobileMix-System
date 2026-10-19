@@ -125,3 +125,84 @@ export function printLabels(items, sizeKey) {
   }
   return doPrint(labels.join(''), `@page { size: ${sz.w}mm ${sz.h}mm; margin: 0; }`);
 }
+
+// ---------------- Repairs ----------------
+export const REPAIR_STATUS = {
+  received: 'تم الاستلام', diagnosing: 'تحت الفحص', waiting_approval: 'مستني موافقة العميل', waiting_parts: 'مستني قطع غيار',
+  repairing: 'جاري التصليح', ready: 'جاهز للتسليم', not_repaired: 'متصلحش — جاهز يترجع', delivered: 'اتسلم',
+};
+
+function addDays(dateStr, days) {
+  const d = new Date(dateStr.replace(' ', 'T'));
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** kind: 'intake' (إيصال استلام) or 'delivery' (إيصال تسليم) */
+export function repairReceiptHtml(r, kind = 'intake', size = state.settings.invoice_size || '80mm') {
+  const s = state.settings;
+  const a4 = size === 'a4';
+  const cur = esc(s.currency || 'ج.م');
+  const row = (label, value) => (value === null || value === undefined || value === '' ? '' : `<tr><td>${label}</td><td class="e">${value}</td></tr>`);
+  const delivery = kind === 'delivery';
+  const price = r.price ?? null;
+  return `<div class="inv ${a4 ? 'inv-a4' : 'inv-80'}">
+    <div class="c"><div class="shop">${esc(s.shop_name)}</div>
+      ${s.shop_address ? `<div>${esc(s.shop_address)}</div>` : ''}${s.shop_phone ? `<div>ت: ${esc(s.shop_phone)}</div>` : ''}
+      <div style="font-weight:700;font-size:1.2em;margin-top:2mm">${delivery ? 'إيصال تسليم جهاز' : 'إيصال استلام جهاز للصيانة'}</div></div>
+    <hr>
+    <table>
+      ${row('رقم التذكرة', `<b>${esc(r.ticket_no)}</b>`)}
+      ${row('تاريخ الاستلام', fmtDate(r.created_at))}
+      ${delivery ? row('تاريخ التسليم', fmtDate(r.delivered_at)) : row('التسليم المتوقع', r.expected_at ? fmtDate(r.expected_at, false) : '')}
+      ${row('العميل', esc(r.customer_name))}
+      ${row('التليفون', `<span class="imei">${esc(r.customer_phone)}</span>`)}
+      ${row('الجهاز', esc(r.device))}
+      ${row('IMEI', r.imei ? `<span class="imei">${esc(r.imei)}</span>` : '')}
+    </table>
+    <hr>
+    <div><b>العطل:</b> ${esc(r.problem)}</div>
+    ${r.condition_notes ? `<div><b>حالة الجهاز:</b> ${esc(r.condition_notes)}</div>` : ''}
+    ${r.accessories ? `<div><b>مستلم مع الجهاز:</b> ${esc(r.accessories)}</div>` : '<div><b>مستلم مع الجهاز:</b> الجهاز فقط</div>'}
+    ${delivery && r.diagnosis ? `<div><b>اللي اتعمل:</b> ${esc(r.diagnosis)}</div>` : ''}
+    ${delivery && r.parts?.length ? `<div><b>قطع الغيار:</b> ${r.parts.map((p) => `${esc(p.name)}${p.qty > 1 ? ` × ${p.qty}` : ''}`).join('، ')}</div>` : ''}
+    <hr>
+    <table>
+      ${delivery || price != null ? row(delivery ? 'الحساب' : 'السعر', price != null ? `${n(price)} ${cur}` : '') : row('التكلفة المتوقعة', r.estimated_cost != null ? `${n(r.estimated_cost)} ${cur}` : 'بعد الفحص')}
+      ${row('المدفوع', `${n(r.paid)} ${cur}`)}
+      ${(price ?? r.estimated_cost) != null && r.balance > 0.004 ? `<tr class="tot"><td>${delivery ? 'متبقي على العميل' : 'الباقي عند الاستلام'}</td><td class="e">${n(r.balance)} ${cur}</td></tr>` : ''}
+      ${delivery && r.outcome === 'repaired' && r.warranty_days ? row('الضمان', `${r.warranty_days} يوم — لحد ${addDays(r.delivered_at, r.warranty_days)}`) : ''}
+      ${delivery && r.outcome === 'not_repaired' ? row('النتيجة', 'الجهاز اترجع بدون تصليح') : ''}
+    </table>
+    <hr>
+    <div class="c" style="margin:2mm auto;max-width:${a4 ? '70mm' : '60mm'}">${barcodeSvg(r.ticket_no, { heightMm: 10 })}</div>
+    ${!delivery && s.repair_terms ? `<div style="font-size:.85em">${esc(s.repair_terms)}</div>` : ''}
+    ${!delivery ? '<div style="margin-top:6mm">توقيع العميل: ..............................</div><div class="c" style="margin-top:2mm">برجاء الاحتفاظ بالإيصال لاستلام الجهاز</div>' : ''}
+    ${delivery && s.invoice_footer ? `<div class="c">${esc(s.invoice_footer)}</div>` : ''}
+  </div>`;
+}
+
+export function printRepairReceipt(r, kind, size) {
+  size = size || state.settings.invoice_size || '80mm';
+  const page = size === 'a4' ? '@page { size: A4; margin: 10mm; }' : '@page { size: 80mm auto; margin: 0; }';
+  return doPrint(repairReceiptHtml(r, kind, size), page);
+}
+
+/** Sticker that goes on the device itself, so it never gets mixed up on the bench. */
+export function repairStickerHtml(r, sizeKey = state.settings.label_size || '38x25') {
+  const sz = LABEL_SIZES[sizeKey] && !LABEL_SIZES[sizeKey].sheet ? LABEL_SIZES[sizeKey] : LABEL_SIZES['38x25'];
+  const small = sz.h <= 25;
+  return `<div class="label" style="width:${sz.w}mm;height:${sz.h}mm;align-items:stretch">
+    <div style="display:flex;justify-content:space-between;font-size:${small ? 7.5 : 9}px;font-weight:700">
+      <span>${esc(r.ticket_no)}</span><span class="num">${fmtDate(r.created_at, false)}</span></div>
+    <div class="l-name" style="font-size:${small ? 7.5 : 9}px">${esc(r.customer_name)} — <span class="num">${esc(r.customer_phone)}</span></div>
+    <div class="l-name" style="font-size:${small ? 7 : 8.5}px;-webkit-line-clamp:1">${esc(r.device)}: ${esc(r.problem)}</div>
+    <div style="width:100%">${barcodeSvg(r.ticket_no, { heightMm: small ? 6 : 9, text: false })}</div>
+  </div>`;
+}
+
+export function printRepairSticker(r, sizeKey) {
+  sizeKey = LABEL_SIZES[sizeKey] && !LABEL_SIZES[sizeKey].sheet ? sizeKey : (LABEL_SIZES[state.settings.label_size]?.sheet ? '38x25' : state.settings.label_size || '38x25');
+  const sz = LABEL_SIZES[sizeKey];
+  return doPrint(repairStickerHtml(r, sizeKey), `@page { size: ${sz.w}mm ${sz.h}mm; margin: 0; }`);
+}

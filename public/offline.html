@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobile Mix — مفيش اتصال</title>
+  <style>
+    @font-face { font-family: 'Plex Arabic'; font-weight: 400; src: url('/fonts/plex/ibm-plex-sans-arabic-arabic-400-normal.woff2') format('woff2'); }
+    @font-face { font-family: 'Plex Arabic'; font-weight: 500; src: url('/fonts/plex/ibm-plex-sans-arabic-arabic-500-normal.woff2') format('woff2'); }
+    :root { --violet: #6161ff; --ink: #333; --slate: #535768; --cloud: #f5f6f8; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--cloud); color: var(--ink);
+      font-family: 'Plex Arabic', 'Segoe UI', Tahoma, sans-serif; padding: 24px; box-sizing: border-box; }
+    .card { background: #fff; border-radius: 24px; padding: 32px 28px; max-width: 440px; width: 100%; text-align: center;
+      box-shadow: rgba(205,208,223,0.4) 0 2px 48px 0; }
+    h1 { font-weight: 500; font-size: 24px; margin: 16px 0 8px; }
+    p { color: var(--slate); line-height: 1.7; margin: 0 0 8px; }
+    ul { text-align: right; color: var(--slate); line-height: 1.9; padding-right: 20px; margin: 12px 0 20px; }
+    button { background: var(--violet); color: #fff; border: 0; border-radius: 160px; padding: 13px 28px; font: inherit; font-weight: 500; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/icons/icon-192.png" width="72" height="72" alt="">
+    <h1>مش قادر أوصل لجهاز المحل</h1>
+    <p>السيستم شغال على جهاز المحل، والجهاز ده مش واصل له دلوقتي.</p>
+    <ul>
+      <li>اتأكد إن جهاز المحل شغال والبرنامج مفتوح عليه.</li>
+      <li>لو إنت في المحل: اتأكد إنك على نفس الواي فاي.</li>
+      <li>لو إنت برة المحل: اتأكد إن النت شغال عندك وفي المحل، وإن Tailscale مفتوح.</li>
+    </ul>
+    <button onclick="location.reload()">جرّب تاني</button>
+  </div>
+</body>
+</html>

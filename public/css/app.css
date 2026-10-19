@@ -350,3 +350,38 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .bc-text { font-family: 'Poppins', monospace; direction: ltr; text-align: center; letter-spacing: 1px; line-height: 1.1; }
 .grid > .card + .card, .grid > * { margin-top: 0; }
 .hbar { display: flex; }
+
+/* ============ Repairs ============ */
+.pill-sky { background: var(--aqua); color: #0b6477; }
+.pill-peony { background: var(--peony); color: #8a2a7f; }
+.pill-violet { background: var(--violet); color: var(--snow); }
+.st-received { background: var(--wash); color: var(--violet); }
+.st-diagnosing { background: var(--aqua); color: #0b6477; }
+.st-waiting_approval { background: var(--warn-wash); color: #9a4a12; }
+.st-waiting_parts { background: var(--peony); color: #8a2a7f; }
+.st-repairing { background: var(--lavender); color: #5b2c8a; }
+.st-ready { background: var(--mint); color: #24521a; }
+.st-not_repaired { background: var(--danger-wash); color: var(--danger); }
+.st-delivered { background: var(--cloud); color: var(--slate); }
+.toggle-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.toggle-chips button { border: 1px solid var(--pebble); background: var(--snow); border-radius: var(--r-pill); padding: 5px 12px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--slate); }
+.toggle-chips button.on { background: var(--periwinkle); border-color: var(--violet); color: var(--violet); }
+.info-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 20px; }
+.info-grid .k { font-size: 12px; color: var(--iron); }
+.info-grid .v { font-weight: 500; overflow-wrap: anywhere; }
+.section-title { font-size: 15px; font-weight: 500; margin: 22px 0 10px; display: flex; align-items: center; gap: 8px; }
+.timeline { border-inline-start: 2px solid var(--pebble); padding-inline-start: 16px; margin-inline-start: 6px; }
+.timeline .ev { position: relative; padding: 4px 0 10px; font-size: 14px; }
+.timeline .ev::before { content: ''; position: absolute; inset-inline-start: -22px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--violet); border: 2px solid var(--snow); }
+.timeline .ev .t { font-size: 12px; color: var(--iron); }
+.money-box { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.money-box > div { background: var(--cloud); border-radius: var(--r-md); padding: 12px 14px; }
+.money-box .k { font-size: 12px; color: var(--slate); }
+.money-box .v { font-size: 20px; font-weight: 500; margin-top: 2px; }
+.status-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.overdue { color: var(--danger); font-weight: 500; }
+@media (max-width: 860px) { .info-grid, .money-box { grid-template-columns: 1fr 1fr; } }
+/* Segmented tabs scroll sideways instead of wrapping */
+.seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { white-space: nowrap; flex-shrink: 0; }

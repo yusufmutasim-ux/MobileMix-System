@@ -7,49 +7,73 @@ const {
 } = require('../auth');
 const { bad, notFound, str, audit, getSettings, today } = require('../util');
 const { DEFAULT_SETTINGS } = require('../db');
+const { runBackup, listBackups, backupDir } = require('../backup');
 
-const ROLES = ['admin', 'manager', 'cashier'];
+/** Same machine or the shop's own network (not coming in through the internet). */
+function isLocalAddress(ip = '') {
+  const a = ip.replace(/^::ffff:/, '');
+  return a === '::1' || a === '127.0.0.1' || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(a);
+}
 
-module.exports = function adminRoutes(api, db) {
+const ROLES = ['admin', 'manager', 'cashier', 'technician'];
+
+module.exports = function adminRoutes(api, db, { dataDir } = {}) {
   // ---------- auth ----------
-  const failures = new Map(); // username -> { count, until }
+  // Wrong-password lockout, per username and per address (the system can be reached from the internet)
+  const failures = new Map(); // key -> { count, until }
+  const isLocked = (key) => (failures.get(key)?.until || 0) > Date.now();
+  const fail = (key, max, ms) => {
+    const f = failures.get(key);
+    const count = (f && f.until <= Date.now() && f.count >= max ? 0 : f?.count || 0) + 1;
+    failures.set(key, { count, until: count >= max ? Date.now() + ms : 0 });
+  };
 
   api.post('/auth/login', (req, res) => {
     const username = str(req.body?.username, 'اسم المستخدم').toLowerCase();
     const password = String(req.body?.password || '');
-    const f = failures.get(username);
-    if (f && f.until > Date.now()) {
-      return res.status(429).json({ error: 'محاولات كتير غلط — استنى دقيقة وجرب تاني' });
+    const ipKey = `ip:${req.ip}`;
+    if (isLocked(username) || isLocked(ipKey)) {
+      return res.status(429).json({ error: 'محاولات كتير غلط — استنى شوية وجرب تاني' });
     }
     const user = db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username);
     if (!user || !verifyPassword(password, user.password_hash)) {
-      const count = (f?.count || 0) + 1;
-      failures.set(username, { count, until: count >= 5 ? Date.now() + 60_000 : 0 });
+      fail(username, 5, 60_000);
+      fail(ipKey, 20, 15 * 60_000);
       return res.status(401).json({ error: 'اسم المستخدم أو كلمة السر غلط' });
     }
     failures.delete(username);
     const token = createSession(db, user.id);
-    audit(db, user.id, 'login');
-    res.setHeader('Set-Cookie',
-      `mm_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_DAYS * 86400}`);
+    audit(db, user.id, 'login', { ip: req.ip, remote: !isLocalAddress(req.ip) });
+    res.setHeader('Set-Cookie', sessionCookie(req, token, SESSION_DAYS * 86400));
     res.json({ user: publicUser(user) });
   });
 
   api.post('/auth/logout', (req, res) => {
     if (req.sessionToken) db.prepare('DELETE FROM sessions WHERE token = ?').run(req.sessionToken);
-    res.setHeader('Set-Cookie', 'mm_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    res.setHeader('Set-Cookie', sessionCookie(req, '', 0));
     res.json({ ok: true });
+  });
+
+  /** Sign this user out on every other device (e.g. a lost phone). */
+  api.post('/auth/logout-others', requireAuth, (req, res) => {
+    const r = db.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(req.user.id, req.sessionToken);
+    audit(db, req.user.id, 'logout.others', { sessions: r.changes });
+    res.json({ ok: true, sessions: r.changes });
   });
 
   api.get('/auth/me', requireAuth, (req, res) => {
     const perms = PERMISSIONS[req.user.role];
-    res.json({ user: req.user, permissions: perms, settings: getSettings(db) });
+    // Force replacing the factory password before the system is used (it may be reachable online)
+    const { password_hash: hash } = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    const mustChange = req.user.username === 'admin' && verifyPassword('admin123', hash);
+    res.json({ user: req.user, permissions: perms, settings: getSettings(db), must_change_password: mustChange });
   });
 
   api.post('/auth/password', requireAuth, (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
     if (!verifyPassword(String(req.body?.current || ''), user.password_hash)) throw bad('كلمة السر الحالية غلط');
     const next = validPassword(req.body?.password);
+    if (next === 'admin123') throw bad('اختار كلمة سر غير الافتراضية');
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), user.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(user.id, req.sessionToken);
     audit(db, user.id, 'password.change');
@@ -148,6 +172,37 @@ module.exports = function adminRoutes(api, db) {
     res.download(file, `mobilemix-backup-${today()}.db`, () => fs.rm(file, { force: true }, () => {}));
   });
 
+  // ---------- system: remote access info & automatic backups ----------
+  api.get('/system', requirePerm('settings.manage'), (req, res) => {
+    const addresses = [];
+    for (const [name, list] of Object.entries(os.networkInterfaces())) {
+      for (const i of list || []) {
+        if (i.family !== 'IPv4' || i.internal) continue;
+        const tailscale = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(i.address) || /tailscale/i.test(name);
+        addresses.push({ name, address: i.address, tailscale });
+      }
+    }
+    const dir = backupDir(db, dataDir);
+    res.json({
+      port: req.socket.localPort,
+      addresses,
+      via: { host: req.get('host'), secure: req.secure, remote: !isLocalAddress(req.ip) },
+      backups: { dir, list: listBackups(dir).slice(0, 10) },
+      sessions: db.prepare(`SELECT u.full_name, COUNT(*) AS n FROM sessions s JOIN users u ON u.id = s.user_id
+                            WHERE s.expires_at > datetime('now','localtime') GROUP BY u.id ORDER BY n DESC`).all(),
+    });
+  });
+
+  api.post('/system/backup-now', requirePerm('backup'), (req, res) => {
+    try {
+      const r = runBackup(db, dataDir, { force: true });
+      audit(db, req.user.id, 'backup.auto', { file: r.file });
+      res.json({ ok: true, file: r.file });
+    } catch (e) {
+      throw bad(`فشل النسخ: ${e.message}`);
+    }
+  });
+
   api.get('/audit', requirePerm('audit.view'), (_req, res) => {
     res.json(db.prepare(`
       SELECT a.id, a.action, a.details, a.created_at, u.full_name AS user_name
@@ -155,6 +210,10 @@ module.exports = function adminRoutes(api, db) {
       ORDER BY a.id DESC LIMIT 300`).all());
   });
 
+  function sessionCookie(req, token, maxAge) {
+    // Over HTTPS (remote access through a tunnel) the cookie is marked Secure
+    return `mm_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${req.secure ? '; Secure' : ''}`;
+  }
   function publicUser(u) {
     return { id: u.id, username: u.username, full_name: u.full_name, role: u.role };
   }

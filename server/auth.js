@@ -20,7 +20,8 @@ function verifyPassword(pw, stored) {
 /**
  * What each role may do. Admin can do everything.
  *  - manager: everything except users, settings and backups
- *  - cashier: sell, print, see products (without cost) and their own sales
+ *  - cashier: sell, print, see products (without cost), own sales; receive & hand over repairs
+ *  - technician: repairs work (diagnosis, status, parts, price) and looking up parts
  */
 const PERMISSIONS = {
   admin: ['*'],
@@ -28,8 +29,10 @@ const PERMISSIONS = {
     'sales.create', 'sales.view_all', 'sales.return',
     'products.view', 'products.edit', 'products.view_cost',
     'stock.edit', 'stocktake', 'labels.print', 'reports.view',
+    'repairs.view', 'repairs.create', 'repairs.work', 'repairs.cash',
   ],
-  cashier: ['sales.create', 'products.view', 'labels.print'],
+  cashier: ['sales.create', 'products.view', 'labels.print', 'repairs.view', 'repairs.create', 'repairs.cash'],
+  technician: ['products.view', 'repairs.view', 'repairs.create', 'repairs.work'],
 };
 
 function can(user, perm) {

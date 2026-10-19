@@ -5,7 +5,7 @@ const AUDIT_NAMES = {
   login: 'تسجيل دخول', 'password.change': 'تغيير كلمة السر', 'user.create': 'إضافة موظف', 'user.update': 'تعديل موظف',
   'settings.update': 'تعديل الإعدادات', 'backup.download': 'نسخة احتياطية', 'product.create': 'إضافة منتج',
   'product.price': 'تغيير سعر', 'product.deactivate': 'إيقاف منتج', 'sale.return': 'مرتجع',
-  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد',
+  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'backup.auto': 'نسخة احتياطية',
 };
 
 export async function render(el) {
@@ -30,6 +30,9 @@ export async function render(el) {
           <label class="field"><span>مقاس الليبل الافتراضي</span><select class="input" name="label_size">
             ${Object.entries(LABEL_SIZES).map(([k, v]) => `<option value="${k}" ${s.label_size === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
           <label class="field"><span>أقصى خصم للكاشير %</span><input class="input num" type="number" min="0" max="100" name="cashier_max_discount" value="${esc(s.cashier_max_discount)}"></label>
+          <label class="field"><span>بادئة تذكرة الصيانة</span><input class="input ltr" name="repair_prefix" value="${esc(s.repair_prefix)}"></label>
+          <div></div>
+          <label class="field full"><span>شروط الصيانة (بتتطبع على إيصال الاستلام)</span><textarea class="input" name="repair_terms" rows="3">${esc(s.repair_terms)}</textarea></label>
           <div class="full"><button class="btn btn-primary" id="save-shop">${icon('check')} حفظ الإعدادات</button></div>
         </form>
       </div>` : ''}
@@ -46,12 +49,27 @@ export async function render(el) {
         </div>
         ${can('backup') ? `
         <div class="card bg-periwinkle" style="box-shadow:none">
-          <div class="card-head"><h2>${icon('download', '')} نسخة احتياطية</h2></div>
-          <p style="margin-top:0">نزّل نسخة من قاعدة البيانات كلها (منتجات، فواتير، موظفين). <b>يُفضل كل يوم</b> على فلاشة أو Google Drive.</p>
-          <a class="btn btn-primary" href="/api/backup" download>${icon('download')} تحميل نسخة الآن</a>
+          <div class="card-head"><h2>${icon('download', '')} النسخ الاحتياطي</h2></div>
+          <p style="margin-top:0">السيستم بياخد <b>نسخة تلقائية كل يوم</b>. لو حطيت فولدر Google Drive أو OneDrive اللي على جهاز المحل، النسخ بتتحفظ أونلاين كمان.</p>
+          <div id="backups" class="small muted" style="margin-bottom:12px">…</div>
+          ${admin ? `<form class="form-grid" id="bk" onsubmit="return false" style="margin-bottom:12px">
+            <label class="field full"><span>فولدر النسخ (سيبه فاضي = data/backups)</span><input class="input ltr" name="backup_dir" value="${esc(s.backup_dir)}" placeholder="C:\\Users\\Shop\\Google Drive\\MobileMix"></label>
+            <label class="field"><span>عدد النسخ اللي تفضل</span><input class="input num" type="number" min="1" name="backup_keep" value="${esc(s.backup_keep)}"></label>
+            <div class="field" style="justify-content:flex-end"><button class="btn btn-outline" id="save-bk">حفظ</button></div>
+          </form>` : ''}
+          <div class="btn-row">
+            <button class="btn btn-outline" id="backup-now">${icon('check')} نسخة دلوقتي</button>
+            <a class="btn btn-primary" href="/api/backup" download>${icon('download')} تحميل نسخة على الجهاز ده</a>
+          </div>
         </div>` : ''}
+        <div class="card">
+          <div class="card-head"><h2>${icon('logout', '')} الأجهزة المتصلة</h2></div>
+          <p class="muted" style="margin-top:0">لو موبايلك ضاع أو دخلت من جهاز مش بتاعك، اقفل حسابك على كل الأجهزة التانية.</p>
+          <button class="btn btn-outline" id="logout-others">تسجيل خروج من كل الأجهزة التانية</button>
+        </div>
       </div>
     </div>
+    ${admin ? `<div class="card" style="margin-top:24px" id="remote"><div class="empty">…</div></div>` : ''}
     ${can('audit.view') ? `
     <div class="card" style="margin-top:24px">
       <div class="card-head"><h2>${icon('history', '')} سجل العمليات</h2><span class="muted small">آخر 300 عملية</span></div>
@@ -64,6 +82,38 @@ export async function render(el) {
     document.querySelector('.brand-name').firstChild.textContent = state.settings.shop_name;
     toast('تم حفظ الإعدادات', 'ok');
   }));
+
+  el.querySelector('#logout-others').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    const r = await api.post('/auth/logout-others');
+    toast(r.sessions ? `اتقفل ${r.sessions} جهاز` : 'مفيش أجهزة تانية مفتوحة', 'ok');
+  }));
+
+  el.querySelector('#save-bk')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    state.settings = await api.put('/settings', formData(el.querySelector('#bk')));
+    await api.post('/system/backup-now');
+    toast('تم الحفظ وأخدت نسخة في الفولدر الجديد', 'ok');
+    loadSystem();
+  }));
+  el.querySelector('#backup-now')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    await api.post('/system/backup-now');
+    toast('تم النسخ', 'ok');
+    loadSystem();
+  }));
+
+  async function loadSystem() {
+    if (!admin) {
+      if (el.querySelector('#backups')) el.querySelector('#backups').textContent = 'النسخ التلقائي شغال يومياً.';
+      return;
+    }
+    const sys = await api.get('/system').catch(() => null);
+    if (!sys) return;
+    const b = sys.backups.list;
+    el.querySelector('#backups').innerHTML = b.length
+      ? `آخر نسخة: <b style="color:var(--ink)">${fmtDate(b[0].at)}</b> — ${b.length} نسخة محفوظة في<br><span class="num" style="direction:ltr;display:inline-block">${esc(sys.backups.dir)}</span>`
+      : 'لسه مفيش نسخ تلقائية.';
+    el.querySelector('#remote').innerHTML = remoteCard(sys);
+  }
+  loadSystem();
 
   el.querySelector('#save-pw').addEventListener('click', (e) => busy(e.currentTarget, async () => {
     const f = formData(el.querySelector('#pw'));
@@ -88,4 +138,41 @@ function describe(r) {
     if (r.action === 'product.price') return `#${d.id}: ${d.from} → ${d.to}`;
     return Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' · ');
   } catch { return r.details; }
+}
+
+function remoteCard(sys) {
+  const lan = sys.addresses.filter((a) => !a.tailscale);
+  const ts = sys.addresses.find((a) => a.tailscale);
+  const url = (a) => `http://${a.address}:${sys.port}`;
+  const step = (n, done, title, body) => `
+    <div style="display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--cloud)">
+      <span class="avatar" style="${done ? 'background:var(--mint);color:#24521a' : ''}">${done ? '✓' : n}</span>
+      <div style="flex:1"><b style="font-weight:500">${title}</b><div class="small muted" style="margin-top:4px;line-height:1.8">${body}</div></div>
+    </div>`;
+  return `
+    <div class="card-head"><h2>${icon('phone', '')} الدخول على السيستم من برة المحل</h2>
+      ${sys.via.remote ? '<span class="pill pill-ok">إنت داخل دلوقتي من برة المحل ✓</span>' : ts ? '<span class="pill pill-ok">Tailscale شغال</span>' : '<span class="pill pill-gray">مش متفعل</span>'}</div>
+    <div class="grid grid-2" style="align-items:start">
+      <div>
+        <p style="margin-top:0">السيستم شغال على جهاز المحل، فبيشتغل عادي حتى لو النت قطع. ولما يكون فيه نت، تقدر تفتحه من البيت أو من موبايلك
+          عن طريق <b>Tailscale</b> (مجاني وآمن — السيستم مش بيبقى مكشوف على الإنترنت، بس أجهزتك إنت اللي توصله).</p>
+        ${step(1, !!ts, 'سطّب Tailscale على جهاز المحل', 'من <span class="num">tailscale.com/download</span> وسجّل دخول بحساب Google. وخلّيه يفتح مع الويندوز.')}
+        ${step(2, false, 'سطّبه على موبايلك أو اللابتوب بتاعك', 'نفس الأبلكيشن ونفس الحساب. (ممكن تضيف موبايلات الموظفين اللي عايزهم يدخلوا من برة.)')}
+        ${step(3, false, 'افتح السيستم بالعنوان ده', ts
+          ? `<a class="num" href="${url(ts)}" style="direction:ltr;display:inline-block;font-size:15px">${url(ts)}</a>`
+          : 'العنوان هيظهر هنا أول ما Tailscale يشتغل على جهاز المحل.')}
+        ${step(4, sys.via.secure, 'اختياري: رابط آمن https', 'على جهاز المحل افتح Command Prompt واكتب <span class="num" style="direction:ltr;display:inline-block">tailscale serve --bg ' + sys.port + '</span> — هيديك رابط https تقدر تضيف منه السيستم على شاشة الموبايل كأنه أبلكيشن.')}
+      </div>
+      <div>
+        <div class="kpi bg-aqua" style="min-height:0">
+          <div class="label">${icon('home')} جوه المحل (نفس الواي فاي)</div>
+          <div class="small" style="margin-top:8px;line-height:2">${lan.map((a) => `<a class="num" href="${url(a)}" style="direction:ltr;display:inline-block">${url(a)}</a>`).join('<br>') || '—'}</div>
+        </div>
+        <div class="kpi bg-lavender" style="min-height:0;margin-top:16px">
+          <div class="label">${icon('users')} مين فاتح السيستم دلوقتي</div>
+          <div class="small" style="margin-top:8px;line-height:1.9">${sys.sessions.map((x) => `${esc(x.full_name)} — ${x.n} جهاز`).join('<br>') || '—'}</div>
+        </div>
+        <p class="small muted">🔒 للأمان: كل موظف له كلمة سر، الحساب بيتقفل مؤقتاً بعد محاولات غلط كتير، وتقدر توقف أي موظف من صفحة الموظفين فيخرج من كل الأجهزة فوراً.</p>
+      </div>
+    </div>`;
 }

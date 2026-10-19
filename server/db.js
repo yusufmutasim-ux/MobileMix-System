@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   full_name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin','manager','cashier')),
+  role TEXT NOT NULL CHECK (role IN ('admin','manager','cashier','technician')),
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS returns (
 CREATE TABLE IF NOT EXISTS stock_movements (
   id INTEGER PRIMARY KEY,
   product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK (type IN ('purchase','sale','return','adjust','stocktake')),
+  type TEXT NOT NULL CHECK (type IN ('purchase','sale','return','adjust','stocktake','repair')),
   qty_change INTEGER NOT NULL,
   qty_after INTEGER NOT NULL,
   ref_id INTEGER,
@@ -139,6 +139,69 @@ CREATE TABLE IF NOT EXISTS stocktake_serials (
   PRIMARY KEY (stocktake_id, serial_id)
 );
 
+-- ---------- maintenance (صيانة) ----------
+CREATE TABLE IF NOT EXISTS repairs (
+  id INTEGER PRIMARY KEY,
+  ticket_no TEXT UNIQUE,
+  customer_name TEXT NOT NULL,
+  customer_phone TEXT NOT NULL,
+  device TEXT NOT NULL,
+  imei TEXT,
+  passcode TEXT,
+  problem TEXT NOT NULL,
+  condition_notes TEXT,
+  accessories TEXT,
+  diagnosis TEXT,
+  estimated_cost REAL,
+  price REAL,                       -- final agreed price for the customer
+  extra_cost REAL NOT NULL DEFAULT 0, -- costs outside our stock (outside parts, another workshop)
+  technician_id INTEGER REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'received' CHECK (status IN
+    ('received','diagnosing','waiting_approval','waiting_parts','repairing','ready','not_repaired','delivered')),
+  outcome TEXT CHECK (outcome IN ('repaired','not_repaired')),
+  expected_at TEXT,
+  warranty_days INTEGER NOT NULL DEFAULT 0,
+  delivered_at TEXT,
+  notes TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_repairs_status ON repairs(status);
+CREATE INDEX IF NOT EXISTS idx_repairs_phone ON repairs(customer_phone);
+
+CREATE TABLE IF NOT EXISTS repair_parts (
+  id INTEGER PRIMARY KEY,
+  repair_id INTEGER NOT NULL REFERENCES repairs(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  name TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  unit_cost REAL NOT NULL DEFAULT 0,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS repair_payments (
+  id INTEGER PRIMARY KEY,
+  repair_id INTEGER NOT NULL REFERENCES repairs(id) ON DELETE CASCADE,
+  amount REAL NOT NULL,             -- negative = refund
+  method TEXT NOT NULL DEFAULT 'cash',
+  kind TEXT NOT NULL CHECK (kind IN ('deposit','payment','refund')),
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_repair_payments_date ON repair_payments(created_at);
+
+CREATE TABLE IF NOT EXISTS repair_events (
+  id INTEGER PRIMARY KEY,
+  repair_id INTEGER NOT NULL REFERENCES repairs(id) ON DELETE CASCADE,
+  status TEXT,
+  note TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_repair_events ON repair_events(repair_id);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
   user_id INTEGER,
@@ -158,12 +221,17 @@ const DEFAULT_SETTINGS = {
   invoice_size: '80mm',
   label_size: '38x25',
   cashier_max_discount: '5',
+  repair_prefix: 'R-',
+  repair_terms: 'المحل غير مسؤول عن الجهاز بعد 30 يوم من إبلاغ العميل بجاهزيته. المحل غير مسؤول عن البيانات أو الشريحة أو كارت الميموري. الضمان على العطل اللي اتصلح بس.',
+  backup_dir: '',
+  backup_keep: '30',
 };
 
 function open(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+  upgrade(db);
   db.exec(SCHEMA);
 
   const setDefault = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
@@ -178,6 +246,41 @@ function open(file) {
       addCat.run(c);
   }
   return db;
+}
+
+/**
+ * Upgrades databases created by older versions. SQLite can't change a CHECK constraint in place,
+ * so tables whose allowed values grew are rebuilt (same columns, data copied as-is).
+ */
+function upgrade(db) {
+  const tableSql = (name) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)?.sql;
+  const rebuild = [];
+  const users = tableSql('users');
+  if (users && !users.includes("'technician'")) rebuild.push(['users', "'cashier')", "'cashier','technician')"]);
+  const moves = tableSql('stock_movements');
+  if (moves && !moves.includes("'repair'")) rebuild.push(['stock_movements', "'stocktake')", "'stocktake','repair')"]);
+  if (!rebuild.length) return;
+
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const [name, from, to] of rebuild) {
+      const sql = tableSql(name);
+      const indexes = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL").all(name);
+      const newSql = sql.replace(from, to).replace(/^CREATE TABLE (IF NOT EXISTS )?"?\w+"?/, `CREATE TABLE ${name}__new`);
+      db.exec(newSql);
+      db.exec(`INSERT INTO ${name}__new SELECT * FROM ${name}`);
+      db.exec(`DROP TABLE ${name}`);
+      db.exec(`ALTER TABLE ${name}__new RENAME TO ${name}`);
+      for (const i of indexes) db.exec(i.sql);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
 }
 
 /** Run fn inside a transaction; rolls back on throw. */

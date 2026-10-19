@@ -123,6 +123,52 @@ module.exports = function reportRoutes(api, db) {
       ORDER BY m.id DESC LIMIT 1000`).all(...(type ? [from, to, type] : [from, to])));
   });
 
+  /** Maintenance: revenue/profit counted on delivery day; cash counted on payment day. */
+  api.get('/reports/repairs', requirePerm('reports.view'), (req, res) => {
+    const { from, to } = dateRange(req.query);
+    const delivered = `r.status = 'delivered' AND date(r.delivered_at) BETWEEN ? AND ?`;
+    const PARTS = '(SELECT COALESCE(SUM(qty * unit_cost), 0) FROM repair_parts WHERE repair_id = r.id)';
+    const t = db.prepare(`
+      SELECT COUNT(*) AS delivered,
+             SUM(CASE WHEN r.outcome = 'repaired' THEN 1 ELSE 0 END) AS repaired,
+             COALESCE(SUM(r.price), 0) AS revenue,
+             COALESCE(SUM(${PARTS}), 0) AS parts_cost,
+             COALESCE(SUM(r.extra_cost), 0) AS extra_cost
+      FROM repairs r WHERE ${delivered}`).get(from, to);
+    const received = db.prepare('SELECT COUNT(*) AS n FROM repairs WHERE date(created_at) BETWEEN ? AND ?').get(from, to).n;
+    const cash = db.prepare(`SELECT method, SUM(amount) AS total, COUNT(*) AS count FROM repair_payments
+                             WHERE date(created_at) BETWEEN ? AND ? GROUP BY method ORDER BY total DESC`).all(from, to);
+    const byTech = db.prepare(`
+      SELECT COALESCE(u.full_name, 'بدون فني') AS full_name, COUNT(*) AS delivered,
+             SUM(CASE WHEN r.outcome = 'repaired' THEN 1 ELSE 0 END) AS repaired,
+             COALESCE(SUM(r.price), 0) AS revenue,
+             COALESCE(SUM(COALESCE(r.price, 0) - ${PARTS} - r.extra_cost), 0) AS profit
+      FROM repairs r LEFT JOIN users u ON u.id = r.technician_id WHERE ${delivered}
+      GROUP BY r.technician_id ORDER BY revenue DESC`).all(from, to);
+    const open = db.prepare("SELECT status, COUNT(*) AS n FROM repairs WHERE status <> 'delivered' GROUP BY status").all();
+    const dues = db.prepare(`
+      SELECT r.id, r.ticket_no, r.customer_name, r.customer_phone, r.device, r.delivered_at,
+             COALESCE(r.price, 0) - COALESCE((SELECT SUM(amount) FROM repair_payments WHERE repair_id = r.id), 0) AS due
+      FROM repairs r WHERE r.status = 'delivered' AND due > 0.004 ORDER BY r.delivered_at DESC LIMIT 100`).all();
+    const deposits = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM repair_payments p JOIN repairs r ON r.id = p.repair_id
+                                 WHERE r.status <> 'delivered'`).get().s;
+    res.json({
+      from, to,
+      totals: {
+        received, delivered: t.delivered, repaired: t.repaired || 0,
+        revenue: round2(t.revenue), parts_cost: round2(t.parts_cost), extra_cost: round2(t.extra_cost),
+        profit: round2(t.revenue - t.parts_cost - t.extra_cost),
+        cash_in: round2(cash.reduce((s, c) => s + c.total, 0)),
+        deposits_held: round2(deposits),
+        dues: round2(dues.reduce((s, d) => s + d.due, 0)),
+      },
+      cash: cash.map((c) => ({ ...c, total: round2(c.total) })),
+      by_technician: byTech.map((x) => ({ ...x, revenue: round2(x.revenue), profit: round2(x.profit) })),
+      open,
+      dues: dues.map((d) => ({ ...d, due: round2(d.due) })),
+    });
+  });
+
   /** Home screen numbers. Cashiers see only their own sales and no profit. */
   api.get('/dashboard', requireAuth, (req, res) => {
     const all = can(req.user, 'sales.view_all');
@@ -145,6 +191,21 @@ module.exports = function reportRoutes(api, db) {
     if (can(req.user, 'products.view')) {
       out.low_stock = db.prepare('SELECT COUNT(*) AS n FROM products WHERE active = 1 AND qty <= min_qty').get().n;
       out.products = db.prepare('SELECT COUNT(*) AS n FROM products WHERE active = 1').get().n;
+    }
+    if (can(req.user, 'repairs.view')) {
+      const r = db.prepare(`SELECT
+          SUM(CASE WHEN status <> 'delivered' THEN 1 ELSE 0 END) AS open,
+          SUM(CASE WHEN status IN ('ready','not_repaired') THEN 1 ELSE 0 END) AS ready,
+          SUM(CASE WHEN date(created_at) = ? THEN 1 ELSE 0 END) AS received_today
+        FROM repairs`).get(today());
+      out.repairs = { open: r.open || 0, ready: r.ready || 0, received_today: r.received_today || 0 };
+      if (can(req.user, 'repairs.cash')) {
+        out.repairs.cash_today = round2(db.prepare('SELECT COALESCE(SUM(amount), 0) AS s FROM repair_payments WHERE date(created_at) = ?').get(today()).s);
+      }
+    }
+    if (!can(req.user, 'sales.create')) {
+      out.recent = [];
+      return res.json(out);
     }
     out.recent = db.prepare(`
       SELECT s.id, s.invoice_no, s.total, s.status, s.payment_method, s.created_at, s.customer_name, u.full_name AS user_name

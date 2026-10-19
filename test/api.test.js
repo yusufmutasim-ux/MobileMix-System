@@ -49,6 +49,14 @@ test('login and permissions', async () => {
   assert.equal(r.data.user.role, 'admin');
   const me = await admin.get('/auth/me');
   assert.equal(me.data.settings.shop_name, 'Mobile Mix');
+  assert.equal(me.data.must_change_password, true); // factory password must be replaced
+
+  // Through an HTTPS tunnel the session cookie is marked Secure
+  const viaTunnel = await fetch(base + '/auth/login', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-proto': 'https' },
+    body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+  });
+  assert.match(viaTunnel.headers.get('set-cookie'), /; Secure/);
 
   assert.equal((await admin.post('/users', { username: 'sara', full_name: 'سارة', role: 'cashier', password: '123' })).status, 400);
   const u = await admin.post('/users', { username: 'sara', full_name: 'سارة', role: 'cashier', password: '123456' });
@@ -200,4 +208,32 @@ test('user admin safety', async () => {
   assert.equal((await admin.put(`/users/${me.id}`, { active: false })).status, 400);
   assert.equal((await admin.put(`/users/${state.cashierId}`, { active: false })).status, 200);
   assert.equal((await cashier.get('/auth/me')).status, 401);
+});
+
+test('remote safety: lockout by address and logout of other devices', async () => {
+  // 20 wrong passwords from one address lock it out, even across different usernames
+  for (let i = 0; i < 20; i++) {
+    await fetch(base + '/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7' },
+      body: JSON.stringify({ username: `nobody${i}`, password: 'x' }),
+    });
+  }
+  const locked = await fetch(base + '/auth/login', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7' },
+    body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+  });
+  assert.equal(locked.status, 429);
+
+  const other = client();
+  await other.login('admin', 'admin123');
+  assert.equal((await other.get('/auth/me')).status, 200);
+  const r = await admin.post('/auth/logout-others');
+  assert.ok(r.data.sessions >= 1);
+  assert.equal((await other.get('/auth/me')).status, 401);
+  assert.equal((await admin.get('/auth/me')).status, 200);
+
+  // Can't keep the factory password
+  assert.equal((await admin.post('/auth/password', { current: 'admin123', password: 'admin123' })).status, 400);
+  assert.equal((await admin.post('/auth/password', { current: 'admin123', password: 'Shop@2026' })).status, 200);
+  assert.equal((await admin.get('/auth/me')).data.must_change_password, false);
 });

@@ -3,9 +3,10 @@ import { api, state, icon, esc, fmtDate, modal, toast, busy, formData, ROLE_NAME
 const ROLE_INFO = {
   admin: 'كل الصلاحيات: الموظفين، الإعدادات، النسخ الاحتياطي',
   manager: 'المنتجات والأسعار، الجرد، المرتجعات، التقارير وكل الفواتير',
-  cashier: 'البيع وطباعة الفواتير والليبلات — بيشوف فواتيره بس ومن غير سعر الشراء',
+  cashier: 'البيع والفواتير والليبلات، واستلام وتسليم أجهزة الصيانة وتحصيل فلوسها — من غير سعر الشراء',
+  technician: 'الصيانة بس: التشخيص، الحالة، السعر، وصرف قطع الغيار من المخزن',
 };
-const ROLE_BG = { admin: 'bg-lavender', manager: 'bg-sky', cashier: 'bg-mint' };
+const ROLE_BG = { admin: 'bg-lavender', manager: 'bg-sky', cashier: 'bg-mint', technician: 'bg-peony' };
 
 export async function render(el, { actions }) {
   actions.innerHTML = `<button class="btn btn-primary" id="add">${icon('plus')} موظف جديد</button>`;
@@ -13,7 +14,7 @@ export async function render(el, { actions }) {
   async function load() {
     const users = await api.get('/users');
     el.innerHTML = `
-      <div class="grid grid-3" style="margin-bottom:24px">
+      <div class="grid grid-4" style="margin-bottom:24px">
         ${Object.entries(ROLE_INFO).map(([k, v]) => `<div class="kpi ${ROLE_BG[k]}" style="min-height:0"><div class="label">${ROLE_NAMES[k]}</div><div class="sub" style="margin-top:6px">${v}</div></div>`).join('')}
       </div>
       <div class="card"><div class="table-wrap"><table class="table">

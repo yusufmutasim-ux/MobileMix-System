@@ -1,18 +1,23 @@
 // Shared helpers for all screens.
 
-export const state = { user: null, permissions: [], settings: {} };
+export const state = { user: null, permissions: [], settings: {}, mustChangePassword: false };
 
 export function can(perm) {
   return state.permissions.includes('*') || state.permissions.includes(perm);
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch('/api' + path, {
-    method,
-    headers: body !== undefined ? { 'content-type': 'application/json' } : {},
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    credentials: 'same-origin',
-  });
+  let res;
+  try {
+    res = await fetch('/api' + path, {
+      method,
+      headers: body !== undefined ? { 'content-type': 'application/json' } : {},
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw new Error('مفيش اتصال بجهاز المحل — اتأكد من النت أو الواي فاي وجرب تاني');
+  }
   let data = null;
   try { data = await res.json(); } catch { /* empty */ }
   if (res.status === 401 && path !== '/auth/login' && path !== '/auth/me') {
@@ -52,7 +57,7 @@ export function fmtDate(s, withTime = true) {
   return `${date} — ${d.toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-export const ROLE_NAMES = { admin: 'مدير', manager: 'مشرف', cashier: 'كاشير' };
+export const ROLE_NAMES = { admin: 'مدير', manager: 'مشرف', cashier: 'كاشير', technician: 'فني صيانة' };
 export const PAY_NAMES = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
 export const STATUS_PILLS = {
   completed: '<span class="pill pill-ok">مكتملة</span>',
@@ -90,6 +95,10 @@ const P = {
   trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
   history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+  wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+  whatsapp: '<path d="M3.5 20.5 5 16a8.5 8.5 0 1 1 3.2 3.1z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8a5 5 0 0 1-2.6-2.6l.8-1-1-2z"/>',
+  callphone: '<path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
 };
 export const icon = (name, cls = '') =>
@@ -118,17 +127,25 @@ export const toastErr = (e) => toast(e?.message || String(e), 'err');
 /**
  * Opens a modal. `onMount(el, close)` wires events. Returns a promise resolved with the value passed to close().
  */
-export function modal({ title, body, foot = '', wide = false, onMount }) {
+export function modal({ title, body, foot = '', wide = false, onMount, locked = false }) {
   return new Promise((resolve) => {
     const back = document.createElement('div');
     back.className = 'modal-back';
     back.innerHTML = `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
-      <div class="modal-head"><h3>${title}</h3><button class="btn btn-ghost btn-icon" data-close>${icon('x')}</button></div>
+      <div class="modal-head"><h3>${title}</h3>${locked ? '' : `<button class="btn btn-ghost btn-icon" data-close>${icon('x')}</button>`}</div>
       <div class="modal-body">${body}</div>
       ${foot ? `<div class="modal-foot">${foot}</div>` : ''}</div>`;
-    const close = (v) => { back.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
-    const onKey = (e) => { if (e.key === 'Escape') close(null); };
-    back.addEventListener('mousedown', (e) => { if (e.target === back) close(null); });
+    const close = (v) => {
+      back.remove();
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('hashchange', onNav);
+      resolve(v);
+    };
+    // Moving to another page closes any open window
+    const onNav = () => { if (!locked) close(null); };
+    window.addEventListener('hashchange', onNav);
+    const onKey = (e) => { if (e.key === 'Escape' && !locked) close(null); };
+    back.addEventListener('mousedown', (e) => { if (e.target === back && !locked) close(null); });
     back.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => close(null)));
     document.addEventListener('keydown', onKey);
     document.body.append(back);
@@ -179,4 +196,13 @@ export function downloadCsv(filename, headers, rows) {
 export function debounce(fn, ms = 250) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+/** WhatsApp link for an Egyptian (or international) number with a ready message. */
+export function waLink(phone, text) {
+  let p = String(phone || '').replace(/[^0-9+]/g, '');
+  if (p.startsWith('+')) p = p.slice(1);
+  else if (p.startsWith('00')) p = p.slice(2);
+  else if (/^01\d{9}$/.test(p)) p = '2' + p;
+  return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 }
