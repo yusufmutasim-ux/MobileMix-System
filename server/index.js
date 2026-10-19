@@ -1,7 +1,8 @@
 'use strict';
 const os = require('node:os');
 const path = require('node:path');
-const dbFile = process.env.MM_DB || path.join(__dirname, '..', 'data', 'mobilemix.db');
+const hosting = require('./hosting');
+const dbFile = hosting.dbFile();
 const dataDir = path.dirname(dbFile);
 const db = require('./db').open(dbFile);
 const { createApp } = require('./app');
@@ -16,6 +17,12 @@ createApp(db, { dataDir }).listen(PORT, '0.0.0.0', () => {
       if (i.family !== 'IPv4' || i.internal) continue;
       const remote = i.address.startsWith('100.') ? '  (Tailscale — من برة المحل)' : '';
       console.log(`  من أجهزة الشبكة: http://${i.address}:${PORT}${remote}`);
+    }
+  }
+  if (hosting.cloud) {
+    console.log(`  ☁️  شغال على السحابة — قاعدة البيانات: ${dbFile}`);
+    if (!hosting.persistent) {
+      console.log('  ⚠️  مفيش Volume! البيانات هتتمسح مع كل تحديث. ضيف Volume للخدمة من Railway.');
     }
   }
   console.log('');

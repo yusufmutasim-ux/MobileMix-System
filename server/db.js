@@ -239,8 +239,14 @@ function open(file) {
 
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
+    // On a public server a known default password is unsafe: use ADMIN_PASSWORD or a random one shown in the logs
+    let pw = process.env.ADMIN_PASSWORD || '';
+    if (!pw && require('./hosting').cloud) {
+      pw = require('node:crypto').randomBytes(6).toString('base64url');
+      console.log(`\n  🔑 أول دخول: اسم المستخدم admin — كلمة السر: ${pw}\n     (غيّرها بعد ما تدخل)\n`);
+    }
     db.prepare('INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)')
-      .run('admin', 'المدير', hashPassword('admin123'), 'admin');
+      .run('admin', 'المدير', hashPassword(pw || 'admin123'), 'admin');
     const addCat = db.prepare('INSERT OR IGNORE INTO categories (name) VALUES (?)');
     for (const c of ['موبايلات', 'إكسسوارات', 'شواحن وكابلات', 'سماعات', 'جرابات وإسكرينات', 'قطع غيار'])
       addCat.run(c);

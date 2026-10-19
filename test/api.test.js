@@ -41,6 +41,12 @@ const admin = client();
 const cashier = client();
 const state = {};
 
+test('health check', async () => {
+  const r = await fetch(base + '/health');
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true });
+});
+
 test('login and permissions', async () => {
   assert.equal((await admin.get('/auth/me')).status, 401);
   assert.equal((await admin.login('admin', 'wrong')).status, 401);

@@ -3,12 +3,13 @@ const path = require('node:path');
 const express = require('express');
 const { sessionMiddleware } = require('./auth');
 const { HttpError } = require('./util');
+const hosting = require('./hosting');
 
 function createApp(db, { dataDir = path.join(__dirname, '..', 'data') } = {}) {
   const app = express();
   app.disable('x-powered-by');
-  // Remote access goes through a tunnel on this PC (Tailscale / Cloudflare), which connects from localhost
-  app.set('trust proxy', 'loopback');
+  // On a shop PC, remote access comes through a tunnel on localhost; on Railway through its proxy
+  app.set('trust proxy', hosting.trustProxy());
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -18,7 +19,18 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data') } = {}) {
   app.use(express.json({ limit: '2mb' }));
   app.use(sessionMiddleware(db));
 
+  if (hosting.cloud) {
+    app.use((req, res, next) => {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+      next();
+    });
+  }
+
   const api = express.Router();
+  api.get('/health', (_req, res) => {
+    db.prepare('SELECT 1').get();
+    res.json({ ok: true });
+  });
   require('./routes/admin')(api, db, { dataDir });
   require('./routes/products')(api, db);
   require('./routes/sales')(api, db);

@@ -16,7 +16,7 @@ export async function api(path, { method = 'GET', body } = {}) {
       credentials: 'same-origin',
     });
   } catch {
-    throw new Error('مفيش اتصال بجهاز المحل — اتأكد من النت أو الواي فاي وجرب تاني');
+    throw new Error('مفيش اتصال بالسيستم — اتأكد من النت أو الواي فاي وجرب تاني');
   }
   let data = null;
   try { data = await res.json(); } catch { /* empty */ }

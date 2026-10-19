@@ -140,7 +140,37 @@ function describe(r) {
   } catch { return r.details; }
 }
 
+function cloudCard(sys) {
+  return `
+    <div class="card-head"><h2>${icon('phone', '')} السيستم شغال أونلاين على Railway</h2>
+      ${sys.hosting.persistent ? '<span class="pill pill-ok">البيانات محفوظة على Volume ✓</span>' : '<span class="pill pill-bad">مفيش Volume — البيانات هتتمسح!</span>'}</div>
+    <div class="grid grid-2" style="align-items:start">
+      <div>
+        <p style="margin-top:0">تقدر تفتح السيستم من أي مكان بالرابط ده:</p>
+        <p><a class="num" href="${location.origin}" style="direction:ltr;display:inline-block;font-size:17px">${location.origin}</a></p>
+        <p class="small muted">من الموبايل افتح الرابط واختار "إضافة للشاشة الرئيسية" فيبقى زي الأبلكيشن.</p>
+        ${sys.hosting.persistent ? '' : `<div class="card" style="background:var(--danger-wash);box-shadow:none;padding:16px">
+          <b>اعمل كده دلوقتي عشان البيانات متتمسحش:</b>
+          <ol style="margin:8px 0 0;padding-inline-start:20px;line-height:2">
+            <li>افتح المشروع في Railway، واضغط كليك يمين على المساحة الفاضية (أو <bdi dir="ltr"><b>Ctrl+K</b></bdi>) واختار <bdi dir="ltr"><b>Volume</b></bdi></li>
+            <li>اختار خدمة Mobile Mix</li>
+            <li>خلي الـ Mount Path: <bdi dir="ltr" class="num"><b>/data</b></bdi></li>
+          </ol>
+          <div class="small" style="margin-top:6px">الخدمة هتعيد التشغيل، وبعدها كل البيانات هتتحفظ بشكل دائم.</div></div>`}
+        <p class="small muted">⚠️ لأن السيستم على الإنترنت، المحل محتاج نت عشان يبيع. خلي عندك باقة موبايل احتياطي (هوت سبوت) لو النت قطع.</p>
+      </div>
+      <div>
+        <div class="kpi bg-lavender" style="min-height:0">
+          <div class="label">${icon('users')} مين فاتح السيستم دلوقتي</div>
+          <div class="small" style="margin-top:8px;line-height:1.9">${sys.sessions.map((x) => `${esc(x.full_name)} — ${x.n} جهاز`).join('<br>') || '—'}</div>
+        </div>
+        <p class="small muted">💾 النسخ التلقائي بيتحفظ على نفس السيرفر — <b>نزّل نسخة على جهازك كل أسبوع</b> من "تحميل نسخة" فوق، عشان يبقى معاك نسخة برة Railway.</p>
+      </div>
+    </div>`;
+}
+
 function remoteCard(sys) {
+  if (sys.hosting?.cloud) return cloudCard(sys);
   const lan = sys.addresses.filter((a) => !a.tailscale);
   const ts = sys.addresses.find((a) => a.tailscale);
   const url = (a) => `http://${a.address}:${sys.port}`;

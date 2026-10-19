@@ -20,7 +20,7 @@ let cleanup = null;
 async function boot() {
   try {
     const me = await api.get('/auth/me');
-    Object.assign(state, { user: me.user, permissions: me.permissions, settings: me.settings, mustChangePassword: me.must_change_password });
+    Object.assign(state, { user: me.user, permissions: me.permissions, settings: me.settings, mustChangePassword: me.must_change_password, hosting: me.hosting || {} });
   } catch {
     state.user = null;
   }
@@ -123,6 +123,10 @@ function shell() {
         <h1 id="page-title"></h1>
         <div class="btn-row" id="page-actions"></div>
       </header>
+      ${state.hosting?.cloud && !state.hosting.persistent && can('settings.manage') ? `
+        <div class="content" style="padding-bottom:0"><div class="card" style="background:var(--danger-wash);box-shadow:none;padding:16px 20px">
+          <b>⚠️ البيانات مش محفوظة بشكل دائم!</b> السيستم شغال على Railway من غير Volume، فأي تحديث أو إعادة تشغيل هيمسح كل البيانات.
+          ضيف Volume للخدمة من Railway (الخطوات في الإعدادات).</div></div>` : ''}
       <section class="content" id="view"></section>
     </main>
   </div>`;

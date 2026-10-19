@@ -8,6 +8,7 @@ const {
 const { bad, notFound, str, audit, getSettings, today } = require('../util');
 const { DEFAULT_SETTINGS } = require('../db');
 const { runBackup, listBackups, backupDir } = require('../backup');
+const hosting = require('../hosting');
 
 /** Same machine or the shop's own network (not coming in through the internet). */
 function isLocalAddress(ip = '') {
@@ -66,7 +67,10 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     // Force replacing the factory password before the system is used (it may be reachable online)
     const { password_hash: hash } = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
     const mustChange = req.user.username === 'admin' && verifyPassword('admin123', hash);
-    res.json({ user: req.user, permissions: perms, settings: getSettings(db), must_change_password: mustChange });
+    res.json({
+      user: req.user, permissions: perms, settings: getSettings(db), must_change_password: mustChange,
+      hosting: { cloud: hosting.cloud, persistent: hosting.persistent },
+    });
   });
 
   api.post('/auth/password', requireAuth, (req, res) => {
@@ -184,6 +188,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     }
     const dir = backupDir(db, dataDir);
     res.json({
+      hosting: { cloud: hosting.cloud, persistent: hosting.persistent, volume: hosting.volume },
       port: req.socket.localPort,
       addresses,
       via: { host: req.get('host'), secure: req.secure, remote: !isLocalAddress(req.ip) },
