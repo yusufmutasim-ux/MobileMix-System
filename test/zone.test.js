@@ -134,3 +134,19 @@ test('existing attendance tables get the new location columns', () => {
   assert.equal(db.prepare('SELECT COUNT(*) n FROM shifts').get().n, 1);
   db.close();
 });
+
+test('location test tells anyone why check in would pass or fail', async () => {
+  const t = client();
+  await t.login('karim', '123456');
+  let r = await t.post('/shifts/zone/test', { lat: 30.0624, lng: 31.2357, accuracy: 10 });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.ok, false);
+  assert.ok(r.data.distance > 1900);
+  assert.match(r.data.error, /بعيد/);
+  r = await t.post('/shifts/zone/test', { lat: 30.04462, lng: 31.2357, accuracy: 10 });
+  assert.equal(r.data.ok, true);
+  assert.equal(r.data.method, 'gps');
+  r = await t.post('/shifts/zone/test', {});
+  assert.equal(r.data.ok, false);
+  assert.match(r.data.error, /GPS/);
+});

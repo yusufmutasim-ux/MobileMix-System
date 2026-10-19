@@ -19,7 +19,7 @@ const cleanIp = (ip = '') => String(ip).replace(/^::ffff:/, '').trim();
  *  - the request comes from the shop's own internet connection (Wi-Fi), or
  *  - the phone's GPS position is within the radius around the shop.
  */
-function checkZone(db, req) {
+function checkZone(db, req, { force = false } = {}) {
   const st = getSettings(db);
   const body = req.body || {};
   const coords = Number.isFinite(Number(body.lat)) && Number.isFinite(Number(body.lng)) && body.lat !== null && body.lat !== ''
@@ -31,7 +31,7 @@ function checkZone(db, req) {
   if (coords && st.shop_lat !== '' && st.shop_lng !== '' && Number.isFinite(shopLat) && Number.isFinite(shopLng)) {
     out.distance = Math.round(haversine(coords.lat, coords.lng, shopLat, shopLng));
   }
-  if (st.attendance_zone !== '1' || req.user.role === 'admin') return out;
+  if (!force && (st.attendance_zone !== '1' || req.user.role === 'admin')) return out;
 
   const networks = String(st.shop_networks || '').split(/[\s,]+/).map(cleanIp).filter(Boolean);
   if (networks.includes(cleanIp(req.ip))) return { ...out, method: 'wifi' };
@@ -95,6 +95,28 @@ module.exports = function shiftRoutes(api, db) {
       title: `${req.user.full_name} أنهى الشيفت`, body: `انصراف الساعة ${timeOf(out)} — مدة الشيفت ${fmtDuration(mins)}${placeText(z)}`,
     });
     res.json({ open: null, minutes: mins });
+  });
+
+  /** Try the zone check without checking in — shows anyone exactly why it would pass or fail. */
+  api.post('/shifts/zone/test', requireAuth, (req, res) => {
+    const st = getSettings(db);
+    const result = {
+      zone_on: st.attendance_zone === '1',
+      exempt: req.user.role === 'admin',
+      shop_set: st.shop_lat !== '' && st.shop_lng !== '',
+      radius: Math.max(20, Number(st.zone_radius) || 100),
+      ip: cleanIp(req.ip),
+    };
+    try {
+      const z = checkZone(db, req, { force: true });
+      Object.assign(result, { ok: true, method: z.method, distance: z.distance });
+    } catch (e) {
+      Object.assign(result, { ok: false, error: e.message });
+    }
+    if (result.distance == null && req.body?.lat != null && result.shop_set) {
+      result.distance = Math.round(haversine(Number(req.body.lat), Number(req.body.lng), Number(st.shop_lat), Number(st.shop_lng)));
+    }
+    res.json(result);
   });
 
   // ---------- shop zone setup (owner) ----------

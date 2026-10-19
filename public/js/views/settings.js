@@ -1,6 +1,6 @@
 import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow } from '../core.js';
 import { LABEL_SIZES } from '../print.js';
-import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition } from '../live.js';
+import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition, locationPermission, locationHelp } from '../live.js';
 
 const AUDIT_NAMES = {
   login: 'تسجيل دخول', 'password.change': 'تغيير كلمة السر', 'user.create': 'إضافة موظف', 'user.update': 'تعديل موظف',
@@ -42,6 +42,12 @@ export async function render(el) {
       </div>` : ''}
 
       <div class="stack">
+        <div class="card" id="loc-test">
+          <div class="card-head"><h2>📍 اختبار الموقع</h2></div>
+          <p class="muted" style="margin-top:0">اعرف الموبايل ده هيقدر يسجل حضور من المحل ولا لأ، وليه.</p>
+          <button class="btn btn-outline" id="loc-test-btn">📍 اختبر موقعي</button>
+          <div id="loc-test-out" style="margin-top:12px"></div>
+        </div>
         ${admin ? '<div class="card" id="zone-card"><div class="empty">…</div></div>' : ''}
         ${can('notifications.receive') ? '<div class="card" id="notif-card"><div class="empty">…</div></div>' : ''}
         <div class="card">
@@ -191,6 +197,33 @@ export async function render(el) {
     }));
   }
   loadZone().catch(toastErrLocal);
+
+  // ---------- location test (any employee) ----------
+  el.querySelector('#loc-test-btn').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    const out = el.querySelector('#loc-test-out');
+    const PERM = { granted: '✅ مسموح', prompt: '❔ لسه هيسألك', denied: '⛔ ممنوع', unknown: '❔ مش معروف' };
+    const before = await locationPermission();
+    out.innerHTML = '<div class="muted">📍 بنحدد موقعك… لو Chrome سألك دوس <b>سماح / Allow</b></div>';
+    let pos = null, posErr = null;
+    try { pos = await getPosition(); } catch (err) { posErr = err; }
+    const after = await locationPermission();
+    const t = await api.post('/shifts/zone/test', pos || {});
+    const row = (k, v) => `<tr><td class="muted" style="width:45%">${k}</td><td>${v}</td></tr>`;
+    out.innerHTML = `
+      <table class="table" style="margin:0"><tbody>
+        ${row('إذن الموقع في المتصفح', `${PERM[after] || after}${before !== after ? ` <span class="small muted">(كان: ${PERM[before] || before})</span>` : ''}`)}
+        ${row('شرط الحضور من المحل', t.zone_on ? 'مفعّل' : '<b>مقفول</b> — الحضور مسموح من أي مكان')}
+        ${t.exempt ? row('حسابك', 'مدير — مستثنى من الشرط') : ''}
+        ${row('موقع المحل', t.shop_set ? 'متحدد ✓' : '<b style="color:var(--danger)">مش متحدد</b>')}
+        ${pos ? row('موقعك', `دقة <b class="num">${pos.accuracy}</b> متر`) : row('موقعك', `<span style="color:var(--danger)">${esc(posErr?.message || 'مش متاح')}</span>`)}
+        ${t.distance != null ? row('المسافة من المحل', `<b class="num">${t.distance}</b> متر (المسموح <span class="num">${t.radius}</span>)`) : ''}
+        ${t.method === 'wifi' ? row('الشبكة', '📶 متصل بإنترنت المحل') : ''}
+      </tbody></table>
+      <div class="card ${t.ok ? 'bg-mint' : 'bg-peony'}" style="box-shadow:none;padding:12px 14px;margin-top:10px">
+        ${t.ok ? '✅ <b>تمام — تقدر تسجل حضور وانصراف من المكان ده.</b>' : `❌ <b>${esc(t.error)}</b>`}
+      </div>
+      ${posErr && !t.ok ? `<div class="card bg-periwinkle" style="box-shadow:none;padding:12px 14px;margin-top:10px">${locationHelp(posErr)}</div>` : ''}`;
+  }));
   loadNotif().catch(toastErrLocal);
 
   el.querySelector('#logout-others').addEventListener('click', (e) => busy(e.currentTarget, async () => {
