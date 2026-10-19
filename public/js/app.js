@@ -122,6 +122,7 @@ function shell() {
         <div class="who"><b>${esc(u.full_name)}</b><span class="muted small">${ROLE_NAMES[u.role]}</span></div>
         <button class="btn btn-ghost btn-icon" id="logout" title="تسجيل خروج">${icon('logout')}</button>
       </div>
+      <div class="small muted num" id="app-version" style="padding:8px 4px 0;font-size:11px;text-align:center"></div>
     </aside>
     <main class="main">
       <header class="topbar">
@@ -150,6 +151,7 @@ function shell() {
     location.hash = '#/';
     location.reload();
   });
+  api.get('/version').then((v) => { document.getElementById('app-version').textContent = `نسخة ${v.build}`; }).catch(() => {});
   const toggleMenu = () => document.querySelector('.sidebar').classList.toggle('open');
   document.getElementById('menu').addEventListener('click', toggleMenu);
   document.getElementById('more').addEventListener('click', toggleMenu);

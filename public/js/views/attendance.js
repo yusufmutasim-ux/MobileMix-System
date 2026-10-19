@@ -33,8 +33,13 @@ export async function render(el, { actions }) {
 
   async function loadNow() {
     const n = await api.get('/shifts/now');
+    const st = await api.get('/settings').catch(() => ({}));
+    const zoneOn = st.attendance_zone === '1';
+    const zoneReady = st.shop_lat !== '' && st.shop_lng !== '' && st.shop_lat != null;
     $('#now').innerHTML = `
-      <div class="card-head"><h2>${icon('clock', '')} مين في الشيفت دلوقتي</h2><span class="pill pill-ok">${n.on.length} موجود</span></div>
+      <div class="card-head"><h2>${icon('clock', '')} مين في الشيفت دلوقتي</h2><span class="pill pill-ok">${n.on.length} موجود</span>
+        <a href="#/settings" class="pill ${zoneOn && zoneReady ? 'pill-ok' : zoneOn ? 'pill-bad' : 'pill-gray'}">
+          ${zoneOn && zoneReady ? '📍 الحضور من المحل بس — مفعّل' : zoneOn ? '⚠️ موقع المحل مش متحدد' : 'الحضور من أي مكان (التحقق من الموقع مقفول)'}</a></div>
       <div class="grid grid-4">
         ${n.on.map((s) => `<div class="kpi bg-mint" style="min-height:0">
             <div class="label"><span class="dot-live"></span> ${esc(s.full_name)}</div>
