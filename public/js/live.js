@@ -27,7 +27,10 @@ export async function initShift() {
     if (!(await zoneOn())) {
       await busy(box.querySelector('button'), async () => {
         shift = (await api.post('/shifts/check-in')).open;
-        toast('تم تسجيل الحضور — شيفت موفق 💪', 'ok');
+        const ownerExempt = state.user.role === 'admin' && state.settings.attendance_zone === '1';
+        toast(ownerExempt
+          ? 'تم تسجيل الحضور — إنت كمدير مستثنى من شرط الموقع، الموظفين هم اللي هيتطلب منهم الموقع 📍'
+          : 'تم تسجيل الحضور — شيفت موفق 💪', 'ok');
         draw();
       });
       return;
