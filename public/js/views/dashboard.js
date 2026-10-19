@@ -1,4 +1,5 @@
 import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText } from '../core.js';
+import { currentShift } from '../live.js';
 
 export async function render(el, { actions }) {
   if (can('sales.create')) actions.innerHTML = `<a class="btn btn-primary" href="#/pos">${icon('plus')} بيع جديد</a>`;
@@ -34,6 +35,10 @@ export async function render(el, { actions }) {
   ].filter(Boolean).slice(0, 4).join('');
 
   el.innerHTML = `
+    <div class="card bg-aqua hidden" id="shift-banner" style="box-shadow:none;margin-bottom:20px;padding:16px 20px">
+      <div class="shift-banner"><span style="flex:1;min-width:200px">${icon('clock', '')} <b>إنت مش مسجل حضور.</b> ابدأ الشيفت عشان يتسجل وقت وصولك${state.settings.require_shift === '1' && state.user.role !== 'admin' ? ' — <b>لازم تسجل حضور قبل البيع أو استلام الأجهزة</b>' : ''}.</span>
+      <button class="btn btn-primary btn-sm" id="banner-in">${icon('logout')} بدء الشيفت</button></div>
+    </div>
     <p class="muted" style="margin:0 0 20px;font-size:17px">${greet}، <b style="color:var(--ink);font-weight:500">${esc(state.user.full_name)}</b> 👋</p>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">${kpis.join('')}</div>
     <div class="quick" style="margin-top:24px">${quick}</div>
@@ -55,6 +60,15 @@ export async function render(el, { actions }) {
 
   el.querySelectorAll('tr[data-id]').forEach((tr) =>
     tr.addEventListener('click', () => { location.hash = `#/sales?open=${tr.dataset.id}`; }));
+
+  // "Start your shift" reminder (hidden once checked in)
+  const banner = el.querySelector('#shift-banner');
+  const showBanner = (shift) => banner.classList.toggle('hidden', !!shift || state.user.role === 'admin');
+  const onShift = (e) => showBanner(e.detail);
+  document.addEventListener('mm:shift', onShift);
+  if (document.getElementById('shift-btn')) showBanner(currentShift());
+  el.querySelector('#banner-in').addEventListener('click', () => window.mmCheckIn?.());
+  return () => document.removeEventListener('mm:shift', onShift);
 }
 
 function weekChart(week) {

@@ -2,6 +2,8 @@
 const { tx } = require('../db');
 const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit, getSettings } = require('../util');
+const { requireOpenShift } = require('./shifts');
+const fmtMoney = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
 
 /*
  * Maintenance tickets (صيانة).
@@ -112,6 +114,7 @@ module.exports = function repairRoutes(api, db) {
   api.post('/repairs', requirePerm('repairs.create'), (req, res) => {
     const b = req.body || {};
     const settings = getSettings(db);
+    requireOpenShift(db, req.user);
     const id = tx(db, () => {
       const f = intakeFields(b);
       const technicianId = num(b.technician_id, 'الفني', { optional: true, int: true });
@@ -131,7 +134,13 @@ module.exports = function repairRoutes(api, db) {
       return id;
     });
     audit(db, req.user.id, 'repair.create', { id });
-    res.status(201).json(load(id, req.user));
+    const r = load(id, req.user);
+    req.app.locals.notifier.notify({
+      type: 'repair_in', actorId: req.user.id, url: `#/repairs?open=${id}`,
+      title: `استلام جهاز صيانة — ${r.device}`,
+      body: `${req.user.full_name} استلم من ${r.customer_name} • ${r.problem}${r.paid ? ` • عربون ${fmtMoney(r.paid, settings.currency)}` : ''} • ${r.ticket_no}`,
+    });
+    res.status(201).json(r);
   });
 
   api.put('/repairs/:id', view, (req, res) => {
@@ -259,7 +268,14 @@ module.exports = function repairRoutes(api, db) {
       event(r.id, 'delivered', left > 0.004 ? `اتسلم — متبقي على العميل ${left}` : 'اتسلم للعميل', req.user.id);
       audit(db, req.user.id, 'repair.deliver', { ticket: r.ticket_no, price, due: left > 0 ? left : 0 });
     });
-    res.json(load(req.params.id, req.user));
+    const r = load(req.params.id, req.user);
+    const cur = getSettings(db).currency;
+    req.app.locals.notifier.notify({
+      type: 'repair_out', actorId: req.user.id, url: `#/repairs?open=${r.id}`,
+      title: `تسليم جهاز صيانة — ${r.device}`,
+      body: `${req.user.full_name} سلّم لـ ${r.customer_name} • ${r.outcome === 'not_repaired' ? 'من غير تصليح' : `الحساب ${fmtMoney(r.price ?? 0, cur)}`}${r.balance > 0.004 ? ` • آجل ${fmtMoney(r.balance, cur)}` : ''} • ${r.ticket_no}`,
+    });
+    res.json(r);
   });
 
   function intakeFields(b) {

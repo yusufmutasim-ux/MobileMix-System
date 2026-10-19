@@ -202,6 +202,52 @@ CREATE TABLE IF NOT EXISTS repair_events (
 );
 CREATE INDEX IF NOT EXISTS idx_repair_events ON repair_events(repair_id);
 
+-- ---------- attendance (حضور وانصراف) ----------
+CREATE TABLE IF NOT EXISTS shifts (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  check_in_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  check_out_at TEXT,
+  note TEXT,
+  closed_by INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_shifts_user ON shifts(user_id, check_in_at);
+
+-- ---------- notifications ----------
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  url TEXT,
+  actor_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Phones / browsers that receive push notifications
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS user_prefs (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value TEXT,
+  PRIMARY KEY (user_id, key)
+);
+
+-- Server-only values (never sent to the browser), e.g. push keys
+CREATE TABLE IF NOT EXISTS secrets (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
   user_id INTEGER,
@@ -225,6 +271,7 @@ const DEFAULT_SETTINGS = {
   repair_terms: 'المحل غير مسؤول عن الجهاز بعد 30 يوم من إبلاغ العميل بجاهزيته. المحل غير مسؤول عن البيانات أو الشريحة أو كارت الميموري. الضمان على العطل اللي اتصلح بس.',
   backup_dir: '',
   backup_keep: '30',
+  require_shift: '0',
 };
 
 function open(file) {

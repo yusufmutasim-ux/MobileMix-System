@@ -1,11 +1,12 @@
 import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow } from '../core.js';
 import { LABEL_SIZES } from '../print.js';
+import { pushSupported, pushHint, subscribePush, unsubscribePush } from '../live.js';
 
 const AUDIT_NAMES = {
   login: 'تسجيل دخول', 'password.change': 'تغيير كلمة السر', 'user.create': 'إضافة موظف', 'user.update': 'تعديل موظف',
   'settings.update': 'تعديل الإعدادات', 'backup.download': 'نسخة احتياطية', 'product.create': 'إضافة منتج',
   'product.price': 'تغيير سعر', 'product.deactivate': 'إيقاف منتج', 'sale.return': 'مرتجع',
-  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'backup.auto': 'نسخة احتياطية',
+  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'backup.auto': 'نسخة احتياطية',
 };
 
 export async function render(el) {
@@ -30,6 +31,9 @@ export async function render(el) {
           <label class="field"><span>مقاس الليبل الافتراضي</span><select class="input" name="label_size">
             ${Object.entries(LABEL_SIZES).map(([k, v]) => `<option value="${k}" ${s.label_size === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
           <label class="field"><span>أقصى خصم للكاشير %</span><input class="input num" type="number" min="0" max="100" name="cashier_max_discount" value="${esc(s.cashier_max_discount)}"></label>
+          <label class="field full"><span>الحضور والانصراف</span><select class="input" name="require_shift">
+            <option value="0" ${s.require_shift !== '1' ? 'selected' : ''}>اختياري — الموظف يسجل حضور لو حب</option>
+            <option value="1" ${s.require_shift === '1' ? 'selected' : ''}>إجباري — مينفعش يبيع أو يستلم جهاز من غير ما يسجل حضور</option></select></label>
           <label class="field"><span>بادئة تذكرة الصيانة</span><input class="input ltr" name="repair_prefix" value="${esc(s.repair_prefix)}"></label>
           <div></div>
           <label class="field full"><span>شروط الصيانة (بتتطبع على إيصال الاستلام)</span><textarea class="input" name="repair_terms" rows="3">${esc(s.repair_terms)}</textarea></label>
@@ -38,6 +42,7 @@ export async function render(el) {
       </div>` : ''}
 
       <div class="stack">
+        ${can('notifications.receive') ? '<div class="card" id="notif-card"><div class="empty">…</div></div>' : ''}
         <div class="card">
           <div class="card-head"><h2>${icon('key', '')} تغيير كلمة السر</h2></div>
           <form class="form-grid" id="pw" onsubmit="return false">
@@ -82,6 +87,45 @@ export async function render(el) {
     document.querySelector('.brand-name').firstChild.textContent = state.settings.shop_name;
     toast('تم حفظ الإعدادات', 'ok');
   }));
+
+  async function loadNotif() {
+    const card = el.querySelector('#notif-card');
+    if (!card) return;
+    const p = await api.get('/notifications/prefs');
+    const here = localStorage.getItem('mm_push') === '1' && pushSupported() && Notification.permission === 'granted';
+    card.innerHTML = `
+      <div class="card-head"><h2>${icon('bell', '')} الإشعارات</h2>${here ? '<span class="pill pill-ok">مفعّلة على الجهاز ده</span>' : ''}</div>
+      <p class="muted" style="margin-top:0">ابعتلي إشعار لما:</p>
+      <div class="toggle-chips" id="ntypes">${Object.entries(p.types).map(([k, v]) => `<button type="button" data-t="${k}" class="${p.enabled.includes(k) ? 'on' : ''}">${v}</button>`).join('')}</div>
+      <div style="margin-top:16px">${here
+        ? `<div class="btn-row"><button class="btn btn-outline btn-sm" id="push-test">${icon('bell')} إشعار تجربة</button>
+             <button class="btn btn-ghost btn-sm" id="push-off">إيقاف على الجهاز ده</button></div>`
+        : `<div class="card bg-periwinkle" style="box-shadow:none;padding:14px 16px">${pushHint()}</div>`}</div>
+      <p class="small muted" style="margin-bottom:0">الأجهزة المفعّل عليها: ${p.devices.length}. فعّلها على كل موبايل أو كمبيوتر عايز يوصلك عليه.</p>`;
+    card.querySelector('#ntypes').addEventListener('click', async (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      b.classList.toggle('on');
+      const enabled = [...card.querySelectorAll('#ntypes .on')].map((x) => x.dataset.t);
+      await api.put('/notifications/prefs', { enabled }).catch(toastErrLocal);
+    });
+    card.querySelector('#enable-push')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      await subscribePush(true);
+      toast('تم تفعيل الإشعارات على الجهاز ده ✅', 'ok');
+      loadNotif();
+    }));
+    card.querySelector('#push-test')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      const r = await api.post('/push/test');
+      toast(`اتبعت إشعار تجربة لـ ${r.sent} جهاز`, 'ok');
+    }));
+    card.querySelector('#push-off')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      await unsubscribePush();
+      toast('اتوقفت الإشعارات على الجهاز ده');
+      loadNotif();
+    }));
+  }
+  const toastErrLocal = (e) => toast(e.message, 'err');
+  loadNotif().catch(toastErrLocal);
 
   el.querySelector('#logout-others').addEventListener('click', (e) => busy(e.currentTarget, async () => {
     const r = await api.post('/auth/logout-others');

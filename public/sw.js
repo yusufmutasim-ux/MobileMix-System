@@ -2,13 +2,13 @@
 // The data always lives on the shop PC, so API calls are never cached.
 // App files are fetched fresh when possible and kept as a fallback, so the app opens fast
 // and shows a clear "can't reach the shop" page instead of a browser error.
-const VERSION = 'mm-v4';
+const VERSION = 'mm-v5';
 const SHELL = [
   '/', '/offline.html', '/css/app.css', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png',
   '/js/app.js', '/js/core.js', '/js/print.js',
   '/js/views/login.js', '/js/views/dashboard.js', '/js/views/pos.js', '/js/views/sales.js', '/js/views/products.js',
   '/js/views/stocktake.js', '/js/views/labels.js', '/js/views/reports.js', '/js/views/users.js', '/js/views/settings.js',
-  '/js/views/repairs.js', '/vendor/JsBarcode.all.min.js',
+  '/js/views/repairs.js', '/js/views/attendance.js', '/js/live.js', '/vendor/JsBarcode.all.min.js',
 ];
 
 self.addEventListener('install', (e) => {
@@ -40,4 +40,33 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(e.request)),
   );
+});
+
+// ---------- push notifications (sales, repairs, attendance) ----------
+self.addEventListener('push', (e) => {
+  let n = {};
+  try { n = e.data ? e.data.json() : {}; } catch { n = { title: 'Mobile Mix', body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(n.title || 'Mobile Mix', {
+    body: n.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: n.tag,
+    lang: 'ar',
+    dir: 'rtl',
+    data: { url: n.url || '#/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL('/' + (e.notification.data?.url || '#/'), self.location.origin).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) {
+      if (new URL(c.url).origin === self.location.origin) {
+        c.navigate(target).catch(() => {});
+        return c.focus();
+      }
+    }
+    return self.clients.openWindow(target);
+  }));
 });

@@ -30,6 +30,7 @@ const PERMISSIONS = {
     'products.view', 'products.edit', 'products.view_cost',
     'stock.edit', 'stocktake', 'labels.print', 'reports.view',
     'repairs.view', 'repairs.create', 'repairs.work', 'repairs.cash',
+    'attendance.view', 'notifications.receive',
   ],
   cashier: ['sales.create', 'products.view', 'labels.print', 'repairs.view', 'repairs.create', 'repairs.cash'],
   technician: ['products.view', 'repairs.view', 'repairs.create', 'repairs.work'],

@@ -2,6 +2,10 @@
 const { tx } = require('../db');
 const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit, getSettings, dateRange } = require('../util');
+const { requireOpenShift } = require('./shifts');
+
+const PAY_AR = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
+const fmtMoney = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
 
 const PAYMENT_METHODS = ['cash', 'card', 'wallet', 'instapay', 'installment'];
 
@@ -18,6 +22,7 @@ module.exports = function salesRoutes(api, db) {
     if (body.items.length > 200) throw bad('عدد الأصناف كبير جداً');
     const paymentMethod = PAYMENT_METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
     const settings = getSettings(db);
+    requireOpenShift(db, req.user);
 
     const saleId = tx(db, () => {
       const lines = [];
@@ -94,7 +99,14 @@ module.exports = function salesRoutes(api, db) {
       return saleId;
     });
 
-    res.status(201).json(loadSale(saleId, req.user));
+    const sale = loadSale(saleId, req.user);
+    const names = sale.items.map((i) => i.name);
+    req.app.locals.notifier.notify({
+      type: 'sale', actorId: req.user.id, url: `#/sales?open=${sale.id}`,
+      title: `عملية بيع — ${fmtMoney(sale.total, settings.currency)}`,
+      body: `${req.user.full_name} • ${names.slice(0, 2).join('، ')}${names.length > 2 ? ` +${names.length - 2}` : ''} • ${PAY_AR[sale.payment_method] || sale.payment_method}`,
+    });
+    res.status(201).json(sale);
   });
 
   // ---------- list / view ----------
@@ -175,7 +187,14 @@ module.exports = function salesRoutes(api, db) {
       audit(db, req.user.id, 'sale.return', { sale: sale.invoice_no, amount });
     });
 
-    res.json(loadSale(req.params.id, req.user));
+    const sale = loadSale(req.params.id, req.user);
+    const last = sale.returns[sale.returns.length - 1];
+    req.app.locals.notifier.notify({
+      type: 'sale_return', actorId: req.user.id, url: `#/sales?open=${sale.id}`,
+      title: `مرتجع — ${fmtMoney(last?.amount || 0, getSettings(db).currency)}`,
+      body: `${req.user.full_name} • فاتورة ${sale.invoice_no}${last?.reason ? ` • ${last.reason}` : ''}`,
+    });
+    res.json(sale);
   });
 
   function loadSale(id, user) {

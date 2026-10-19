@@ -4,8 +4,9 @@ const express = require('express');
 const { sessionMiddleware } = require('./auth');
 const { HttpError } = require('./util');
 const hosting = require('./hosting');
+const { createNotifier } = require('./notify');
 
-function createApp(db, { dataDir = path.join(__dirname, '..', 'data') } = {}) {
+function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSender } = {}) {
   const app = express();
   app.disable('x-powered-by');
   // On a shop PC, remote access comes through a tunnel on localhost; on Railway through its proxy
@@ -26,7 +27,11 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data') } = {}) {
     });
   }
 
+  const notifier = createNotifier(db, { send: pushSender });
+  app.locals.notifier = notifier;
+
   const api = express.Router();
+  api.notifier = notifier;
   api.get('/health', (_req, res) => {
     db.prepare('SELECT 1').get();
     res.json({ ok: true });
@@ -37,6 +42,8 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data') } = {}) {
   require('./routes/stocktakes')(api, db);
   require('./routes/repairs')(api, db);
   require('./routes/reports')(api, db);
+  require('./routes/shifts')(api, db);
+  require('./routes/notifications')(api, db);
   api.use((_req, res) => res.status(404).json({ error: 'غير موجود' }));
   app.use('/api', api);
 

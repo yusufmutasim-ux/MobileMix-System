@@ -1,4 +1,5 @@
 import { api, state, can, icon, esc, LOGO, ROLE_NAMES, toastErr, modal, busy, toast } from './core.js';
+import { initShift, initNotifications } from './live.js';
 
 const NAV = [
   { path: '/', title: 'الرئيسية', icon: 'home', view: 'dashboard' },
@@ -11,6 +12,7 @@ const NAV = [
   { path: '/labels', title: 'ليبلات الأسعار', icon: 'tag', view: 'labels', perm: 'labels.print' },
   { sep: 'الإدارة' },
   { path: '/reports', title: 'التقارير', icon: 'chart', view: 'reports', perm: 'reports.view' },
+  { path: '/attendance', title: 'الحضور والانصراف', short: 'الحضور', icon: 'clock', view: 'attendance', perm: 'attendance.view' },
   { path: '/users', title: 'الموظفين', icon: 'users', view: 'users', perm: 'users.manage' },
   { path: '/settings', title: 'الإعدادات', icon: 'settings', view: 'settings' },
 ];
@@ -76,7 +78,11 @@ async function route() {
 
   const item = NAV.find((n) => n.path === r.path && (!n.perm || can(n.perm)));
   if (!item) { location.hash = '#/'; return; }
-  if (!document.querySelector('.shell')) shell();
+  if (!document.querySelector('.shell')) {
+    shell();
+    initShift();
+    initNotifications();
+  }
 
   document.querySelectorAll('.nav a, .tabbar a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + item.path));
   document.querySelector('.sidebar').classList.remove('open');
@@ -121,6 +127,10 @@ function shell() {
       <header class="topbar">
         <button class="btn btn-ghost btn-icon menu-btn" id="menu">${icon('menu')}</button>
         <h1 id="page-title"></h1>
+        <div class="top-tools">
+          <div id="shift-box"></div>
+          <button class="btn btn-ghost btn-icon bell hidden" id="bell" title="الإشعارات">${icon('bell')}<span class="bell-count hidden" id="bell-count"></span></button>
+        </div>
         <div class="btn-row" id="page-actions"></div>
       </header>
       ${state.hosting?.cloud && !state.hosting.persistent && can('settings.manage') ? `
