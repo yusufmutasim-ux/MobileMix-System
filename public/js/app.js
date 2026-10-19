@@ -1,0 +1,109 @@
+import { api, state, can, icon, esc, LOGO, ROLE_NAMES, toastErr } from './core.js';
+
+const NAV = [
+  { path: '/', title: 'الرئيسية', icon: 'home', view: 'dashboard' },
+  { path: '/pos', title: 'نقطة البيع', icon: 'cart', view: 'pos', perm: 'sales.create' },
+  { path: '/sales', title: 'الفواتير', icon: 'receipt', view: 'sales', perm: 'sales.create' },
+  { sep: 'المخزن' },
+  { path: '/products', title: 'المنتجات', icon: 'box', view: 'products', perm: 'products.view' },
+  { path: '/stocktake', title: 'الجرد', icon: 'clipboard', view: 'stocktake', perm: 'stocktake' },
+  { path: '/labels', title: 'ليبلات الأسعار', icon: 'tag', view: 'labels', perm: 'labels.print' },
+  { sep: 'الإدارة' },
+  { path: '/reports', title: 'التقارير', icon: 'chart', view: 'reports', perm: 'reports.view' },
+  { path: '/users', title: 'الموظفين', icon: 'users', view: 'users', perm: 'users.manage' },
+  { path: '/settings', title: 'الإعدادات', icon: 'settings', view: 'settings' },
+];
+
+let cleanup = null;
+
+async function boot() {
+  try {
+    const me = await api.get('/auth/me');
+    Object.assign(state, { user: me.user, permissions: me.permissions, settings: me.settings });
+  } catch {
+    state.user = null;
+  }
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+function parse() {
+  const raw = location.hash.replace(/^#/, '') || '/';
+  const [path, query = ''] = raw.split('?');
+  const parts = path.split('/').filter(Boolean);
+  return { path: '/' + (parts[0] || ''), id: parts[1], query: new URLSearchParams(query) };
+}
+
+async function route() {
+  const r = parse();
+  if (cleanup) { try { cleanup(); } catch { /* ignore */ } cleanup = null; }
+
+  if (!state.user) {
+    const { render } = await import('./views/login.js');
+    document.getElementById('app').innerHTML = '<div id="view"></div>';
+    render(document.getElementById('view'), { onLogin: () => { location.hash = '#/'; location.reload(); } });
+    return;
+  }
+  if (r.path === '/login') { location.hash = '#/'; return; }
+
+  const item = NAV.find((n) => n.path === r.path && (!n.perm || can(n.perm)));
+  if (!item) { location.hash = '#/'; return; }
+  if (!document.querySelector('.shell')) shell();
+
+  document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + item.path));
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('page-title').textContent = item.title;
+  document.title = `${item.title} — ${state.settings.shop_name || 'Mobile Mix'}`;
+  const actions = document.getElementById('page-actions');
+  actions.innerHTML = '';
+  // Each visit gets its own container, so late async work from the previous page can't touch the new one
+  const el = document.createElement('div');
+  el.innerHTML = '<div class="empty">جاري التحميل…</div>';
+  document.getElementById('view').replaceChildren(el);
+  try {
+    const mod = await import(`./views/${item.view}.js`);
+    el.innerHTML = '';
+    cleanup = (await mod.render(el, { id: r.id, query: r.query, actions })) || null;
+  } catch (e) {
+    toastErr(e);
+    el.innerHTML = `<div class="card empty">${icon('alert')}${esc(e.message)}</div>`;
+  }
+  window.scrollTo(0, 0);
+}
+
+function shell() {
+  const u = state.user;
+  const links = NAV.filter((n) => n.sep || !n.perm || can(n.perm));
+  // Drop section titles that have no links under them
+  const visible = links.filter((n, i) => !n.sep || (links[i + 1] && !links[i + 1].sep));
+  document.getElementById('app').innerHTML = `
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">${LOGO}<div class="brand-name">${esc(state.settings.shop_name || 'Mobile Mix')}<small>نظام المبيعات والمخزن</small></div></div>
+      <nav class="nav">
+        ${visible.map((n) => n.sep ? `<div class="nav-sep">${n.sep}</div>` : `<a href="#${n.path}">${icon(n.icon)}<span>${n.title}</span></a>`).join('')}
+      </nav>
+      <div class="side-user">
+        <div class="avatar">${esc(u.full_name.trim()[0] || '?')}</div>
+        <div class="who"><b>${esc(u.full_name)}</b><span class="muted small">${ROLE_NAMES[u.role]}</span></div>
+        <button class="btn btn-ghost btn-icon" id="logout" title="تسجيل خروج">${icon('logout')}</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="btn btn-ghost btn-icon menu-btn" id="menu">${icon('menu')}</button>
+        <h1 id="page-title"></h1>
+        <div class="btn-row" id="page-actions"></div>
+      </header>
+      <section class="content" id="view"></section>
+    </main>
+  </div>`;
+  document.getElementById('logout').addEventListener('click', async () => {
+    await api.post('/auth/logout').catch(() => {});
+    location.hash = '#/';
+    location.reload();
+  });
+  document.getElementById('menu').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
+}
+
+boot();

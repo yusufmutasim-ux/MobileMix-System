@@ -1,0 +1,22 @@
+{
+  "name": "mobilemix-system",
+  "version": "1.0.0",
+  "description": "Mobile Mix — نظام مبيعات وجرد وفواتير وليبلات لمحل موبايلات",
+  "private": true,
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "demo-data": "node --disable-warning=ExperimentalWarning server/seed-demo.js"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
+    "@fontsource/poppins": "^5.3.0",
+    "express": "^5.3.0",
+    "jsbarcode": "^3.12.3"
+  }
+}
