@@ -1,5 +1,5 @@
-import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText } from '../core.js';
-import { currentShift } from '../live.js';
+import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText, modal, toast } from '../core.js';
+import { currentShift, zoneOn, locationPermission, getPosition, locationHelp } from '../live.js';
 
 export async function render(el, { actions }) {
   if (can('sales.create')) actions.innerHTML = `<a class="btn btn-primary" href="#/pos">${icon('plus')} بيع جديد</a>`;
@@ -35,6 +35,10 @@ export async function render(el, { actions }) {
   ].filter(Boolean).slice(0, 4).join('');
 
   el.innerHTML = `
+    <div class="card bg-peony hidden" id="loc-banner" style="box-shadow:none;margin-bottom:12px;padding:16px 20px">
+      <div class="shift-banner"><span style="flex:1;min-width:200px">📍 <b>الحضور لازم يكون من جوه المحل.</b> فعّل الموقع مرة واحدة عشان تقدر تسجل حضور وانصراف.</span>
+      <button class="btn btn-primary btn-sm" id="loc-allow">📍 فعّل الموقع</button></div>
+    </div>
     <div class="card bg-aqua hidden" id="shift-banner" style="box-shadow:none;margin-bottom:20px;padding:16px 20px">
       <div class="shift-banner"><span style="flex:1;min-width:200px">${icon('clock', '')} <b>إنت مش مسجل حضور.</b> ابدأ الشيفت عشان يتسجل وقت وصولك${state.settings.require_shift === '1' && state.user.role !== 'admin' ? ' — <b>لازم تسجل حضور قبل البيع أو استلام الأجهزة</b>' : ''}.</span>
       <button class="btn btn-primary btn-sm" id="banner-in">${icon('logout')} بدء الشيفت</button></div>
@@ -68,6 +72,27 @@ export async function render(el, { actions }) {
   document.addEventListener('mm:shift', onShift);
   if (document.getElementById('shift-btn')) showBanner(currentShift());
   el.querySelector('#banner-in').addEventListener('click', () => window.mmCheckIn?.());
+
+  // Location must be allowed when check in is limited to the shop
+  const locBanner = el.querySelector('#loc-banner');
+  (async () => {
+    if (!(await zoneOn())) return;
+    if ((await locationPermission()) !== 'granted') locBanner.classList.remove('hidden');
+  })().catch(() => {});
+  el.querySelector('#loc-allow').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await getPosition();
+      locBanner.classList.add('hidden');
+      toast('تمام — الموقع متفعّل ✅ تقدر تسجل حضور', 'ok');
+    } catch (err) {
+      modal({ title: 'تفعيل الموقع', body: `<div class="card bg-peony" style="box-shadow:none;padding:14px 16px">${locationHelp(err)}</div>`,
+        foot: '<button class="btn btn-primary" data-close>تمام</button>' });
+    } finally {
+      btn.disabled = false;
+    }
+  });
   return () => document.removeEventListener('mm:shift', onShift);
 }
 

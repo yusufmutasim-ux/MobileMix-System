@@ -139,6 +139,7 @@ export async function render(el) {
       <div class="card-head"><h2>${icon('phone', '')} الحضور من المحل بس</h2>
         ${st.attendance_zone === '1' ? '<span class="pill pill-ok">مفعّل</span>' : '<span class="pill pill-gray">مش مفعّل</span>'}</div>
       <p class="muted" style="margin-top:0">لما يتفعّل، الموظف ميقدرش يسجل حضور أو انصراف غير وهو جوه المحل (بالـ GPS بتاع موبايله، أو لو متصل بإنترنت المحل). إنت كمدير مستثنى.</p>
+      <p class="small muted" style="margin-top:-6px">ℹ️ الموظف هيظهرله طلب سماح <b>للموقع</b> بس — الواي فاي مالوش طلب، السيستم بيعرف إنه على إنترنت المحل لوحده.</p>
       <div class="form-grid">
         <label class="field full"><span>تسجيل الحضور</span><select class="input" id="z-on">
           <option value="0" ${st.attendance_zone !== '1' ? 'selected' : ''}>من أي مكان</option>

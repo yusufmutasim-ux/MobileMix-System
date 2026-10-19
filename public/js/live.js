@@ -23,23 +23,43 @@ export async function initShift() {
   draw();
 
   async function checkIn() {
-    await busy(box.querySelector('button'), async () => {
-      shift = (await postWithLocation('/shifts/check-in', {})).open;
-      toast(`تم تسجيل الحضور${shift.in_method === 'gps' ? ' من المحل 📍' : ''} — شيفت موفق 💪`, 'ok');
-      draw();
+    // Zone off: one tap, as before
+    if (!(await zoneOn())) {
+      await busy(box.querySelector('button'), async () => {
+        shift = (await api.post('/shifts/check-in')).open;
+        toast('تم تسجيل الحضور — شيفت موفق 💪', 'ok');
+        draw();
+      });
+      return;
+    }
+    const done = await modal({
+      title: 'تسجيل حضور',
+      body: `<p style="margin-top:0">عشان نتأكد إنك <b>جوه المحل</b>، السيستم محتاج يعرف موقعك.</p>
+        <div class="card bg-aqua" style="box-shadow:none;padding:12px 14px" id="loc-status">
+          لما تدوس "سجّل حضوري"، الموبايل هيسألك: <b>"السماح للموقع بمعرفة موقعك؟"</b> ← دوس <b>سماح / Allow</b>.</div>`,
+      foot: '<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>📍 سجّل حضوري</button>',
+      onMount: (m, close) => m.querySelector('[data-ok]').addEventListener('click', (e) => runShift(e.currentTarget, m.querySelector('#loc-status'), async (extra) => {
+        shift = (await api.post('/shifts/check-in', extra)).open;
+        toast(`تم تسجيل الحضور${shift.in_method === 'gps' ? ' من المحل 📍' : shift.in_method === 'wifi' ? ' من شبكة المحل 📶' : ''} — شيفت موفق 💪`, 'ok');
+        close(true);
+      })),
     });
+    if (done) draw();
   }
   async function checkOut() {
+    const zone = await zoneOn();
     const ok = await modal({
       title: 'إنهاء الشيفت',
       body: `<p style="margin-top:0">بدأت الساعة <b class="num">${shift.check_in_at.slice(11, 16)}</b>. متأكد إنك عايز تسجل انصراف؟</p>
-        <label class="field"><span>ملاحظة (اختياري)</span><input class="input" id="out-note" placeholder="مثلاً: سلمت الدرج للمسائي"></label>`,
+        <label class="field"><span>ملاحظة (اختياري)</span><input class="input" id="out-note" placeholder="مثلاً: سلمت الدرج للمسائي"></label>
+        ${zone ? `<div class="card bg-aqua" style="box-shadow:none;padding:12px 14px;margin-top:12px" id="loc-status">
+          الانصراف لازم يكون من جوه المحل — لو الموبايل سألك عن الموقع دوس <b>سماح / Allow</b>.</div>` : '<div id="loc-status"></div>'}`,
       foot: '<button class="btn btn-outline" data-close>لأ</button><button class="btn btn-primary" data-ok>تسجيل انصراف</button>',
-      onMount: (m, close) => m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-        const r = await postWithLocation('/shifts/check-out', { note: m.querySelector('#out-note').value });
+      onMount: (m, close) => m.querySelector('[data-ok]').addEventListener('click', (e) => runShift(e.currentTarget, m.querySelector('#loc-status'), async (extra) => {
+        const r = await api.post('/shifts/check-out', { note: m.querySelector('#out-note').value, ...extra });
         toast(`تم الانصراف — مدة الشيفت ${Math.floor(r.minutes / 60)} س ${r.minutes % 60} د`, 'ok');
         close(true);
-      })),
+      }), zone),
     });
     if (ok) { shift = null; draw(); }
   }
@@ -50,52 +70,92 @@ export async function initShift() {
 export const currentShift = () => shift;
 
 // ---------------- shop zone (location) ----------------
-/** Phone location, as { lat, lng, accuracy } in meters. */
+const isIOSDevice = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isAndroid = () => /android/i.test(navigator.userAgent);
+const inAppBrowser = () => /FBAN|FBAV|Instagram|WhatsApp|Line\/|Snapchat|TikTok/i.test(navigator.userAgent);
+
+/** Is the "inside the shop only" rule on for this person? (fresh from the server) */
+export async function zoneOn() {
+  const st = await api.get('/settings').catch(() => state.settings);
+  state.settings = { ...state.settings, ...st };
+  return st.attendance_zone === '1' && state.user.role !== 'admin';
+}
+
+/** 'granted' | 'prompt' | 'denied' | 'unknown' */
+export async function locationPermission() {
+  try { return (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { return 'unknown'; }
+}
+
+/** Phone location, as { lat, lng, accuracy } in meters. Errors carry .denied when permission is off. */
 export function getPosition() {
   return new Promise((resolve, reject) => {
     if (!window.isSecureContext || !navigator.geolocation) {
-      reject(new Error('تحديد الموقع محتاج رابط آمن (https) — افتح السيستم من رابط Railway'));
+      reject(Object.assign(new Error('تحديد الموقع محتاج رابط آمن (https) — افتح السيستم من رابط Railway'), { insecure: true }));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy) }),
-      (e) => reject(new Error(e.code === 1
-        ? 'لازم تسمح للسيستم يعرف موقعك: من إعدادات المتصفح ← الموقع (Location) ← سماح، وجرب تاني'
-        : 'مقدرناش نحدد موقعك — اتأكد إن الـ GPS (الموقع) شغال في الموبايل وجرب تاني')),
+      (e) => reject(Object.assign(new Error(e.code === 1
+        ? 'الموقع مقفول للسيستم ده'
+        : 'مقدرناش نحدد موقعك — اتأكد إن الموقع (GPS) شغال في الموبايل'), { denied: e.code === 1 })),
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
     );
   });
 }
 
-/**
- * When the shop-zone rule is on, attach the phone's location to check in / out.
- * If the location can't be read the server may still accept it (shop Wi-Fi); if not,
- * the location problem is the more useful message to show.
- */
-async function postWithLocation(url, body) {
-  const loc = await withLocation();
-  const { _locationError: locErr, ...coords } = loc;
-  try {
-    return await api.post(url, { ...body, ...coords });
-  } catch (e) {
-    throw locErr && /موقع|GPS|بعيد/.test(e.message) ? new Error(locErr) : e;
+/** Step-by-step instructions for turning location on, for this kind of phone. */
+export function locationHelp(err) {
+  const steps = [];
+  if (inAppBrowser()) {
+    steps.push('إنت فاتح السيستم من جوه واتساب/فيسبوك — افتح الرابط في <b>Chrome</b> أو <b>Safari</b> (⋮ ← فتح في المتصفح).');
   }
+  if (err?.insecure) {
+    steps.push('افتح السيستم من رابط Railway اللي بيبدأ بـ <bdi dir="ltr">https://</bdi>.');
+  } else if (isIOSDevice()) {
+    steps.push('افتح <b>الإعدادات (Settings)</b> ← <b>الخصوصية والأمان</b> ← <b>خدمات الموقع (Location Services)</b> ← شغّلها.');
+    steps.push('في نفس الصفحة انزل لـ <b>Safari Websites</b> (أو اسم المتصفح اللي بتستخدمه) ← اختار <b>أثناء الاستخدام (While Using)</b>.');
+    steps.push('ارجع للسيستم في Safari ← دوس <b>aA</b> جنب الرابط ← <b>إعدادات الموقع (Website Settings)</b> ← <b>الموقع (Location)</b> ← <b>سماح (Allow)</b>.');
+  } else if (isAndroid()) {
+    steps.push('اسحب شريط الإشعارات من فوق وشغّل <b>الموقع (Location)</b>.');
+    steps.push('في Chrome دوس على العلامة اللي جنب الرابط (🔒 أو ⚙️) ← <b>الأذونات (Permissions)</b> ← <b>الموقع</b> ← <b>سماح (Allow)</b>.');
+    steps.push('لو مش لاقيها: Chrome ← <b>⋮</b> ← <b>الإعدادات</b> ← <b>إعدادات المواقع</b> ← <b>الموقع</b> ← شيل السيستم من قائمة <b>المحظور</b>.');
+  } else {
+    steps.push('دوس على العلامة اللي جنب الرابط فوق (🔒) ← <b>الموقع (Location)</b> ← <b>سماح (Allow)</b>، وبعدين جرب تاني.');
+  }
+  return `<b>${err?.denied ? '⚠️ الموقع مقفول للسيستم — فعّله كده:' : '⚠️ ' + esc(err?.message || 'مقدرناش نحدد موقعك') + ':'}</b>
+    <ol style="margin:8px 0 0;padding-inline-start:20px;line-height:1.9">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>
+    <div class="small" style="margin-top:8px">💡 لو إنت على واي فاي المحل وعندك مشكلة في الموقع، اطلب من المدير يسجّل "إنترنت المحل" من الإعدادات.</div>`;
 }
 
-async function withLocation() {
-  const st = await api.get('/settings').catch(() => state.settings);
-  state.settings = { ...state.settings, ...st };
-  if (st.attendance_zone !== '1' || state.user.role === 'admin') return {};
-  const wait = document.createElement('div');
-  wait.className = 'toast';
-  wait.textContent = '📍 بنحدد موقعك…';
-  (document.querySelector('.toasts') || document.body).append(wait);
+/**
+ * Check in / out with the shop-zone check: read the location (the phone asks for permission),
+ * send it, and if it fails explain exactly what to do inside the window instead of a passing toast.
+ */
+async function runShift(btn, statusEl, send, zone = true) {
+  btn.disabled = true;
   try {
-    return await getPosition();
-  } catch (e) {
-    return { _locationError: e.message };
+    let extra = {};
+    let locErr = null;
+    if (zone && (await zoneOn())) {
+      statusEl.className = 'card bg-aqua';
+      statusEl.style.cssText = 'box-shadow:none;padding:12px 14px;margin-top:12px';
+      statusEl.innerHTML = '📍 بنحدد موقعك… لو ظهرلك سؤال عن الموقع دوس <b>سماح / Allow</b>.';
+      try { extra = await getPosition(); } catch (e) { locErr = e; }
+    }
+    try {
+      await send(extra);
+    } catch (e) {
+      if (locErr && /موقع|GPS|بعيد/.test(e.message)) {
+        statusEl.className = 'card bg-peony';
+        statusEl.innerHTML = locationHelp(locErr) + '<div style="margin-top:10px"><b>بعد ما تفعّله دوس الزرار تاني.</b></div>';
+      } else {
+        statusEl.className = 'card bg-peony';
+        statusEl.style.cssText = 'box-shadow:none;padding:12px 14px;margin-top:12px';
+        statusEl.innerHTML = `⚠️ ${esc(e.message)}`;
+      }
+    }
   } finally {
-    wait.remove();
+    btn.disabled = false;
   }
 }
 
