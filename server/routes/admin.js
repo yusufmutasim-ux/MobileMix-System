@@ -20,29 +20,39 @@ const ROLES = ['admin', 'manager', 'cashier', 'technician'];
 
 module.exports = function adminRoutes(api, db, { dataDir } = {}) {
   // ---------- auth ----------
-  // Wrong-password lockout, per username and per address (the system can be reached from the internet)
+  // Wrong-password lockout, per username and per address (the system can be reached from the internet).
+  // Locks are in memory: restarting the server clears them.
   const failures = new Map(); // key -> { count, until }
-  const isLocked = (key) => (failures.get(key)?.until || 0) > Date.now();
+  const lockedFor = (key) => Math.max(0, (failures.get(key)?.until || 0) - Date.now());
   const fail = (key, max, ms) => {
     const f = failures.get(key);
-    const count = (f && f.until <= Date.now() && f.count >= max ? 0 : f?.count || 0) + 1;
+    const count = (f && f.until && f.until <= Date.now() ? 0 : f?.count || 0) + 1;
     failures.set(key, { count, until: count >= max ? Date.now() + ms : 0 });
+  };
+  const waitText = (ms) => {
+    const s = Math.ceil(ms / 1000);
+    return s <= 60 ? `${s} ثانية` : `${Math.ceil(s / 60)} دقيقة`;
   };
 
   api.post('/auth/login', (req, res) => {
     const username = str(req.body?.username, 'اسم المستخدم').toLowerCase();
     const password = String(req.body?.password || '');
     const ipKey = `ip:${req.ip}`;
-    if (isLocked(username) || isLocked(ipKey)) {
-      return res.status(429).json({ error: 'محاولات كتير غلط — استنى شوية وجرب تاني' });
+    const wait = Math.max(lockedFor(username), lockedFor(ipKey));
+    if (wait) {
+      return res.status(429).json({ error: `محاولات كتير غلط — جرب تاني بعد ${waitText(wait)}`, retry_after: Math.ceil(wait / 1000) });
     }
     const user = db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username);
     if (!user || !verifyPassword(password, user.password_hash)) {
       fail(username, 5, 60_000);
-      fail(ipKey, 20, 15 * 60_000);
-      return res.status(401).json({ error: 'اسم المستخدم أو كلمة السر غلط' });
+      fail(ipKey, 30, 10 * 60_000);
+      const left = 5 - (failures.get(username)?.count || 0);
+      return res.status(401).json({
+        error: left > 0 && left <= 2 ? `اسم المستخدم أو كلمة السر غلط — فاضل ${left} محاولة قبل القفل المؤقت` : 'اسم المستخدم أو كلمة السر غلط',
+      });
     }
     failures.delete(username);
+    failures.delete(ipKey);
     const token = createSession(db, user.id);
     audit(db, user.id, 'login', { ip: req.ip, remote: !isLocalAddress(req.ip) });
     res.setHeader('Set-Cookie', sessionCookie(req, token, SESSION_DAYS * 86400));

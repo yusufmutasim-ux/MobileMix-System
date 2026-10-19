@@ -260,6 +260,17 @@ function open(file) {
  * variable was added after the first deploy — until the admin changes the password inside the system.
  */
 function applyAdminPassword(db) {
+  // Emergency reset: ADMIN_RESET_PASSWORD always wins (remove the variable after logging in)
+  const reset = (process.env.ADMIN_RESET_PASSWORD || '').trim();
+  if (reset) {
+    const admin = db.prepare("SELECT id, password_hash FROM users WHERE username = 'admin'").get();
+    if (admin && !verifyPassword(reset, admin.password_hash)) {
+      db.prepare("UPDATE users SET password_hash = ?, active = 1, role = 'admin' WHERE id = ?").run(hashPassword(reset), admin.id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(admin.id);
+      console.log('  🔑 كلمة سر admin اتغيرت من ADMIN_RESET_PASSWORD — امسح المتغير ده بعد ما تدخل');
+    }
+    return;
+  }
   const pw = (process.env.ADMIN_PASSWORD || '').trim();
   if (!pw) return;
   const admin = db.prepare("SELECT id, password_hash FROM users WHERE username = 'admin'").get();

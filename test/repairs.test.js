@@ -204,3 +204,25 @@ test('ADMIN_PASSWORD applies to an existing database until changed in the app', 
     if (prev === undefined) delete process.env.ADMIN_PASSWORD; else process.env.ADMIN_PASSWORD = prev;
   }
 });
+
+test('ADMIN_RESET_PASSWORD recovers a forgotten admin password', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mm-')), 'reset.db');
+  const { verifyPassword } = require('../server/auth');
+  const prev = { a: process.env.ADMIN_PASSWORD, r: process.env.ADMIN_RESET_PASSWORD };
+  try {
+    delete process.env.ADMIN_PASSWORD;
+    let db = open(file);
+    // Owner changed the password in the app, then forgot it
+    db.prepare("UPDATE users SET password_hash = 'forgotten' WHERE username = 'admin'").run();
+    db.prepare("INSERT INTO audit_log (user_id, action) VALUES (1, 'password.change')").run();
+    db.close();
+    process.env.ADMIN_RESET_PASSWORD = 'Recover#99';
+    db = open(file);
+    assert.ok(verifyPassword('Recover#99', db.prepare("SELECT password_hash h FROM users WHERE username = 'admin'").get().h));
+    db.close();
+  } finally {
+    for (const [k, v] of [['ADMIN_PASSWORD', prev.a], ['ADMIN_RESET_PASSWORD', prev.r]]) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+});

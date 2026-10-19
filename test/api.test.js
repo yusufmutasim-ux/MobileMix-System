@@ -217,8 +217,8 @@ test('user admin safety', async () => {
 });
 
 test('remote safety: lockout by address and logout of other devices', async () => {
-  // 20 wrong passwords from one address lock it out, even across different usernames
-  for (let i = 0; i < 20; i++) {
+  // 30 wrong passwords from one address lock it out, even across different usernames
+  for (let i = 0; i < 30; i++) {
     await fetch(base + '/auth/login', {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7' },
       body: JSON.stringify({ username: `nobody${i}`, password: 'x' }),
@@ -229,6 +229,17 @@ test('remote safety: lockout by address and logout of other devices', async () =
     body: JSON.stringify({ username: 'admin', password: 'admin123' }),
   });
   assert.equal(locked.status, 429);
+  assert.match((await locked.json()).error, /جرب تاني بعد \d+ دقيقة/);
+
+  // Per-user lock: warns before locking, then says how long to wait
+  const other1 = client();
+  let last;
+  for (let i = 0; i < 4; i++) last = await other1.login('sara', 'wrong');
+  assert.match(last.data.error, /فاضل 1 محاولة/);
+  await other1.login('sara', 'wrong');
+  const lockedUser = await other1.login('sara', 'wrong');
+  assert.equal(lockedUser.status, 429);
+  assert.match(lockedUser.data.error, /ثانية/);
 
   const other = client();
   await other.login('admin', 'admin123');
