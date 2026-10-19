@@ -3,6 +3,9 @@ import { RANGES, RANGE_NAMES } from './sales.js';
 
 const dur = (m) => `${Math.floor(m / 60)} س ${String(m % 60).padStart(2, '0')} د`;
 const time = (s) => (s ? s.slice(11, 16) : '');
+const place = (method, dist) => (method === 'gps' ? `<span class="pill pill-ok" title="بالـ GPS">📍 من المحل${dist != null ? ` · ${dist} م` : ''}</span>`
+  : method === 'wifi' ? '<span class="pill pill-ok">📶 إنترنت المحل</span>'
+  : dist != null ? `<span class="pill ${dist > 300 ? 'pill-warn' : 'pill-gray'}" title="الحضور من أي مكان مسموح">على بعد ${dist > 1000 ? `${(dist / 1000).toFixed(1)} كم` : `${dist} م`}</span>` : '');
 
 export async function render(el, { actions }) {
   let [from, to] = RANGES.week();
@@ -54,8 +57,8 @@ export async function render(el, { actions }) {
     $('#rows').innerHTML = data.shifts.length ? data.shifts.map((s) => `<tr>
       <td><b style="font-weight:500">${esc(s.full_name)}</b></td>
       <td class="small">${fmtDate(s.check_in_at, false)}</td>
-      <td class="num">${time(s.check_in_at)}</td>
-      <td>${s.check_out_at ? `<span class="num">${time(s.check_out_at)}</span>${s.check_out_at.slice(0, 10) !== s.check_in_at.slice(0, 10) ? ' <span class="small muted">(اليوم التالي)</span>' : ''}` : '<span class="pill pill-ok">لسه في الشيفت</span>'}
+      <td><span class="num">${time(s.check_in_at)}</span> ${place(s.in_method, s.in_distance)}</td>
+      <td>${s.check_out_at ? `<span class="num">${time(s.check_out_at)}</span> ${place(s.out_method, s.out_distance)}${s.check_out_at.slice(0, 10) !== s.check_in_at.slice(0, 10) ? ' <span class="small muted">(اليوم التالي)</span>' : ''}` : '<span class="pill pill-ok">لسه في الشيفت</span>'}
         ${s.closed_by_name ? `<div class="small muted">قفله ${esc(s.closed_by_name)}</div>` : ''}</td>
       <td class="num">${dur(s.minutes)}</td>
       <td class="small">${esc(s.note || '')}</td>

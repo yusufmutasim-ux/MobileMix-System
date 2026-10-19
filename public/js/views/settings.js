@@ -1,12 +1,12 @@
 import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow } from '../core.js';
 import { LABEL_SIZES } from '../print.js';
-import { pushSupported, pushHint, subscribePush, unsubscribePush } from '../live.js';
+import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition } from '../live.js';
 
 const AUDIT_NAMES = {
   login: 'تسجيل دخول', 'password.change': 'تغيير كلمة السر', 'user.create': 'إضافة موظف', 'user.update': 'تعديل موظف',
   'settings.update': 'تعديل الإعدادات', 'backup.download': 'نسخة احتياطية', 'product.create': 'إضافة منتج',
   'product.price': 'تغيير سعر', 'product.deactivate': 'إيقاف منتج', 'sale.return': 'مرتجع',
-  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'backup.auto': 'نسخة احتياطية',
+  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'zone.network': 'تسجيل إنترنت المحل', 'backup.auto': 'نسخة احتياطية',
 };
 
 export async function render(el) {
@@ -42,6 +42,7 @@ export async function render(el) {
       </div>` : ''}
 
       <div class="stack">
+        ${admin ? '<div class="card" id="zone-card"><div class="empty">…</div></div>' : ''}
         ${can('notifications.receive') ? '<div class="card" id="notif-card"><div class="empty">…</div></div>' : ''}
         <div class="card">
           <div class="card-head"><h2>${icon('key', '')} تغيير كلمة السر</h2></div>
@@ -125,6 +126,70 @@ export async function render(el) {
     }));
   }
   const toastErrLocal = (e) => toast(e.message, 'err');
+
+  // ---------- shop zone for check in / out ----------
+  async function loadZone() {
+    const card = el.querySelector('#zone-card');
+    if (!card) return;
+    const st = await api.get('/settings');
+    const net = await api.get('/shifts/zone/network').catch(() => ({ ip: '', saved: [], here: false }));
+    const hasLoc = st.shop_lat !== '' && st.shop_lng !== '';
+    const cloud = state.hosting?.cloud;
+    card.innerHTML = `
+      <div class="card-head"><h2>${icon('phone', '')} الحضور من المحل بس</h2>
+        ${st.attendance_zone === '1' ? '<span class="pill pill-ok">مفعّل</span>' : '<span class="pill pill-gray">مش مفعّل</span>'}</div>
+      <p class="muted" style="margin-top:0">لما يتفعّل، الموظف ميقدرش يسجل حضور أو انصراف غير وهو جوه المحل (بالـ GPS بتاع موبايله، أو لو متصل بإنترنت المحل). إنت كمدير مستثنى.</p>
+      <div class="form-grid">
+        <label class="field full"><span>تسجيل الحضور</span><select class="input" id="z-on">
+          <option value="0" ${st.attendance_zone !== '1' ? 'selected' : ''}>من أي مكان</option>
+          <option value="1" ${st.attendance_zone === '1' ? 'selected' : ''}>من جوه المحل بس</option></select></label>
+        <div class="field full"><span>1. موقع المحل</span>
+          <div class="btn-row">
+            <button class="btn btn-outline btn-sm" id="z-here">📍 حدد موقع المحل من مكاني دلوقتي</button>
+            ${hasLoc ? `<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${encodeURIComponent(st.shop_lat)},${encodeURIComponent(st.shop_lng)}">شوفه على الخريطة</a>` : ''}
+          </div>
+          <span class="small ${hasLoc ? 'muted' : ''}" style="${hasLoc ? '' : 'color:var(--danger)'}">${hasLoc
+            ? `متسجل ✓ <bdi class="num">${Number(st.shop_lat).toFixed(5)}, ${Number(st.shop_lng).toFixed(5)}</bdi>`
+            : 'لسه متحددش — اعمل كده وإنت واقف جوه المحل بالموبايل'}</span></div>
+        <label class="field"><span>2. المسافة المسموحة (متر)</span><input class="input num" type="number" min="20" max="2000" id="z-radius" value="${esc(st.zone_radius || '100')}"></label>
+        <div class="field" style="justify-content:flex-end"><span class="small muted">100 متر مناسبة لأغلب المحلات. زودها لو الـ GPS عندكم ضعيف.</span></div>
+        <div class="field full"><span>3. إنترنت المحل (للكمبيوترات اللي مفيهاش GPS)</span>
+          ${cloud ? `
+            <div class="btn-row">${net.here
+              ? '<span class="pill pill-ok">الجهاز ده على إنترنت المحل ✓</span>'
+              : '<button class="btn btn-outline btn-sm" id="z-net">📶 الإنترنت اللي أنا عليه دلوقتي هو إنترنت المحل</button>'}</div>
+            ${net.saved.length ? `<div class="chips" style="margin-top:6px">${net.saved.map((ip) => `<span class="chip">${esc(ip)}<button data-rm="${esc(ip)}" title="شيل">×</button></span>`).join('')}</div>` : ''}
+            <span class="small muted">اعمل كده من جهاز متصل بواي فاي المحل. لو شركة النت غيّرت العنوان، اعملها تاني.</span>`
+            : '<span class="small muted">السيستم شغال على جهاز المحل، فأي جهاز متصل بواي فاي المحل بيتحسب جوه المحل تلقائي.</span>'}
+        </div>
+        <div class="full"><button class="btn btn-primary btn-sm" id="z-save">${icon('check')} حفظ</button></div>
+      </div>`;
+
+    card.querySelector('#z-here').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      const p = await getPosition();
+      if (p.accuracy > 100 && !confirm(`دقة الموقع ${p.accuracy} متر بس — الأحسن تجرب جنب الشباك. تحفظه برضو؟`)) return;
+      state.settings = await api.put('/settings', { shop_lat: String(p.lat), shop_lng: String(p.lng) });
+      toast(`تم حفظ موقع المحل (دقة ${p.accuracy} متر) 📍`, 'ok');
+      loadZone();
+    }));
+    card.querySelector('#z-net')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      await api.post('/shifts/zone/network');
+      toast('تم — الأجهزة اللي على إنترنت المحل هتتحسب جوه المحل', 'ok');
+      loadZone();
+    }));
+    card.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', async () => {
+      await api.post('/shifts/zone/network', { remove: b.dataset.rm }).catch(toastErrLocal);
+      loadZone();
+    }));
+    card.querySelector('#z-save').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      const on = card.querySelector('#z-on').value;
+      if (on === '1' && !hasLoc && !net.saved.length && cloud) throw new Error('حدد موقع المحل الأول (خطوة 1)');
+      state.settings = await api.put('/settings', { attendance_zone: on, zone_radius: card.querySelector('#z-radius').value });
+      toast('تم الحفظ', 'ok');
+      loadZone();
+    }));
+  }
+  loadZone().catch(toastErrLocal);
   loadNotif().catch(toastErrLocal);
 
   el.querySelector('#logout-others').addEventListener('click', (e) => busy(e.currentTarget, async () => {

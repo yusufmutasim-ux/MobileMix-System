@@ -1,5 +1,5 @@
 // Shift button (check in / out), notification bell, live updates and phone notifications.
-import { api, can, icon, esc, modal, toast, toastErr, busy, fmtDate } from './core.js';
+import { api, state, can, icon, esc, modal, toast, toastErr, busy, fmtDate } from './core.js';
 
 const TYPE_ICON = { sale: 'cart', sale_return: 'undo', repair_in: 'wrench', repair_out: 'check', shift_in: 'logout', shift_out: 'logout' };
 const TYPE_BG = { sale: 'bg-mint', sale_return: 'bg-peony', repair_in: 'bg-periwinkle', repair_out: 'bg-sky', shift_in: 'bg-aqua', shift_out: 'bg-lavender' };
@@ -24,8 +24,8 @@ export async function initShift() {
 
   async function checkIn() {
     await busy(box.querySelector('button'), async () => {
-      shift = (await api.post('/shifts/check-in')).open;
-      toast('تم تسجيل الحضور — شيفت موفق 💪', 'ok');
+      shift = (await postWithLocation('/shifts/check-in', {})).open;
+      toast(`تم تسجيل الحضور${shift.in_method === 'gps' ? ' من المحل 📍' : ''} — شيفت موفق 💪`, 'ok');
       draw();
     });
   }
@@ -36,7 +36,7 @@ export async function initShift() {
         <label class="field"><span>ملاحظة (اختياري)</span><input class="input" id="out-note" placeholder="مثلاً: سلمت الدرج للمسائي"></label>`,
       foot: '<button class="btn btn-outline" data-close>لأ</button><button class="btn btn-primary" data-ok>تسجيل انصراف</button>',
       onMount: (m, close) => m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-        const r = await api.post('/shifts/check-out', { note: m.querySelector('#out-note').value });
+        const r = await postWithLocation('/shifts/check-out', { note: m.querySelector('#out-note').value });
         toast(`تم الانصراف — مدة الشيفت ${Math.floor(r.minutes / 60)} س ${r.minutes % 60} د`, 'ok');
         close(true);
       })),
@@ -48,6 +48,56 @@ export async function initShift() {
 }
 
 export const currentShift = () => shift;
+
+// ---------------- shop zone (location) ----------------
+/** Phone location, as { lat, lng, accuracy } in meters. */
+export function getPosition() {
+  return new Promise((resolve, reject) => {
+    if (!window.isSecureContext || !navigator.geolocation) {
+      reject(new Error('تحديد الموقع محتاج رابط آمن (https) — افتح السيستم من رابط Railway'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy) }),
+      (e) => reject(new Error(e.code === 1
+        ? 'لازم تسمح للسيستم يعرف موقعك: من إعدادات المتصفح ← الموقع (Location) ← سماح، وجرب تاني'
+        : 'مقدرناش نحدد موقعك — اتأكد إن الـ GPS (الموقع) شغال في الموبايل وجرب تاني')),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+    );
+  });
+}
+
+/**
+ * When the shop-zone rule is on, attach the phone's location to check in / out.
+ * If the location can't be read the server may still accept it (shop Wi-Fi); if not,
+ * the location problem is the more useful message to show.
+ */
+async function postWithLocation(url, body) {
+  const loc = await withLocation();
+  const { _locationError: locErr, ...coords } = loc;
+  try {
+    return await api.post(url, { ...body, ...coords });
+  } catch (e) {
+    throw locErr && /موقع|GPS|بعيد/.test(e.message) ? new Error(locErr) : e;
+  }
+}
+
+async function withLocation() {
+  const st = await api.get('/settings').catch(() => state.settings);
+  state.settings = { ...state.settings, ...st };
+  if (st.attendance_zone !== '1' || state.user.role === 'admin') return {};
+  const wait = document.createElement('div');
+  wait.className = 'toast';
+  wait.textContent = '📍 بنحدد موقعك…';
+  (document.querySelector('.toasts') || document.body).append(wait);
+  try {
+    return await getPosition();
+  } catch (e) {
+    return { _locationError: e.message };
+  } finally {
+    wait.remove();
+  }
+}
 
 // ---------------- bell ----------------
 export async function initNotifications() {

@@ -209,7 +209,10 @@ CREATE TABLE IF NOT EXISTS shifts (
   check_in_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   check_out_at TEXT,
   note TEXT,
-  closed_by INTEGER REFERENCES users(id)
+  closed_by INTEGER REFERENCES users(id),
+  -- where the check in / out happened: 'gps' (inside the shop zone), 'wifi' (shop network), 'none' (zone off)
+  in_method TEXT, in_lat REAL, in_lng REAL, in_accuracy REAL, in_distance REAL,
+  out_method TEXT, out_lat REAL, out_lng REAL, out_accuracy REAL, out_distance REAL
 );
 CREATE INDEX IF NOT EXISTS idx_shifts_user ON shifts(user_id, check_in_at);
 
@@ -272,6 +275,11 @@ const DEFAULT_SETTINGS = {
   backup_dir: '',
   backup_keep: '30',
   require_shift: '0',
+  attendance_zone: '0',
+  shop_lat: '',
+  shop_lng: '',
+  zone_radius: '100',
+  shop_networks: '',
 };
 
 function open(file) {
@@ -280,6 +288,7 @@ function open(file) {
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   upgrade(db);
   db.exec(SCHEMA);
+  addMissingColumns(db);
 
   const setDefault = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) setDefault.run(k, v);
@@ -333,6 +342,18 @@ function applyAdminPassword(db) {
  * Upgrades databases created by older versions. SQLite can't change a CHECK constraint in place,
  * so tables whose allowed values grew are rebuilt (same columns, data copied as-is).
  */
+/** Columns added in later versions to tables that already exist in older databases. */
+function addMissingColumns(db) {
+  const wanted = {
+    shifts: ['in_method TEXT', 'in_lat REAL', 'in_lng REAL', 'in_accuracy REAL', 'in_distance REAL',
+      'out_method TEXT', 'out_lat REAL', 'out_lng REAL', 'out_accuracy REAL', 'out_distance REAL'],
+  };
+  for (const [table, cols] of Object.entries(wanted)) {
+    const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+    for (const c of cols) if (!have.has(c.split(' ')[0])) db.exec(`ALTER TABLE ${table} ADD COLUMN ${c}`);
+  }
+}
+
 function upgrade(db) {
   const tableSql = (name) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)?.sql;
   const rebuild = [];
