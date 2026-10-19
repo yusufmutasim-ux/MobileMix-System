@@ -181,3 +181,26 @@ test('upgrades a database from the first version', () => {
   assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'idx_movements_product'").get());
   db.close();
 });
+
+test('ADMIN_PASSWORD applies to an existing database until changed in the app', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mm-')), 'pw.db');
+  const { verifyPassword } = require('../server/auth');
+  const hash = (db) => db.prepare("SELECT password_hash h FROM users WHERE username = 'admin'").get().h;
+  const prev = process.env.ADMIN_PASSWORD;
+  try {
+    delete process.env.ADMIN_PASSWORD;
+    open(file).close(); // first deploy without the variable
+    process.env.ADMIN_PASSWORD = '  Shop#Pass1 '; // added later (with stray spaces)
+    let db = open(file);
+    assert.ok(verifyPassword('Shop#Pass1', hash(db)));
+    // After the owner changes it in the app, the variable no longer overrides it
+    db.prepare("UPDATE users SET password_hash = 'x' WHERE username = 'admin'").run();
+    db.prepare("INSERT INTO audit_log (user_id, action) VALUES (1, 'password.change')").run();
+    db.close();
+    db = open(file);
+    assert.equal(hash(db), 'x');
+    db.close();
+  } finally {
+    if (prev === undefined) delete process.env.ADMIN_PASSWORD; else process.env.ADMIN_PASSWORD = prev;
+  }
+});

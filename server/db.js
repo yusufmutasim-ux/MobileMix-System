@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
-const { hashPassword } = require('./auth');
+const { hashPassword, verifyPassword } = require('./auth');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -240,7 +240,7 @@ function open(file) {
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
     // On a public server a known default password is unsafe: use ADMIN_PASSWORD or a random one shown in the logs
-    let pw = process.env.ADMIN_PASSWORD || '';
+    let pw = (process.env.ADMIN_PASSWORD || '').trim();
     if (!pw && require('./hosting').cloud) {
       pw = require('node:crypto').randomBytes(6).toString('base64url');
       console.log(`\n  🔑 أول دخول: اسم المستخدم admin — كلمة السر: ${pw}\n     (غيّرها بعد ما تدخل)\n`);
@@ -251,7 +251,24 @@ function open(file) {
     for (const c of ['موبايلات', 'إكسسوارات', 'شواحن وكابلات', 'سماعات', 'جرابات وإسكرينات', 'قطع غيار'])
       addCat.run(c);
   }
+  applyAdminPassword(db);
   return db;
+}
+
+/**
+ * ADMIN_PASSWORD (e.g. a Railway variable) sets the admin's password on every start — also when the
+ * variable was added after the first deploy — until the admin changes the password inside the system.
+ */
+function applyAdminPassword(db) {
+  const pw = (process.env.ADMIN_PASSWORD || '').trim();
+  if (!pw) return;
+  const admin = db.prepare("SELECT id, password_hash FROM users WHERE username = 'admin'").get();
+  if (!admin) return;
+  const changedInApp = db.prepare("SELECT 1 FROM audit_log WHERE user_id = ? AND action = 'password.change'").get(admin.id);
+  if (changedInApp || verifyPassword(pw, admin.password_hash)) return;
+  db.prepare('UPDATE users SET password_hash = ?, active = 1 WHERE id = ?').run(hashPassword(pw), admin.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(admin.id);
+  console.log('  🔑 كلمة سر admin اتظبطت من ADMIN_PASSWORD');
 }
 
 /**
