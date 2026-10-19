@@ -59,6 +59,34 @@ const timeOf = (s) => s.slice(11, 16);
 
 /** Attendance: every employee checks in when the shift starts and out when they leave. */
 module.exports = function shiftRoutes(api, db) {
+  // Rejected check in / out from outside the shop: saved, and the owner is notified
+  // (at most once every 10 minutes per person, so retries don't flood the phone).
+  const lastAlert = new Map();
+  function zoneOrAlert(req, kind) {
+    try {
+      return checkZone(db, req);
+    } catch (e) {
+      const b = req.body || {};
+      let distance = null;
+      const st = getSettings(db);
+      if (b.lat != null && b.lat !== '' && st.shop_lat !== '') {
+        distance = Math.round(haversine(Number(b.lat), Number(b.lng), Number(st.shop_lat), Number(st.shop_lng)));
+      }
+      audit(db, req.user.id, 'shift.denied', { kind, reason: e.message, distance, accuracy: Number(b.accuracy) || null, ip: cleanIp(req.ip) });
+      const key = `${req.user.id}:${kind}`;
+      if (Date.now() - (lastAlert.get(key) || 0) > 10 * 60_000) {
+        lastAlert.set(key, Date.now());
+        const where = distance != null ? `على بعد ${distance > 1000 ? `${(distance / 1000).toFixed(1)} كم` : `${distance} متر`} من المحل` : 'من غير ما يبعت موقعه';
+        req.app.locals.notifier.notify({
+          type: 'shift_denied', actorId: req.user.id, url: '#/attendance',
+          title: `⚠️ ${req.user.full_name} حاول يسجل ${kind === 'in' ? 'حضور' : 'انصراف'} من برة المحل`,
+          body: `${where} • الساعة ${nowLocal(db).slice(11, 16)} • اترفض`,
+        });
+      }
+      throw e;
+    }
+  }
+
   const openShift = (userId) => db.prepare('SELECT * FROM shifts WHERE user_id = ? AND check_out_at IS NULL ORDER BY id DESC LIMIT 1').get(userId);
 
   api.get('/shifts/me', requireAuth, (req, res) => {
@@ -69,7 +97,7 @@ module.exports = function shiftRoutes(api, db) {
   api.post('/shifts/check-in', requireAuth, (req, res) => {
     if (openShift(req.user.id)) throw bad('إنت مسجل حضور بالفعل');
     const note = str(req.body?.note, 'الملاحظة', { optional: true, max: 200 });
-    const z = checkZone(db, req);
+    const z = zoneOrAlert(req, 'in');
     const r = db.prepare(`INSERT INTO shifts (user_id, note, in_method, in_lat, in_lng, in_accuracy, in_distance)
                           VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, note, z.method, z.lat, z.lng, z.accuracy, z.distance);
     const s = db.prepare('SELECT * FROM shifts WHERE id = ?').get(r.lastInsertRowid);
@@ -84,7 +112,7 @@ module.exports = function shiftRoutes(api, db) {
     const s = openShift(req.user.id);
     if (!s) throw bad('إنت مش مسجل حضور');
     const note = str(req.body?.note, 'الملاحظة', { optional: true, max: 200 });
-    const z = checkZone(db, req);
+    const z = zoneOrAlert(req, 'out');
     const out = nowLocal(db);
     db.prepare(`UPDATE shifts SET check_out_at = ?, note = COALESCE(?, note),
                 out_method = ?, out_lat = ?, out_lng = ?, out_accuracy = ?, out_distance = ? WHERE id = ?`)
@@ -164,8 +192,13 @@ module.exports = function shiftRoutes(api, db) {
       const t = (totals[s.user_id] ||= { user_id: s.user_id, full_name: s.full_name, shifts: 0, minutes: 0, days: new Set() });
       t.shifts++; t.minutes += s.minutes; t.days.add(s.check_in_at.slice(0, 10));
     }
+    const denied = db.prepare(`
+      SELECT a.id, a.details, a.created_at, u.full_name, a.user_id FROM audit_log a JOIN users u ON u.id = a.user_id
+      WHERE a.action = 'shift.denied' AND date(a.created_at) BETWEEN ? AND ? ${userId ? 'AND a.user_id = ?' : ''}
+      ORDER BY a.id DESC LIMIT 200`).all(...(userId ? [from, to, userId] : [from, to]))
+      .map(({ details, ...d }) => ({ ...d, ...JSON.parse(details || '{}') }));
     res.json({
-      from, to, shifts: rows,
+      from, to, shifts: rows, denied,
       by_user: Object.values(totals).map((t) => ({ ...t, days: t.days.size })).sort((a, b) => b.minutes - a.minutes),
     });
   });
@@ -189,9 +222,23 @@ module.exports = function shiftRoutes(api, db) {
 
 /** When "require_shift" is on, staff must be checked in to sell or receive devices. */
 module.exports.haversine = haversine;
+const shiftMode = (db) => db.prepare("SELECT value FROM settings WHERE key = 'require_shift'").get()?.value || '0';
+const hasOpenShift = (db, userId) => !!db.prepare('SELECT 1 FROM shifts WHERE user_id = ? AND check_out_at IS NULL').get(userId);
+
+/**
+ * require_shift = '2': staff see nothing until they check in. Everything except signing in,
+ * checking in and a few harmless reads is refused by the server itself, not only hidden.
+ */
+const OPEN_WHEN_LOCKED = [/^\/health$/, /^\/version$/, /^\/auth\//, /^\/shifts\/(me|check-in|zone\/test)$/, /^\/notifications/, /^\/push\//];
+module.exports.shiftLock = (db) => (req, res, next) => {
+  if (!req.user || req.user.role === 'admin' || shiftMode(db) !== '2') return next();
+  if (OPEN_WHEN_LOCKED.some((re) => re.test(req.path)) || (req.method === 'GET' && req.path === '/settings')) return next();
+  if (hasOpenShift(db, req.user.id)) return next();
+  res.status(403).json({ error: 'لازم تسجل حضور (بدء الشيفت) الأول', code: 'SHIFT_REQUIRED' });
+};
+
 module.exports.requireOpenShift = (db, user) => {
-  const on = db.prepare("SELECT value FROM settings WHERE key = 'require_shift'").get()?.value === '1';
+  const on = shiftMode(db) !== '0';
   if (!on || user.role === 'admin') return;
-  const s = db.prepare('SELECT 1 FROM shifts WHERE user_id = ? AND check_out_at IS NULL').get(user.id);
-  if (!s) throw bad('لازم تسجل حضور (بدء الشيفت) الأول');
+  if (!hasOpenShift(db, user.id)) throw bad('لازم تسجل حضور (بدء الشيفت) الأول');
 };

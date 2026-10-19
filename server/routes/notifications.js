@@ -60,7 +60,7 @@ module.exports = function notificationRoutes(api, db) {
   api.put('/notifications/prefs', perm, (req, res) => {
     const all = Object.keys(notifier().TYPES);
     const enabled = Array.isArray(req.body?.enabled) ? req.body.enabled.filter((t) => all.includes(t)) : all;
-    setPref(req.user.id, 'notify_types', JSON.stringify(enabled));
+    setPref(req.user.id, 'notify_off', JSON.stringify(all.filter((t) => !enabled.includes(t))));
     res.json({ enabled });
   });
 

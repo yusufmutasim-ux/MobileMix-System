@@ -27,6 +27,13 @@ export async function render(el, { actions }) {
         <thead><tr><th>الموظف</th><th>اليوم</th><th>الحضور</th><th>الانصراف</th><th>المدة</th><th>ملاحظة</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table></div>
+    </div>
+    <div class="card hidden" id="denied-card">
+      <div class="card-head"><h2>⚠️ محاولات مرفوضة (من برة المحل)</h2><span class="pill pill-bad" id="denied-count"></span></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>الموظف</th><th>الوقت</th><th>النوع</th><th>المسافة</th><th>السبب</th></tr></thead>
+        <tbody id="denied"></tbody>
+      </table></div>
     </div>`;
 
   const $ = (s) => el.querySelector(s);
@@ -69,6 +76,15 @@ export async function render(el, { actions }) {
       <td class="small">${esc(s.note || '')}</td>
       <td class="end">${s.check_out_at ? '' : `<button class="btn btn-ghost btn-sm" data-close-shift="${s.id}">إنهاء</button>`}</td>
     </tr>`).join('') : emptyRow(7, 'مفيش حضور في الفترة دي');
+    const den = data.denied || [];
+    $('#denied-card').classList.toggle('hidden', !den.length);
+    $('#denied-count').textContent = den.length;
+    $('#denied').innerHTML = den.map((d) => `<tr>
+      <td><b style="font-weight:500">${esc(d.full_name)}</b></td>
+      <td class="small">${fmtDate(d.created_at)}</td>
+      <td>${d.kind === 'out' ? 'انصراف' : 'حضور'}</td>
+      <td class="num">${d.distance != null ? (d.distance > 1000 ? `${(d.distance / 1000).toFixed(1)} كم` : `${d.distance} م`) : '—'}</td>
+      <td class="small">${esc(d.reason || '')}</td></tr>`).join('');
     $('#rows').querySelectorAll('[data-close-shift]').forEach((b) => b.addEventListener('click', () => closeShift(b.dataset.closeShift)));
   }
 

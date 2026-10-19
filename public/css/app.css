@@ -546,3 +546,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
   #page-actions:empty { display: none; }
   #shift-box .btn { padding: 7px 12px; font-size: 13px; }
 }
+
+/* Lock screen (before check in) */
+.lock-screen { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: var(--cloud); }
+.lock-box { background: var(--snow); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 32px 24px; width: 100%; max-width: 420px; text-align: center; }
+.lock-box h1 { font-size: 28px; font-weight: 300; margin: 22px 0 6px; letter-spacing: -0.5px; }

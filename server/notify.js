@@ -10,7 +10,11 @@ const TYPES = {
   repair_out: 'تسليم جهاز صيانة',
   shift_in: 'تسجيل حضور',
   shift_out: 'تسجيل انصراف',
+  shift_denied: 'محاولة حضور/انصراف من برة المحل',
 };
+
+// Types added after people already saved their choices: on for them unless they turn it off
+const ADDED_LATER = ['shift_denied'];
 
 /**
  * Sends each event to managers/admins three ways:
@@ -35,8 +39,15 @@ function createNotifier(db, { send } = {}) {
   const clients = new Set(); // { res, user }
 
   function prefs(userId) {
-    const v = db.prepare("SELECT value FROM user_prefs WHERE user_id = ? AND key = 'notify_types'").get(userId)?.value;
-    try { return v ? JSON.parse(v) : Object.keys(TYPES); } catch { return Object.keys(TYPES); }
+    const all = Object.keys(TYPES);
+    const get = (k) => db.prepare('SELECT value FROM user_prefs WHERE user_id = ? AND key = ?').get(userId, k)?.value;
+    try {
+      const off = get('notify_off');
+      if (off) return all.filter((t) => !JSON.parse(off).includes(t));
+      const legacy = get('notify_types'); // older format: the list of enabled types
+      if (legacy) return [...new Set([...JSON.parse(legacy), ...ADDED_LATER])].filter((t) => all.includes(t));
+    } catch { /* fall through */ }
+    return all;
   }
 
   const wants = (user, n) => user.id !== n.actor_id && can(user, 'notifications.receive') && prefs(user.id).includes(n.type);

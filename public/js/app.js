@@ -78,6 +78,12 @@ async function route() {
 
   const item = NAV.find((n) => n.path === r.path && (!n.perm || can(n.perm)));
   if (!item) { location.hash = '#/'; return; }
+  if (await lockedOut()) {
+    const { render } = await import('./views/lock.js');
+    document.getElementById('app').innerHTML = '<div id="view"></div>';
+    render(document.getElementById('view'));
+    return;
+  }
   if (!document.querySelector('.shell')) {
     shell();
     initShift();
@@ -156,6 +162,16 @@ function shell() {
   document.getElementById('menu').addEventListener('click', toggleMenu);
   document.getElementById('more').addEventListener('click', toggleMenu);
   document.getElementById('scrim').addEventListener('click', toggleMenu);
+}
+
+/** Staff can't see anything until they check in, when the owner turned that on. */
+let shiftChecked = null;
+async function lockedOut() {
+  if (state.user.role === 'admin' || state.settings.require_shift !== '2') return false;
+  if (shiftChecked === null) {
+    try { shiftChecked = !!(await api.get('/shifts/me')).open; } catch { shiftChecked = false; }
+  }
+  return !shiftChecked;
 }
 
 /** The 4 most-used screens this person can open, for the phone's bottom bar. */

@@ -24,6 +24,9 @@ export async function api(path, { method = 'GET', body } = {}) {
     location.hash = '#/login';
     location.reload();
   }
+  if (res.status === 403 && data?.code === 'SHIFT_REQUIRED' && !document.querySelector('.lock-screen')) {
+    location.reload();
+  }
   if (!res.ok) throw new Error(data?.error || 'حصل خطأ، حاول تاني');
   return data;
 }

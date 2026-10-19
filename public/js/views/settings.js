@@ -6,7 +6,7 @@ const AUDIT_NAMES = {
   login: 'تسجيل دخول', 'password.change': 'تغيير كلمة السر', 'user.create': 'إضافة موظف', 'user.update': 'تعديل موظف',
   'settings.update': 'تعديل الإعدادات', 'backup.download': 'نسخة احتياطية', 'product.create': 'إضافة منتج',
   'product.price': 'تغيير سعر', 'product.deactivate': 'إيقاف منتج', 'sale.return': 'مرتجع',
-  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'zone.network': 'تسجيل إنترنت المحل', 'backup.auto': 'نسخة احتياطية',
+  'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'zone.network': 'تسجيل إنترنت المحل', 'shift.denied': 'محاولة حضور مرفوضة', 'backup.auto': 'نسخة احتياطية',
 };
 
 export async function render(el) {
@@ -32,8 +32,9 @@ export async function render(el) {
             ${Object.entries(LABEL_SIZES).map(([k, v]) => `<option value="${k}" ${s.label_size === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
           <label class="field"><span>أقصى خصم للكاشير %</span><input class="input num" type="number" min="0" max="100" name="cashier_max_discount" value="${esc(s.cashier_max_discount)}"></label>
           <label class="field full"><span>الحضور والانصراف</span><select class="input" name="require_shift">
-            <option value="0" ${s.require_shift !== '1' ? 'selected' : ''}>اختياري — الموظف يسجل حضور لو حب</option>
-            <option value="1" ${s.require_shift === '1' ? 'selected' : ''}>إجباري — مينفعش يبيع أو يستلم جهاز من غير ما يسجل حضور</option></select></label>
+            <option value="0" ${!['1', '2'].includes(s.require_shift) ? 'selected' : ''}>اختياري — الموظف يسجل حضور لو حب</option>
+            <option value="1" ${s.require_shift === '1' ? 'selected' : ''}>إجباري للبيع — مينفعش يبيع أو يستلم جهاز من غير حضور</option>
+            <option value="2" ${s.require_shift === '2' ? 'selected' : ''}>إجباري لكل حاجة — السيستم مقفول للموظف لحد ما يسجل حضور</option></select></label>
           <label class="field"><span>بادئة تذكرة الصيانة</span><input class="input ltr" name="repair_prefix" value="${esc(s.repair_prefix)}"></label>
           <div></div>
           <label class="field full"><span>شروط الصيانة (بتتطبع على إيصال الاستلام)</span><textarea class="input" name="repair_terms" rows="3">${esc(s.repair_terms)}</textarea></label>

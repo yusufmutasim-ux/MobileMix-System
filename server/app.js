@@ -7,7 +7,7 @@ const hosting = require('./hosting');
 const { createNotifier } = require('./notify');
 
 // Bump with every release so it's easy to see which version a shop is running
-const BUILD = '2026.10.19-zone3';
+const BUILD = '2026.10.20-lock1';
 
 function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSender } = {}) {
   const app = express();
@@ -42,6 +42,7 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
   // Which build is running (Railway sets the commit), to check a deploy went through
   const version = `${require('../package.json').version}${process.env.RAILWAY_GIT_COMMIT_SHA ? `-${process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7)}` : ''}`;
   api.get('/version', (_req, res) => res.json({ version, build: BUILD }));
+  api.use(require('./routes/shifts').shiftLock(db));
   require('./routes/admin')(api, db, { dataDir });
   require('./routes/products')(api, db);
   require('./routes/sales')(api, db);

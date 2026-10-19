@@ -1,8 +1,8 @@
 // Shift button (check in / out), notification bell, live updates and phone notifications.
 import { api, state, can, icon, esc, modal, toast, toastErr, busy, fmtDate } from './core.js';
 
-const TYPE_ICON = { sale: 'cart', sale_return: 'undo', repair_in: 'wrench', repair_out: 'check', shift_in: 'logout', shift_out: 'logout' };
-const TYPE_BG = { sale: 'bg-mint', sale_return: 'bg-peony', repair_in: 'bg-periwinkle', repair_out: 'bg-sky', shift_in: 'bg-aqua', shift_out: 'bg-lavender' };
+const TYPE_ICON = { shift_denied: 'alert', sale: 'cart', sale_return: 'undo', repair_in: 'wrench', repair_out: 'check', shift_in: 'logout', shift_out: 'logout' };
+const TYPE_BG = { shift_denied: 'bg-peony', sale: 'bg-mint', sale_return: 'bg-peony', repair_in: 'bg-periwinkle', repair_out: 'bg-sky', shift_in: 'bg-aqua', shift_out: 'bg-lavender' };
 
 let unread = 0;
 let shift = null; // open shift or null
@@ -23,31 +23,8 @@ export async function initShift() {
   draw();
 
   async function checkIn() {
-    // Zone off: one tap, as before
-    if (!(await zoneOn())) {
-      await busy(box.querySelector('button'), async () => {
-        shift = (await api.post('/shifts/check-in')).open;
-        const ownerExempt = state.user.role === 'admin' && state.settings.attendance_zone === '1';
-        toast(ownerExempt
-          ? 'تم تسجيل الحضور — إنت كمدير مستثنى من شرط الموقع، الموظفين هم اللي هيتطلب منهم الموقع 📍'
-          : 'تم تسجيل الحضور — شيفت موفق 💪', 'ok');
-        draw();
-      });
-      return;
-    }
-    const done = await modal({
-      title: 'تسجيل حضور',
-      body: `<p style="margin-top:0">عشان نتأكد إنك <b>جوه المحل</b>، السيستم محتاج يعرف موقعك.</p>
-        <div class="card bg-aqua" style="box-shadow:none;padding:12px 14px" id="loc-status">
-          لما تدوس "سجّل حضوري"، الموبايل هيسألك: <b>"السماح للموقع بمعرفة موقعك؟"</b> ← دوس <b>سماح / Allow</b>.</div>`,
-      foot: '<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>📍 سجّل حضوري</button>',
-      onMount: (m, close) => m.querySelector('[data-ok]').addEventListener('click', (e) => runShift(e.currentTarget, m.querySelector('#loc-status'), async (extra) => {
-        shift = (await api.post('/shifts/check-in', extra)).open;
-        toast(`تم تسجيل الحضور${shift.in_method === 'gps' ? ' من المحل 📍' : shift.in_method === 'wifi' ? ' من شبكة المحل 📶' : ''} — شيفت موفق 💪`, 'ok');
-        close(true);
-      })),
-    });
-    if (done) draw();
+    const s2 = await startShiftFlow(box.querySelector('button'));
+    if (s2) { shift = s2; draw(); }
   }
   async function checkOut() {
     const zone = await zoneOn();
@@ -62,6 +39,8 @@ export async function initShift() {
         const r = await api.post('/shifts/check-out', { note: m.querySelector('#out-note').value, ...extra });
         toast(`تم الانصراف — مدة الشيفت ${Math.floor(r.minutes / 60)} س ${r.minutes % 60} د`, 'ok');
         close(true);
+        // Locked mode: back to the "start your shift" screen
+        if (state.settings.require_shift === '2' && state.user.role !== 'admin') setTimeout(() => location.reload(), 900);
       }), zone),
     });
     if (ok) { shift = null; draw(); }
@@ -71,6 +50,33 @@ export async function initShift() {
 }
 
 export const currentShift = () => shift;
+
+/** Check in (with the shop-zone location step when it's on). Returns the new shift, or null if cancelled. */
+export async function startShiftFlow(btn) {
+  if (!(await zoneOn())) {
+    let s = null;
+    await busy(btn, async () => {
+      s = (await api.post('/shifts/check-in')).open;
+      const ownerExempt = state.user.role === 'admin' && state.settings.attendance_zone === '1';
+      toast(ownerExempt
+        ? 'تم تسجيل الحضور — إنت كمدير مستثنى من شرط الموقع، الموظفين هم اللي هيتطلب منهم الموقع 📍'
+        : 'تم تسجيل الحضور — شيفت موفق 💪', 'ok');
+    });
+    return s;
+  }
+  return modal({
+    title: 'تسجيل حضور',
+    body: `<p style="margin-top:0">عشان نتأكد إنك <b>جوه المحل</b>، السيستم محتاج يعرف موقعك.</p>
+      <div class="card bg-aqua" style="box-shadow:none;padding:12px 14px" id="loc-status">
+        لما تدوس "سجّل حضوري"، الموبايل هيسألك: <b>"السماح للموقع بمعرفة موقعك؟"</b> ← دوس <b>سماح / Allow</b>.</div>`,
+    foot: '<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>📍 سجّل حضوري</button>',
+    onMount: (m, close) => m.querySelector('[data-ok]').addEventListener('click', (e) => runShift(e.currentTarget, m.querySelector('#loc-status'), async (extra) => {
+      const s = (await api.post('/shifts/check-in', extra)).open;
+      toast(`تم تسجيل الحضور${s.in_method === 'gps' ? ' من المحل 📍' : s.in_method === 'wifi' ? ' من شبكة المحل 📶' : ''} — شيفت موفق 💪`, 'ok');
+      close(s);
+    })),
+  });
+}
 
 // ---------------- shop zone (location) ----------------
 const isIOSDevice = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
