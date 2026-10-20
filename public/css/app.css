@@ -1038,8 +1038,18 @@ html { background: var(--cloud); }
   .topbar { background: var(--cloud); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 body::before {
-  content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); z-index: 1000;
+  content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--top); z-index: 1000;
   background: var(--cloud); pointer-events: none;
 }
-body:has(.login)::before { background: var(--snow); }
 @media (max-width: 860px) { body:has(.modal-back:not(.closing))::before { background: var(--snow); } }
+
+/* Space kept free at the top: the clock area, plus iOS's blur band in the installed iPhone app */
+:root { --top: env(safe-area-inset-top); }
+:root.ios-app { --top: calc(env(safe-area-inset-top) + 34px); }
+@media (max-width: 860px) {
+  .topbar { padding-top: calc(var(--top) + 14px); }
+  .sidebar { padding-top: calc(var(--top) + 18px); }
+  .modal-head { padding-top: max(14px, calc(var(--top) + 6px)); }
+  .pos-cart { padding-top: max(14px, calc(var(--top) + 6px)); }
+  .login, .lock-screen { padding-top: var(--top); }
+}

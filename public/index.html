@@ -13,6 +13,8 @@
       var dark = m === 'dark' || (m === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       if (dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b0b0b');
+      // Installed on an iPhone home screen: iOS blurs a band under the clock, so the app keeps its content below it
+      if (navigator.standalone === true) document.documentElement.classList.add('ios-app');
     })();
   </script>
   <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
