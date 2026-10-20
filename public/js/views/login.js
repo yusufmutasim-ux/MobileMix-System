@@ -5,9 +5,7 @@ export function render(el, { onLogin }) {
   <div class="login">
     <div class="login-form">
       <form class="box" autocomplete="on">
-        ${LOGO_FULL(54)}
-        <h1>أهلاً بيك 👋</h1>
-        <p class="muted" style="margin:0 0 26px">سجّل دخولك عشان تبدأ شيفتك</p>
+        <div class="login-logo">${LOGO_FULL(64)}</div>
         <label class="field"><span>اسم المستخدم</span><input class="input input-lg ltr" name="username" autocomplete="username" required autofocus></label>
         <label class="field" style="margin-top:16px"><span>كلمة السر</span><input class="input input-lg ltr" type="password" name="password" autocomplete="current-password" required></label>
         <button class="btn btn-primary btn-lg" style="width:100%;margin-top:28px" type="submit">دخول ${icon('logout', '')}</button>

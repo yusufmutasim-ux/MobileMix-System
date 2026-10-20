@@ -1053,3 +1053,5 @@ body::before {
   .pos-cart { padding-top: max(14px, calc(var(--top) + 6px)); }
   .login, .lock-screen { padding-top: var(--top); }
 }
+/* Login: just the logo, centred above the form */
+.login-logo { display: flex; justify-content: center; margin: 4px 0 30px; }
