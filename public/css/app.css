@@ -1378,3 +1378,14 @@ body:has(.login)::before { background: #0d0d0d; }
       radial-gradient(320px 280px at 0% 78%, rgba(255, 212, 92, .05), transparent 70%);
   }
 }
+
+/* Login fills the whole screen edge to edge (behind the clock and the home bar too) */
+html:has(.login) { background: transparent; } /* the body backdrop then paints the whole screen */
+body:has(.login) {
+  min-height: 100%;
+  background: radial-gradient(900px 600px at 80% 0%, rgba(194, 214, 79, .22), transparent 60%),
+    radial-gradient(700px 500px at 0% 100%, rgba(255, 212, 92, .12), transparent 60%), #0d0d0d;
+  background-attachment: fixed;
+}
+.login { background: transparent; min-height: 100vh; min-height: 100lvh; }
+body:has(.login)::before { background: transparent; }
