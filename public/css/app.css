@@ -1029,3 +1029,17 @@ html, body { overflow-x: clip; max-width: 100%; }
 }
 /* Whatever iPhone paints behind the clock takes the page colour, never plain black */
 html { background: var(--cloud); }
+
+/* ============ iPhone (iOS 26+) top edge ============
+   iOS draws a frosted blur under the clock unless a solid, pinned box covers the top edge.
+   So on phones the header is solid (no see-through glass), and a solid strip sits behind the clock
+   on every screen (it has no height outside the installed app). */
+@media (max-width: 860px) {
+  .topbar { background: var(--cloud); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+body::before {
+  content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); z-index: 1000;
+  background: var(--cloud); pointer-events: none;
+}
+body:has(.login)::before { background: var(--snow); }
+@media (max-width: 860px) { body:has(.modal-back:not(.closing))::before { background: var(--snow); } }
