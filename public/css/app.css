@@ -1018,3 +1018,17 @@ html, body { overflow-x: clip; max-width: 100%; }
   .backup-table td { display: block; padding: 0; border: 0; }
   .backup-table td.end { margin-inline-start: auto; }
 }
+
+/* ============ Use the real visible screen height (iPhone's 100vh is taller than what you see) ============ */
+.sidebar { height: 100vh; height: 100dvh; }
+.shell, .login { min-height: 100vh; min-height: 100dvh; }
+@media (min-width: 861px) { .modal { max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); } }
+@media (max-width: 860px) {
+  /* Side menu: pinned to the top and bottom of the screen, the links scroll and the account row always shows */
+  .sidebar { top: 0; bottom: 0; height: auto; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .sidebar .brand { padding-bottom: 12px; }
+  .nav { min-height: 0; }
+  .nav a { padding: 9px 12px; }
+  .nav-sep { padding-top: 10px; }
+  .side-user { flex-shrink: 0; padding-top: 12px; }
+}
