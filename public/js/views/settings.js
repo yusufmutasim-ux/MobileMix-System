@@ -249,7 +249,7 @@ export async function render(el) {
     if (!box) return;
     const list = await api.get('/system/backups');
     const KIND = { reset: '<span class="pill pill-warn">قبل المسح</span>', restore: '<span class="pill pill-info">قبل الاسترجاع</span>', daily: '<span class="pill pill-gray">يومية</span>' };
-    box.innerHTML = list.length ? `<table class="table"><tbody>${list.slice(0, 15).map((b) => `<tr>
+    box.innerHTML = list.length ? `<table class="table backup-table"><tbody>${list.slice(0, 15).map((b) => `<tr>
         <td class="small">${fmtDate(b.at)}</td><td>${KIND[b.kind]}</td><td class="small muted num">${(b.size / 1024 / 1024).toFixed(1)} MB</td>
         <td class="end" style="white-space:nowrap">
           <a class="btn btn-ghost btn-sm" href="/api/system/backups/${encodeURIComponent(b.file)}" download title="تحميل">${icon('download')}</a>

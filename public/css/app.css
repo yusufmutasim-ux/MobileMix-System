@@ -249,7 +249,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .toast.ok { background: var(--ok); }
 
 /* ============ Login ============ */
-.login { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; background: var(--snow); }
+.login { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--snow); }
 .login-form { display: flex; align-items: center; justify-content: center; padding: 48px 24px; }
 .login-form .box { width: 100%; max-width: 380px; }
 .login-form h1 { font-size: 40px; font-weight: 300; letter-spacing: -1px; margin: 24px 0 8px; line-height: 1.15; }
@@ -286,7 +286,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .pos { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 24px; align-items: start; }
 .pos-cart { position: sticky; top: 84px; display: flex; flex-direction: column; max-height: calc(100vh - 110px); }
 .pos-cart .lines { overflow-y: auto; flex: 1; margin: 0 -8px; padding: 0 8px; }
-.line { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--cloud); }
+.line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--cloud); }
 .line .name { font-weight: 500; }
 .line .meta { font-size: 12px; color: var(--iron); }
 .line .controls { display: flex; align-items: center; gap: 6px; grid-column: 1 / -1; }
@@ -306,7 +306,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .pcard .t { font-weight: 500; line-height: 1.35; min-height: 40px; }
 .pcard .p { font-size: 17px; font-weight: 500; color: var(--violet); }
 .pcard.out { opacity: .5; }
-.pay-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pay-methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .pay-methods button { border: 1px solid var(--pebble); background: var(--snow); border-radius: var(--r-pill); padding: 8px 4px; cursor: pointer; font-weight: 500; font-size: 13px; }
 .pay-methods button.on { background: var(--violet); color: var(--snow); border-color: var(--violet); }
 .scan-hint { display: flex; align-items: center; gap: 8px; color: var(--iron); font-size: 13px; margin-top: 8px; }
@@ -367,7 +367,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 /* ============ Responsive ============ */
 @media (max-width: 1100px) {
   .grid-4, .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pos { grid-template-columns: 1fr; }
+  .pos { grid-template-columns: minmax(0, 1fr); }
   .pos-cart { position: static; max-height: none; }
 }
 @media (max-width: 860px) {
@@ -375,14 +375,14 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .sidebar.open { transform: none; box-shadow: var(--shadow-elevated); }
   .menu-btn { display: inline-flex; }
   .topbar, .content { padding-inline: 16px; }
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .login { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .login { grid-template-columns: minmax(0, 1fr); }
   .login-panel { display: none; }
-  .form-grid { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
   .card { padding: 18px; }
 }
 @media (max-width: 520px) {
-  .grid-4, .quick { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-4, .quick { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
   .kpi .value { font-size: 24px; }
 }
 .bc-text { font-family: 'Poppins', monospace; direction: ltr; text-align: center; letter-spacing: 1px; line-height: 1.1; }
@@ -412,13 +412,13 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .timeline .ev { position: relative; padding: 4px 0 10px; font-size: 14px; }
 .timeline .ev::before { content: ''; position: absolute; inset-inline-start: -22px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--violet); border: 2px solid var(--snow); }
 .timeline .ev .t { font-size: 12px; color: var(--iron); }
-.money-box { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.money-box { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .money-box > div { background: var(--cloud); border-radius: var(--r-md); padding: 12px 14px; }
 .money-box .k { font-size: 12px; color: var(--slate); }
 .money-box .v { font-size: 20px; font-weight: 500; margin-top: 2px; }
 .status-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .overdue { color: var(--danger); font-weight: 500; }
-@media (max-width: 860px) { .info-grid, .money-box { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 860px) { .info-grid, .money-box { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 /* Segmented tabs scroll sideways instead of wrapping */
 .seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
 .seg::-webkit-scrollbar { display: none; }
@@ -472,7 +472,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .kpi { min-height: 0; padding: 14px 16px; border-radius: 18px; }
   .kpi .label { font-size: 13px; }
   .kpi .value { font-size: 24px; margin-top: 6px; }
-  .grid-4, .grid-3, .quick { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-4, .grid-3, .quick { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
   .quick a { min-height: 0; padding: 14px; gap: 12px; border-radius: 18px; font-size: 14px; }
 
   /* ---- toolbars ---- */
@@ -512,7 +512,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .toast { max-width: 100%; }
 
   /* ---- POS: products full width, invoice as a bottom sheet ---- */
-  .products-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .products-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
   .pcard { padding: 12px; }
   .pcard .t { font-size: 14px; min-height: 38px; }
   .pcard .p { font-size: 15px; }
@@ -532,7 +532,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
   }
   .pos-cart.open { transform: none; }
   .cart-close { display: inline-flex; }
-  .pay-methods { grid-template-columns: repeat(3, 1fr); }
+  .pay-methods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .totals .grand { font-size: 24px; }
   .price-in { width: 90px; }
 
@@ -547,7 +547,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 @media (max-width: 860px) {
   .search { min-width: 0; }
   /* Home KPIs two per row */
-  #view .grid[style*="auto-fit"] { grid-template-columns: 1fr 1fr !important; }
+  #view .grid[style*="auto-fit"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
   /* Invoice sheet scrolls as a whole so items never get squeezed */
   .pos-cart { overflow-y: auto; }
   .pos-cart .lines { flex: none; overflow: visible; }
@@ -999,4 +999,22 @@ a.kpi:active, .quick a:active svg, .cardify tr:active { transform: scale(.98); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+}
+
+/* ============ Nothing wider than the screen ============ */
+.field, .form-grid > *, .grid > *, .info-grid > * { min-width: 0; }
+.input, select.input, textarea.input { min-width: 0; max-width: 100%; }
+/* iPhone date/time pickers have a wide built-in size; make them behave like other inputs */
+input.input[type="date"], input.input[type="time"], input.input[type="datetime-local"], input.input[type="month"] {
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; text-align: start;
+}
+input.input::-webkit-date-and-time-value { text-align: start; }
+.modal, .modal-body, .content, .main { overflow-x: clip; }
+html, body { overflow-x: clip; max-width: 100%; }
+/* Backups list: on narrow phones each backup wraps onto two lines instead of running off the screen */
+@media (max-width: 480px) {
+  .backup-table tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--pebble); }
+  .backup-table tr:last-child { border-bottom: 0; }
+  .backup-table td { display: block; padding: 0; border: 0; }
+  .backup-table td.end { margin-inline-start: auto; }
 }
