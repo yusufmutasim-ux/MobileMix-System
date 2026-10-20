@@ -914,14 +914,9 @@ img.brand-mark { width: 40px; height: 40px; object-fit: contain; }
 
 /* ============ Full screen on phones with a notch ============ */
 @media (max-width: 860px) {
-  .topbar { padding-top: calc(env(safe-area-inset-top) + 10px); }
+  .topbar { padding-top: calc(env(safe-area-inset-top) + 14px); }
   .sidebar { padding-top: calc(env(safe-area-inset-top) + 18px); }
   .login, .lock-screen { padding-top: env(safe-area-inset-top); }
-}
-/* iPhone draws the clock in white on top of the app: give it a soft shade in light mode so it stays readable */
-:root[data-theme="light"] body::before {
-  content: ''; position: fixed; inset-inline: 0; top: 0; height: env(safe-area-inset-top); z-index: 100; pointer-events: none;
-  background: linear-gradient(rgba(20, 20, 20, .55), rgba(20, 20, 20, .25));
 }
 
 /* ============ Motion ============
