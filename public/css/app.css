@@ -1032,3 +1032,5 @@ html, body { overflow-x: clip; max-width: 100%; }
   .nav-sep { padding-top: 10px; }
   .side-user { flex-shrink: 0; padding-top: 12px; }
 }
+/* Whatever iPhone paints behind the clock takes the page colour, never plain black */
+html { background: var(--cloud); }
