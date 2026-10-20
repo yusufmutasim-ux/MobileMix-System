@@ -1001,7 +1001,10 @@ a.kpi:active, .quick a:active svg, .cardify tr:active { transform: scale(.98); }
 .input, select.input, textarea.input { min-width: 0; max-width: 100%; }
 /* iPhone date/time pickers have a wide built-in size; make them behave like other inputs */
 input.input[type="date"], input.input[type="time"], input.input[type="datetime-local"], input.input[type="month"] {
-  -webkit-appearance: none; appearance: none; display: block; width: 100%; text-align: start;
+  -webkit-appearance: none; appearance: none; text-align: start; max-width: 100%;
+}
+.field > input.input[type="date"], .field > input.input[type="time"], .field > input.input[type="datetime-local"], .field > input.input[type="month"] {
+  display: block; width: 100%;
 }
 input.input::-webkit-date-and-time-value { text-align: start; }
 .modal, .modal-body, .content, .main { overflow-x: clip; }
@@ -1105,3 +1108,86 @@ body::before {
 
 /* Desktop always shows the side menu, so no menu button there */
 @media (min-width: 861px) { .menu-btn { display: none; } }
+
+/* ============ Money screens ============ */
+.breakdown { margin-top: 14px; border-top: 1px dashed var(--pebble); padding-top: 8px; }
+.line-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--cloud); font-size: 14px; }
+.line-row:last-child { border-bottom: 0; }
+.line-row b { font-weight: 600; white-space: nowrap; }
+.line-row .neg, .neg { color: var(--danger); }
+.line-row.total { border-top: 2px solid var(--ink); border-bottom: 0; margin-top: 4px; padding-top: 12px; font-size: 16px; }
+.drawer-hero .hero-amount { font-size: 40px; font-weight: 700; letter-spacing: -1.2px; margin: 4px 0 2px; line-height: 1.1; }
+.note-ok, .note-bad, .note-warn { border-radius: 14px; padding: 10px 14px; font-weight: 600; }
+.note-ok { background: color-mix(in srgb, var(--lime) 35%, transparent); }
+.note-bad { background: var(--danger-wash, #fde8e8); color: var(--danger); }
+.note-warn { background: color-mix(in srgb, var(--yellow) 40%, transparent); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips .chip { direction: rtl; display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 99px; font-size: 13px; }
+.credit-box { margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--yellow) 30%, var(--snow)); }
+:root[data-theme="dark"] .credit-box { background: color-mix(in srgb, var(--yellow) 14%, var(--snow)); }
+.customer-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.avatar-lg { width: 56px; height: 56px; font-size: 22px; }
+.search .suggest {
+  position: absolute; top: calc(100% + 6px); inset-inline: 0; z-index: 30; background: var(--snow); border-radius: 16px;
+  box-shadow: var(--shadow-elevated); max-height: 280px; overflow-y: auto; padding: 6px;
+}
+.search .suggest button { display: block; width: 100%; text-align: start; padding: 10px 12px; border: 0; background: none; border-radius: 10px; cursor: pointer; color: var(--ink); font: inherit; }
+.search .suggest button:hover { background: var(--cloud); }
+.pline { background: var(--cloud); border-radius: 16px; padding: 10px 12px; margin-bottom: 8px; }
+.pline-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.purchase-total { font-size: 18px; text-align: end; }
+
+/* ============ Search everything (Ctrl+K) ============ */
+.search-back { align-items: flex-start; padding-top: max(10vh, calc(var(--top) + 16px)); }
+.search-box {
+  width: 100%; max-width: 620px; background: var(--snow); border-radius: 24px; box-shadow: var(--shadow-elevated);
+  overflow: hidden; animation: rise .28s var(--ease);
+}
+.search-input { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--cloud); }
+.search-input svg { width: 22px; height: 22px; color: var(--iron); flex-shrink: 0; }
+.search-input .input { border: 0; box-shadow: none; background: none; font-size: 17px; padding-inline: 0; }
+.search-input .input:focus { box-shadow: none; }
+.kbd { font-family: 'Poppins', monospace; font-size: 11px; color: var(--iron); border: 1px solid var(--pebble); border-radius: 6px; padding: 2px 6px; }
+.search-results { max-height: min(60vh, 520px); overflow-y: auto; padding: 6px 8px 10px; }
+.search-hint { padding: 22px 12px; text-align: center; color: var(--iron); font-size: 14px; }
+.search-group { font-size: 12px; color: var(--iron); padding: 10px 10px 4px; }
+.search-item { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 14px; color: var(--ink); }
+.search-item.on, .search-item:hover { background: var(--cloud); }
+.si-icon { width: 38px; height: 38px; border-radius: 12px; background: var(--cloud); display: grid; place-items: center; flex-shrink: 0; }
+.search-item.on .si-icon { background: var(--violet); color: var(--snow); }
+:root[data-theme="dark"] .search-item.on .si-icon { background: var(--lime); color: #141414; }
+.si-text { display: flex; flex-direction: column; min-width: 0; }
+.si-text b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search-back.closing { animation: fade-out .16s ease forwards; pointer-events: none; }
+@media (max-width: 860px) {
+  .search-back { padding: calc(var(--top) + 10px) 10px 10px; }
+  .search-box { border-radius: 22px; }
+  .kbd { display: none; }
+}
+
+/* ============ Camera scanner ============ */
+.search.has-cam .input { padding-inline-end: 52px; }
+.cam-btn {
+  position: absolute; inset-inline-end: 6px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%;
+  border: 0; background: var(--cloud); color: var(--ink); display: grid; place-items: center; cursor: pointer;
+}
+.cam-btn svg { width: 20px; height: 20px; }
+.cam-btn:active { transform: translateY(-50%) scale(.92); }
+.cam-back { position: fixed; inset: 0; z-index: 400; background: #000; animation: fade-in .2s ease; }
+.cam-back video { width: 100%; height: 100%; object-fit: cover; }
+.cam-frame { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.cam-frame i { width: min(78vw, 420px); height: min(34vw, 180px); border: 3px solid var(--lime); border-radius: 22px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .45); }
+.cam-top {
+  position: absolute; top: 0; inset-inline: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: calc(var(--top) + 12px) 16px 12px; color: #fff; font-weight: 500;
+}
+.cam-close { width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .2); color: #fff; display: grid; place-items: center; }
+.cam-close svg { width: 22px; height: 22px; }
+
+/* POS: the sale panel never gets taller than the screen — it scrolls, and "complete sale" stays in reach */
+@media (min-width: 1101px) {
+  .pos-cart { overflow-y: auto; }
+  .pos-cart .lines { flex: 1 1 auto; min-height: 96px; }
+  .pos-cart .totals { flex-shrink: 0; }
+}
+.pos-cart #checkout { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -10px 18px var(--snow); }

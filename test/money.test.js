@@ -172,8 +172,10 @@ test('expenses and counting the drawer', async () => {
   const all = (await admin.get('/expenses')).data;
   assert.equal(all.total, 5085);
 
-  const d = (await cashier.get('/drawer')).data;
-  assert.equal(d.closings, undefined); // staff don't see history
+  const blind = (await cashier.get('/drawer')).data;
+  assert.equal(blind.blind, true); // staff count blind
+  assert.equal(blind.expected, undefined);
+  const d = (await admin.get('/drawer')).data;
   // Cash in: phone down payment 1000 + collections 2100 + cash sale 120 − refund 120 − expense 85
   assert.equal(d.parts.sales, 1000 + 120);
   assert.equal(d.parts.collections, 2100);
@@ -228,7 +230,10 @@ test('payroll: salary + commission − advances − paid', async () => {
 });
 
 test('search everything and warranty lookup', async () => {
+  // A sale without a phone must not match a name search
+  await cashier.post('/sales', { items: [{ product_id: s.case.id, qty: 1 }] });
   let r = (await cashier.get('/search?q=أحمد')).data;
+  assert.ok(r.groups.find((g) => g.kind === 'sales').items.every((i) => /أحمد/.test(i.sub)));
   assert.ok(r.groups.find((g) => g.kind === 'customers'));
   assert.ok(r.groups.find((g) => g.kind === 'sales'));
   assert.ok(!r.groups.find((g) => g.kind === 'suppliers')); // cashier can't see suppliers

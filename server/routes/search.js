@@ -10,7 +10,10 @@ module.exports = function searchRoutes(api, db) {
     if (q.length < 2) return res.json({ q, groups: [] });
     const like = `%${q}%`;
     const digits = cleanPhone(q);
-    const phoneLike = digits.length >= 4 ? `%${digits}%` : '\u0000';
+    // Phone matching only when the search has enough digits in it
+    const phoneLike = digits.length >= 4 ? `%${digits}%` : null;
+    const PHONE = (col) => (phoneLike ? `digits(${col}) LIKE ?` : '0');
+    const ph = phoneLike ? [phoneLike] : [];
     const groups = [];
 
     if (can(req.user, 'products.view')) {
@@ -25,24 +28,24 @@ module.exports = function searchRoutes(api, db) {
       const mine = can(req.user, 'sales.view_all') ? '' : 'AND s.user_id = ?';
       const rows = db.prepare(`
         SELECT s.id, s.invoice_no, s.customer_name, s.total, s.created_at, ${DUE_SQL} AS due FROM sales s
-        WHERE (s.invoice_no LIKE ? OR s.customer_name LIKE ? OR digits(s.customer_phone) LIKE ?
+        WHERE (s.invoice_no LIKE ? OR s.customer_name LIKE ? OR ${PHONE('s.customer_phone')}
           OR s.id IN (SELECT sale_id FROM sale_items WHERE serial = ?)) ${mine}
-        ORDER BY s.id DESC LIMIT 6`).all(like, like, phoneLike, q, ...(mine ? [req.user.id] : []));
+        ORDER BY s.id DESC LIMIT 6`).all(like, like, ...ph, q, ...(mine ? [req.user.id] : []));
       if (rows.length) groups.push({ kind: 'sales', title: 'الفواتير', items: rows.map((s) => ({ title: s.invoice_no, sub: `${s.customer_name || 'عميل'} • ${s.total} • ${s.created_at.slice(0, 10)}${s.due > 0 ? ` • متبقي ${round2(s.due)}` : ''}`, url: `#/sales?open=${s.id}` })) });
     }
     if (can(req.user, 'repairs.view')) {
       const rows = db.prepare(`
         SELECT id, ticket_no, customer_name, device, status FROM repairs
-        WHERE ticket_no LIKE ? OR customer_name LIKE ? OR digits(customer_phone) LIKE ? OR imei = ? OR device LIKE ?
-        ORDER BY id DESC LIMIT 6`).all(like, like, phoneLike, q, like);
-      if (rows.length) groups.push({ kind: 'repairs', title: 'الصيانة', items: rows.map((r) => ({ title: `${r.ticket_no} — ${r.device}`, sub: r.customer_name, url: `#/repairs/${r.id}` })) });
+        WHERE ticket_no LIKE ? OR customer_name LIKE ? OR ${PHONE('customer_phone')} OR imei = ? OR device LIKE ?
+        ORDER BY id DESC LIMIT 6`).all(like, like, ...ph, q, like);
+      if (rows.length) groups.push({ kind: 'repairs', title: 'الصيانة', items: rows.map((r) => ({ title: `${r.ticket_no} — ${r.device}`, sub: r.customer_name, url: `#/repairs?open=${r.id}` })) });
     }
     if (can(req.user, 'customers.view')) {
-      const rows = db.prepare('SELECT id, name, phone FROM customers WHERE name LIKE ? OR phone LIKE ? ORDER BY id DESC LIMIT 6').all(like, phoneLike);
+      const rows = db.prepare(`SELECT id, name, phone FROM customers WHERE name LIKE ? OR ${PHONE('phone')} ORDER BY id DESC LIMIT 6`).all(like, ...ph);
       if (rows.length) groups.push({ kind: 'customers', title: 'العملاء', items: rows.map((c) => ({ title: c.name, sub: c.phone, url: `#/customers/${c.id}` })) });
     }
     if (can(req.user, 'purchases.manage')) {
-      const rows = db.prepare('SELECT id, name, phone FROM suppliers WHERE name LIKE ? OR digits(phone) LIKE ? LIMIT 4').all(like, phoneLike);
+      const rows = db.prepare(`SELECT id, name, phone FROM suppliers WHERE name LIKE ? OR ${PHONE('phone')} LIMIT 4`).all(like, ...ph);
       if (rows.length) groups.push({ kind: 'suppliers', title: 'الموردين', items: rows.map((s) => ({ title: s.name, sub: s.phone || '', url: `#/purchases?supplier=${s.id}` })) });
     }
     res.json({ q, groups });

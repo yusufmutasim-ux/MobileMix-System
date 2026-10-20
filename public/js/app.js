@@ -1,16 +1,24 @@
 import { api, state, can, icon, esc, LOGO_FULL, ROLE_NAMES, toastErr, modal, busy, toast, currentTheme, setTheme } from './core.js';
 import { enterView, softly } from './motion.js';
 import { initShift, initNotifications } from './live.js';
+import { openSearch, initSearchKeys } from './search.js';
+import { addCameraButton } from './camera.js';
 
 const NAV = [
   { path: '/', title: 'الرئيسية', icon: 'home', view: 'dashboard' },
   { path: '/pos', title: 'نقطة البيع', short: 'البيع', icon: 'cart', view: 'pos', perm: 'sales.create' },
   { path: '/sales', title: 'الفواتير', icon: 'receipt', view: 'sales', perm: 'sales.create' },
   { path: '/repairs', title: 'الصيانة', icon: 'wrench', view: 'repairs', perm: 'repairs.view' },
+  { path: '/customers', title: 'العملاء', icon: 'user', view: 'customers', perm: 'customers.view' },
   { sep: 'المخزن' },
   { path: '/products', title: 'المنتجات', icon: 'box', view: 'products', perm: 'products.view' },
+  { path: '/purchases', title: 'المشتريات والموردين', short: 'المشتريات', icon: 'truck', view: 'purchases', perm: 'purchases.manage' },
   { path: '/stocktake', title: 'الجرد', icon: 'clipboard', view: 'stocktake', perm: 'stocktake' },
   { path: '/labels', title: 'ليبلات الأسعار', icon: 'tag', view: 'labels', perm: 'labels.print' },
+  { sep: 'الحسابات' },
+  { path: '/drawer', title: 'الدرج (الخزنة)', short: 'الدرج', icon: 'drawer', view: 'drawer', perm: 'drawer.close' },
+  { path: '/expenses', title: 'المصروفات', icon: 'expense', view: 'expenses', perm: 'expenses.create' },
+  { path: '/payroll', title: 'المرتبات', icon: 'coins', view: 'payroll', perm: 'payroll' },
   { sep: 'الإدارة' },
   { path: '/reports', title: 'التقارير', icon: 'chart', view: 'reports', perm: 'reports.view' },
   { path: '/attendance', title: 'الحضور والانصراف', short: 'الحضور', icon: 'clock', view: 'attendance', perm: 'attendance.view' },
@@ -146,6 +154,7 @@ function shell() {
         <button class="btn btn-ghost btn-icon menu-btn" id="menu">${icon('menu')}</button>
         <h1 id="page-title"></h1>
         <div class="top-tools">
+          <button class="btn btn-ghost btn-icon search-btn" id="search-btn" title="بحث في كل حاجة (Ctrl+K)">${icon('search')}</button>
           <div id="shift-box"></div>
           <button class="btn btn-ghost btn-icon bell hidden" id="bell" title="الإشعارات">${icon('bell')}<span class="bell-count hidden" id="bell-count"></span></button>
         </div>
@@ -169,6 +178,8 @@ function shell() {
     location.reload();
   });
   api.get('/version').then((v) => { document.getElementById('app-version').textContent = `نسخة ${v.build}`; }).catch(() => {});
+  document.getElementById('search-btn').addEventListener('click', openSearch);
+  initSearchKeys();
   document.getElementById('theme').addEventListener('click', (e) => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
     const btn = e.currentTarget;
@@ -222,11 +233,19 @@ function cardify(root = document) {
     }
   }
 }
+/** Phones and tablets: a camera button in every box where you scan a barcode or IMEI. */
+const touchDevice = matchMedia('(pointer: coarse)').matches;
+function cameraButtons() {
+  if (!touchDevice) return;
+  document.querySelectorAll('.search > input').forEach((i) => {
+    if (/باركود|IMEI/i.test(i.placeholder || '')) addCameraButton(i);
+  });
+}
 let cardifyQueued = false;
 new MutationObserver(() => {
   if (cardifyQueued) return;
   cardifyQueued = true;
-  requestAnimationFrame(() => { cardifyQueued = false; cardify(); });
+  requestAnimationFrame(() => { cardifyQueued = false; cardify(); cameraButtons(); });
 }).observe(document.body, { childList: true, subtree: true });
 
 boot();

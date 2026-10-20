@@ -1,8 +1,15 @@
 import {
   api, can, icon, esc, money, n, fmtDate, modal, toast, toastErr, busy, debounce, todayStr,
-  STATUS_PILLS, PAY_NAMES, emptyRow, downloadCsv,
+  STATUS_PILLS, PAY_NAMES, COLLECT_METHODS, emptyRow, downloadCsv,
 } from '../core.js';
 import { printInvoice } from '../print.js';
+import { payModal } from '../money-ui.js';
+
+const INST_PILL = {
+  paid: '<span class="pill pill-ok">اتدفع</span>',
+  late: '<span class="pill pill-bad">متأخر</span>',
+  open: '<span class="pill pill-gray">لسه</span>',
+};
 
 export const RANGES = {
   today: () => [todayStr(), todayStr()],
@@ -17,7 +24,8 @@ export async function render(el, { query, actions }) {
   let rows = [];
   const users = can('sales.view_all') && can('reports.view') ? await api.get('/users/names') : [];
 
-  actions.innerHTML = `<button class="btn btn-outline btn-sm" id="csv">${icon('download')} تصدير Excel</button>`;
+  actions.innerHTML = `<button class="btn btn-outline btn-sm" id="warranty">${icon('shield')} كشف ضمان</button>
+    <button class="btn btn-outline btn-sm" id="csv">${icon('download')} تصدير Excel</button>`;
 
   el.innerHTML = `
     <div class="card">
@@ -56,8 +64,8 @@ export async function render(el, { query, actions }) {
         <td>${esc(r.user_name)}</td>
         <td>${PAY_NAMES[r.payment_method] || r.payment_method}</td>
         <td class="num">${r.items_count}</td>
-        <td>${STATUS_PILLS[r.status]}</td>
-        <td class="end">${money(r.total)}${r.returned_total ? `<div class="small" style="color:var(--danger)">- ${n(r.returned_total)}</div>` : ''}</td>
+        <td>${STATUS_PILLS[r.status]}${r.due > 0 ? ' <span class="pill pill-warn">آجل</span>' : ''}</td>
+        <td class="end">${money(r.total)}${r.due > 0 ? `<div class="small" style="color:var(--danger)">متبقي ${n(r.due)}</div>` : ''}${r.returned_total ? `<div class="small" style="color:var(--danger)">- ${n(r.returned_total)}</div>` : ''}</td>
       </tr>`).join('') : emptyRow(8, 'مفيش فواتير في الفترة دي');
   }
 
@@ -82,6 +90,7 @@ export async function render(el, { query, actions }) {
   $('#from').addEventListener('change', onDate);
   $('#to').addEventListener('change', onDate);
   $('#user')?.addEventListener('change', () => load().catch(toastErr));
+  actions.querySelector('#warranty').addEventListener('click', () => warrantyModal());
   actions.querySelector('#csv').addEventListener('click', () => downloadCsv(`sales-${from}-${to}.csv`,
     ['الفاتورة', 'التاريخ', 'العميل', 'التليفون', 'الموظف', 'الدفع', 'الحالة', 'الإجمالي', 'مرتجع'],
     rows.map((r) => [r.invoice_no, r.created_at, r.customer_name, r.customer_phone, r.user_name, PAY_NAMES[r.payment_method], r.status, r.total, r.returned_total])));
@@ -107,22 +116,38 @@ export async function openSale(id, onChange) {
         <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th class="end">الإجمالي</th></tr></thead>
         <tbody>${sale.items.map((i) => `<tr>
           <td>${esc(i.name)}${i.serial ? `<div class="muted small num">IMEI: ${esc(i.serial)}</div>` : ''}
+              ${i.warranty_until ? `<div class="small">${icon('shield')} ضمان لحد <span class="num">${esc(i.warranty_until)}</span>${i.warranty_until < todayStr() ? ' <span class="pill pill-gray">خلص</span>' : ''}</div>` : ''}
               ${i.returned_qty ? `<span class="pill pill-bad">مرتجع ${i.returned_qty}</span>` : ''}</td>
           <td class="num">${i.qty}</td><td>${money(i.unit_price)}</td><td class="end">${money(i.line_total)}</td></tr>`).join('')}</tbody>
         <tfoot>
           ${sale.discount ? `<tr><td colspan="3">الخصم</td><td class="end">- ${money(sale.discount)}</td></tr>` : ''}
           <tr><td colspan="3">الإجمالي — ${PAY_NAMES[sale.payment_method] || ''}</td><td class="end">${money(sale.total)}</td></tr>
-          ${sale.paid !== sale.total ? `<tr><td colspan="3">المدفوع</td><td class="end">${money(sale.paid)}</td></tr>` : ''}
+          ${sale.paid !== sale.total ? `<tr><td colspan="3">${sale.paid < sale.total ? 'المقدم' : 'المدفوع'}</td><td class="end">${money(sale.paid)}</td></tr>` : ''}
+          ${sale.payments.length ? `<tr><td colspan="3">اتحصّل بعد كده</td><td class="end">${money(sale.payments.reduce((a, p) => a + p.amount, 0))}</td></tr>` : ''}
+          ${sale.due > 0 ? `<tr><td colspan="3"><b style="color:var(--danger)">المتبقي على العميل</b></td><td class="end"><b style="color:var(--danger)">${money(sale.due)}</b></td></tr>` : ''}
         </tfoot>
       </table></div>
+      ${sale.installments.length ? `<h4 style="margin:16px 0 8px">${icon('calendar')} الأقساط</h4>
+        <div class="table-wrap"><table class="table"><thead><tr><th>القسط</th><th>الميعاد</th><th>المبلغ</th><th>المدفوع</th><th class="end">الحالة</th></tr></thead>
+        <tbody>${sale.installments.map((i) => `<tr><td class="num">${i.seq}</td><td class="num">${esc(i.due_date)}</td><td>${money(i.amount)}</td><td>${money(i.paid)}</td><td class="end">${INST_PILL[i.state]}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${sale.payments.length ? `<h4 style="margin:16px 0 8px">المدفوعات</h4>
+        ${sale.payments.map((p) => `<div class="small" style="padding:4px 0">${fmtDate(p.created_at)} — ${esc(p.user_name || '')} — <b>${money(p.amount)}</b> (${COLLECT_METHODS[p.method] || p.method})</div>`).join('')}` : ''}
       ${sale.notes ? `<p><span class="muted">ملاحظات:</span> ${esc(sale.notes)}</p>` : ''}
       ${sale.returns.length ? `<h4 style="margin:16px 0 8px">المرتجعات</h4>
-        ${sale.returns.map((r) => `<div class="small" style="padding:4px 0">${fmtDate(r.created_at)} — ${esc(r.user_name)} — <b>${money(r.amount)}</b> ${r.reason ? `(${esc(r.reason)})` : ''}</div>`).join('')}` : ''}`,
-    foot: `${canReturn ? `<button class="btn btn-danger" data-return>${icon('undo')} مرتجع</button><span style="flex:1"></span>` : ''}
+        ${sale.returns.map((r) => `<div class="small" style="padding:4px 0">${fmtDate(r.created_at)} — ${esc(r.user_name)} — <b>${money(r.amount)}</b> ${r.reason ? `(${esc(r.reason)})` : ''}${r.cash_out != null && r.cash_out < r.amount - 0.004 ? ` <span class="muted">— اترجع كاش ${n(r.cash_out)} والباقي اتخصم من المتبقي</span>` : ''}</div>`).join('')}` : ''}`,
+    foot: `${canReturn ? `<button class="btn btn-danger" data-return>${icon('undo')} مرتجع</button>` : ''}
+      ${sale.due > 0 && can('customers.pay') ? `<button class="btn btn-outline" data-pay>${icon('wallet')} تحصيل</button>` : ''}
+      <span style="flex:1"></span>
       <button class="btn btn-outline" data-print="a4">${icon('print')} A4</button>
       <button class="btn btn-primary" data-print="80mm">${icon('print')} طباعة</button>`,
     onMount: (m, close) => {
       m.querySelectorAll('[data-print]').forEach((b) => b.addEventListener('click', () => printInvoice(sale, b.dataset.print)));
+      m.querySelector('[data-pay]')?.addEventListener('click', async () => {
+        close(null);
+        const next = sale.installments.find((i) => i.state !== 'paid');
+        if (await payModal({ title: `تحصيل — فاتورة ${esc(sale.invoice_no)}`, due: sale.due, suggest: next?.left, url: `/sales/${sale.id}/payments` })) onChange?.();
+        openSale(id, onChange);
+      });
       m.querySelector('[data-return]')?.addEventListener('click', async () => {
         close(null);
         if (await returnModal(sale)) { onChange?.(); openSale(id, onChange); }
@@ -155,6 +180,43 @@ function returnModal(sale) {
         toast('تم تسجيل المرتجع', 'ok');
         close(true);
       }));
+    },
+  });
+}
+
+const W_STATE = {
+  active: (i) => `<span class="pill pill-ok">في الضمان — فاضل ${i.days_left} يوم</span>`,
+  expired: () => '<span class="pill pill-bad">الضمان خلص</span>',
+  none: () => '<span class="pill pill-gray">من غير ضمان</span>',
+  returned: () => '<span class="pill pill-warn">اترجع</span>',
+};
+
+/** Is this phone still under warranty? Search by IMEI or invoice number. */
+export function warrantyModal(q = '') {
+  return modal({
+    title: `${icon('shield')} كشف ضمان`,
+    body: `<div class="search" style="margin-bottom:12px">${icon('search')}<input class="input" id="wq" placeholder="IMEI أو رقم الفاتورة" value="${esc(q)}" autofocus></div>
+      <div id="wres" class="muted small">اكتب الـ IMEI أو رقم الفاتورة واضغط Enter</div>`,
+    foot: '<button class="btn btn-outline" data-close>قفل</button>',
+    onMount: (m) => {
+      const input = m.querySelector('#wq');
+      const run = async () => {
+        const v = input.value.trim();
+        if (!v) return;
+        try {
+          const r = await api.get('/warranty?q=' + encodeURIComponent(v));
+          m.querySelector('#wres').innerHTML = r.items.length ? r.items.map((i) => `
+            <div class="card" style="box-shadow:none;background:var(--cloud);padding:14px;margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(i.name)}</b>${W_STATE[i.state](i)}</div>
+              ${i.serial ? `<div class="num small muted">IMEI: ${esc(i.serial)}</div>` : ''}
+              <div class="small" style="margin-top:6px">فاتورة <a href="#/sales?open=${i.sale_id}" class="num">${esc(i.invoice_no)}</a> — ${fmtDate(i.created_at, false)}
+                ${i.customer_name ? ` — ${esc(i.customer_name)} <span class="num">${esc(i.customer_phone || '')}</span>` : ''}</div>
+              ${i.until ? `<div class="small">الضمان ${i.warranty_days} يوم — لحد <b class="num">${esc(i.until)}</b></div>` : ''}
+            </div>`).join('') : '<div class="empty">مفيش حاجة اتباعت بالرقم ده</div>';
+        } catch (e) { toastErr(e); }
+      };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+      if (q) run();
     },
   });
 }

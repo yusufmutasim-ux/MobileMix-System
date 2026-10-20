@@ -260,7 +260,7 @@ module.exports = function reportRoutes(api, db) {
       out.expenses_today = round2(db.prepare('SELECT COALESCE(SUM(amount), 0) AS s FROM expenses WHERE date(created_at) = ?').get(today()).s);
       if (out.today.profit !== undefined) out.today.net = round2(out.today.profit - out.expenses_today);
     }
-    if (can(req.user, 'drawer.close')) out.drawer = drawerNow(db).expected;
+    if (can(req.user, 'drawer.view')) out.drawer = drawerNow(db).expected;
     if (can(req.user, 'customers.view')) {
       const late = lateInstallments(db);
       out.credit = {

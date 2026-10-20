@@ -4,8 +4,8 @@ import { REPAIR_STATUS } from '../print.js';
 
 const MOVE_NAMES = { purchase: 'إضافة بضاعة', sale: 'بيع', return: 'مرتجع', adjust: 'تعديل يدوي', stocktake: 'جرد' };
 
-export async function render(el, { actions }) {
-  let tab = 'sales';
+export async function render(el, { query, actions }) {
+  let tab = ['finance', 'sales', 'inventory', 'repairs', 'movements'].includes(query.get('tab')) ? query.get('tab') : 'finance';
   let [from, to] = RANGES.month();
   let last = null; // data for CSV export
   const users = await api.get('/users/names');
@@ -14,7 +14,8 @@ export async function render(el, { actions }) {
 
   el.innerHTML = `
     <div class="toolbar">
-      <div class="seg" id="tabs"><button data-t="sales" class="on">المبيعات والأرباح</button><button data-t="inventory">المخزن</button><button data-t="repairs">الصيانة</button><button data-t="movements">حركة المخزن</button></div>
+      <div class="seg" id="tabs">${Object.entries({ finance: 'الأرباح والمصاريف', sales: 'المبيعات', inventory: 'المخزن', repairs: 'الصيانة', movements: 'حركة المخزن' })
+        .map(([k, v]) => `<button data-t="${k}" class="${k === tab ? 'on' : ''}">${v}</button>`).join('')}</div>
       <span style="flex:1"></span>
       <div class="seg" id="range">${Object.entries(RANGE_NAMES).map(([k, v]) => `<button data-r="${k}" class="${k === 'month' ? 'on' : ''}">${v}</button>`).join('')}</div>
       <input class="input num" type="date" id="from" value="${from}"><input class="input num" type="date" id="to" value="${to}">
@@ -29,6 +30,12 @@ export async function render(el, { actions }) {
     const isInv = tab === 'inventory';
     ['#range', '#from', '#to'].forEach((s) => $(s).classList.toggle('hidden', isInv));
     $('#user').classList.toggle('hidden', tab !== 'sales');
+    if (tab === 'finance') {
+      $('#mtype').classList.add('hidden');
+      last = await api.get(`/reports/finance?from=${from}&to=${to}`);
+      $('#out').innerHTML = financeReport(last);
+      return;
+    }
     if (tab === 'repairs') {
       last = await api.get(`/reports/repairs?from=${from}&to=${to}`);
       $('#out').innerHTML = repairsReport(last);
@@ -81,7 +88,10 @@ export async function render(el, { actions }) {
 
   actions.querySelector('#csv').addEventListener('click', () => {
     if (!last) return;
-    if (tab === 'sales') {
+    if (tab === 'finance') {
+      downloadCsv(`finance-${from}-${to}.csv`, ['اليوم', 'الربح (مبيعات + صيانة)', 'المصاريف', 'الصافي'],
+        last.by_day.map((d) => [d.day, d.profit, d.expenses, d.net]));
+    } else if (tab === 'sales') {
       downloadCsv(`sales-report-${from}-${to}.csv`, ['اليوم', 'عدد الفواتير', 'المبيعات', 'الربح'],
         last.by_day.map((d) => [d.day, d.invoices, d.total, d.profit]));
     } else if (tab === 'repairs') {
@@ -213,5 +223,33 @@ function repairsReport(d) {
         <div class="table-wrap"><table class="table"><thead><tr><th>التذكرة</th><th>العميل</th><th>الجهاز</th><th class="end">المتبقي</th></tr></thead>
         <tbody>${d.dues.map((x) => `<tr class="click" onclick="location.hash='#/repairs?open=${x.id}'"><td class="num">${esc(x.ticket_no)}</td><td>${esc(x.customer_name)}<div class="muted small num">${esc(x.customer_phone)}</div></td><td>${esc(x.device)}</td><td class="end">${money(x.due)}</td></tr>`).join('') || emptyRow(4, 'مفيش فلوس آجلة 👌')}</tbody></table></div>
       </div>
+    </div>`;
+}
+
+/** What the shop really made: profit from sales and repairs minus all expenses. */
+function financeReport(d) {
+  const t = d.totals;
+  const maxExp = Math.max(...d.expenses.map((e) => e.total), 1);
+  return `
+    <div class="grid grid-4" style="margin-bottom:20px">
+      ${kpi(t.net_profit >= 0 ? 'bg-mint' : 'bg-peony', `${icon('trend')} صافي الربح الحقيقي`, money(t.net_profit), 'بعد خصم كل المصاريف')}
+      ${kpi('', `${icon('cart')} ربح المبيعات`, money(t.sales_profit), `من مبيعات ${n(t.sales_revenue)}`)}
+      ${kpi('', `${icon('wrench')} ربح الصيانة`, money(t.repairs_profit), `من ${n(t.repairs_revenue)}`)}
+      ${kpi('bg-lavender', `${icon('expense')} المصاريف`, money(t.expenses))}
+    </div>
+    <div class="grid grid-4" style="margin-bottom:20px">
+      ${kpi('', `${icon('user')} فلوس عند العملاء`, money(t.receivable), `${t.receivable_count} فاتورة${t.late_installments > 0 ? ` • متأخر ${n(t.late_installments)}` : ''}`)}
+      ${kpi('', `${icon('truck')} علينا للموردين`, money(t.payable), `${t.payable_count} مورد`)}
+      ${kpi('', `${icon('box')} مشتريات بضاعة`, money(t.purchases), `${t.purchases_count} فاتورة شراء`)}
+      ${kpi('', `${icon('wallet')} اتحصّل من العملاء`, money(t.collected))}
+    </div>
+    <div class="grid grid-2">
+      <div class="card"><div class="card-head"><h2>المصاريف حسب النوع</h2><a class="btn btn-ghost btn-sm" href="#/expenses">التفاصيل</a></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>النوع</th><th>العدد</th><th></th><th class="end">المبلغ</th></tr></thead>
+        <tbody>${d.expenses.length ? d.expenses.map((e) => `<tr><td>${esc(e.category)}</td><td class="num">${e.count}</td><td style="width:90px">${bar(e.total, maxExp)}</td><td class="end">${money(e.total)}</td></tr>`).join('') : emptyRow(4, 'مفيش مصاريف')}</tbody></table></div></div>
+      <div class="card"><div class="card-head"><h2>يوم بيوم</h2></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>اليوم</th><th>الربح</th><th>المصاريف</th><th class="end">الصافي</th></tr></thead>
+        <tbody>${d.by_day.length ? d.by_day.slice().reverse().map((x) => `<tr><td class="num">${esc(x.day)}</td><td>${money(x.profit)}</td><td>${money(x.expenses)}</td>
+          <td class="end"><b style="${x.net < 0 ? 'color:var(--danger)' : ''}">${money(x.net)}</b></td></tr>`).join('') : emptyRow(4)}</tbody></table></div></div>
     </div>`;
 }

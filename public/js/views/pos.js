@@ -1,4 +1,4 @@
-import { api, state, icon, esc, money, modal, toast, toastErr, busy, debounce, PAY_NAMES, moneyText } from '../core.js';
+import { api, state, can, icon, esc, money, n, modal, toast, toastErr, busy, debounce, PAY_NAMES, moneyText, todayStr, waLink } from '../core.js';
 import { printInvoice } from '../print.js';
 
 const CART_KEY = 'mm_cart';
@@ -38,14 +38,25 @@ export async function render(el) {
         <div class="pay-methods" id="pay">
           ${Object.entries(PAY_NAMES).map(([k, v]) => `<button data-p="${k}" class="${k === 'cash' ? 'on' : ''}">${v}</button>`).join('')}
         </div>
-        <details style="margin-top:10px">
+        <details style="margin-top:10px" id="cust-box">
           <summary class="muted small" style="cursor:pointer">بيانات العميل وملاحظات</summary>
           <div class="form-grid" style="gap:10px;margin-top:10px">
-            <label class="field"><span>اسم العميل</span><input class="input" id="cname"></label>
             <label class="field"><span>التليفون</span><input class="input ltr" id="cphone" inputmode="tel"></label>
+            <label class="field"><span>اسم العميل</span><input class="input" id="cname"></label>
+            <div class="full small" id="cust-info"></div>
             <label class="field full"><span>ملاحظات</span><input class="input" id="notes"></label>
           </div>
         </details>
+        <div class="credit-box hidden" id="credit">
+          <div class="small"><b>${icon('wallet')} بيع بالآجل</b> — المتبقي هيتسجل على العميل (لازم اسمه وتليفونه)</div>
+          <label class="check" style="margin-top:8px"><input type="checkbox" id="inst-on"> تقسيطه على أقساط</label>
+          <div class="form-grid hidden" id="inst" style="gap:8px;margin-top:8px">
+            <label class="field"><span>عدد الأقساط</span><input class="input num" id="inst-n" type="number" min="1" max="60" value="3"></label>
+            <label class="field"><span>كل</span><select class="input" id="inst-every"><option value="month">شهر</option><option value="week">أسبوع</option></select></label>
+            <label class="field full"><span>أول قسط يوم</span><input class="input num" id="inst-first" type="date"></label>
+            <div class="full small muted" id="inst-preview"></div>
+          </div>
+        </div>
         <div class="row" style="margin-top:12px"><span>المجموع</span><span id="sub"></span></div>
         <div class="row" id="disc-row"><span>الخصم</span><span id="disc"></span></div>
         <div class="row grand"><span>الإجمالي</span><span id="total"></span></div>
@@ -185,6 +196,13 @@ export async function render(el) {
     $('#change-row').classList.toggle('hidden', !cart.length || Math.abs(diff) < 0.005);
     $('#change-label').textContent = diff > 0 ? 'الباقي للعميل' : 'متبقي على العميل';
     $('#change').innerHTML = money(Math.abs(diff));
+    const owed = cart.length && diff < -0.004 ? -diff : 0;
+    $('#credit').classList.toggle('hidden', !owed);
+    if (owed) {
+      $('#cust-box').open = true;
+      const count = Math.max(1, parseInt($('#inst-n').value, 10) || 1);
+      $('#inst-preview').textContent = `${count} قسط × ${n(Math.floor((owed / count) * 100) / 100)} ${state.settings.currency || 'ج.م'}`;
+    }
     $('#checkout').disabled = !cart.length;
     const units = cart.reduce((n, l) => n + l.qty, 0);
     $('#cart-count').textContent = units;
@@ -217,7 +235,38 @@ export async function render(el) {
     if (!b) return;
     pay = b.dataset.p;
     $('#pay').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    // Installments: what's typed in "paid" is the down payment
+    if (pay === 'installment') {
+      if ($('#paid').value === '') $('#paid').value = 0;
+      $('#inst-on').checked = true;
+      $('#inst').classList.remove('hidden');
+      $('#paid').focus();
+    }
+    draw();
   });
+  const nextMonth = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  $('#inst-first').value = nextMonth();
+  $('#inst-first').min = todayStr();
+  $('#inst-on').addEventListener('change', () => { $('#inst').classList.toggle('hidden', !$('#inst-on').checked); draw(); });
+  $('#inst-n').addEventListener('input', draw);
+  // A known customer: fill the name and show what they already owe
+  $('#cphone').addEventListener('input', debounce(async () => {
+    const digits = $('#cphone').value.replace(/\D/g, '');
+    const info = $('#cust-info');
+    if (digits.length < 8 || !can('customers.view')) { info.innerHTML = ''; return; }
+    try {
+      const r = await api.get('/customers?q=' + digits);
+      const c = r.rows.find((x) => x.phone === digits) || null;
+      if (!c) { info.innerHTML = '<span class="muted">عميل جديد — هيتسجل لوحده</span>'; return; }
+      if (!$('#cname').value.trim()) $('#cname').value = c.name;
+      info.innerHTML = `<span class="pill pill-info">عميل مسجل</span> ${c.sales_count} فاتورة قبل كده
+        ${c.due > 0 ? ` • <b style="color:var(--danger)">عليه ${money(c.due)}</b>${c.late > 0 ? ' <span class="pill pill-bad">قسط متأخر</span>' : ''}` : ''}`;
+    } catch { info.innerHTML = ''; }
+  }, 350));
   $('#clear').addEventListener('click', () => { cart = []; $('#discount').value = 0; $('#paid').value = ''; draw(); focusScan(); });
 
   // ---------- checkout ----------
@@ -233,10 +282,17 @@ export async function render(el) {
       customer_phone: $('#cphone').value,
       notes: $('#notes').value,
     };
+    const owed = t.total - (body.paid ?? t.total);
+    if (owed > 0.004 && $('#inst-on').checked) {
+      body.installments = { count: Number($('#inst-n').value) || 1, every: $('#inst-every').value, first_date: $('#inst-first').value };
+    }
     await busy($('#checkout'), async () => {
       const sale = await api.post('/sales', body);
       cart = [];
       ['#discount', '#paid', '#cname', '#cphone', '#notes'].forEach((s) => { $(s).value = s === '#discount' ? 0 : ''; });
+      $('#cust-info').innerHTML = '';
+      $('#inst-on').checked = false;
+      $('#inst').classList.add('hidden');
       draw();
       loadProducts().catch(() => {});
       openCart(false);
@@ -266,8 +322,10 @@ function successModal(sale) {
       <div style="font-size:32px;font-weight:300;margin-top:6px">${money(sale.total)}</div>
       ${change > 0.004 ? `<div class="pill pill-ok" style="font-size:15px;margin-top:8px">الباقي للعميل: ${moneyText(change)}</div>` : ''}
       ${change < -0.004 ? `<div class="pill pill-warn" style="font-size:15px;margin-top:8px">متبقي على العميل: ${moneyText(-change)}</div>` : ''}
+      ${sale.installments?.length ? `<div class="small muted" style="margin-top:8px">${sale.installments.length} قسط — أولهم ${moneyText(sale.installments[0].amount)} يوم <span class="num">${esc(sale.installments[0].due_date)}</span></div>` : ''}
     </div>`,
     foot: `<button class="btn btn-outline" data-close>بيع جديد</button>
+           ${sale.customer_phone ? `<a class="btn btn-outline" target="_blank" rel="noopener" href="${waLink(sale.customer_phone, receiptText(sale))}">${icon('whatsapp')} واتساب</a>` : ''}
            <button class="btn btn-outline" data-print="a4">${icon('print')} A4</button>
            <button class="btn btn-primary" data-print="80mm" autofocus>${icon('print')} طباعة الفاتورة</button>`,
     onMount: (m, close) => {
@@ -278,6 +336,19 @@ function successModal(sale) {
       setTimeout(() => m.querySelector(`[data-print="${state.settings.invoice_size === 'a4' ? 'a4' : '80mm'}"]`)?.focus(), 30);
     },
   });
+}
+
+/** The invoice as a WhatsApp message for the customer. */
+function receiptText(sale) {
+  const cur = state.settings.currency || 'ج.م';
+  const lines = sale.items.map((i) => `• ${i.name}${i.qty > 1 ? ` × ${i.qty}` : ''} — ${n(i.line_total)}${i.warranty_until ? ` (ضمان لحد ${i.warranty_until})` : ''}`);
+  return [
+    `أهلاً ${sale.customer_name || ''} 👋`, `شكراً لشرائك من ${state.settings.shop_name || 'Mobile Mix'}`, '',
+    `فاتورة رقم ${sale.invoice_no}`, ...lines, '',
+    `الإجمالي: ${n(sale.total)} ${cur}`,
+    ...(sale.due > 0 ? [`المتبقي: ${n(sale.due)} ${cur}`] : []),
+    ...(sale.installments?.length ? ['', 'الأقساط:', ...sale.installments.map((i) => `${i.seq}) ${i.due_date} — ${n(i.amount)}`)] : []),
+  ].join('\n');
 }
 
 function load() {

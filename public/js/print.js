@@ -52,6 +52,7 @@ export function invoiceHtml(sale, size = state.settings.invoice_size || '80mm') 
   const rows = sale.items.map((i) => `
     <tr>
       <td>${esc(i.name)}${i.serial ? `<br><span class="imei">IMEI: ${esc(i.serial)}</span>` : ''}
+        ${i.warranty_until ? `<br><small>ضمان لحد ${esc(i.warranty_until)}</small>` : ''}
         ${i.returned_qty ? `<br><small>(مرتجع ${i.returned_qty})</small>` : ''}</td>
       <td class="e">${i.qty}</td>
       ${a4 ? `<td class="e">${n(i.unit_price)}</td>` : ''}
@@ -86,7 +87,11 @@ export function invoiceHtml(sale, size = state.settings.invoice_size || '80mm') 
       ${sale.paid > sale.total ? `<tr><td>المدفوع</td><td class="e">${n(sale.paid)} ${cur}</td></tr><tr><td>الباقي للعميل</td><td class="e">${n(sale.paid - sale.total)} ${cur}</td></tr>` : ''}
       ${sale.paid < sale.total ? `<tr><td>المدفوع</td><td class="e">${n(sale.paid)} ${cur}</td></tr><tr><td><b>المتبقي على العميل</b></td><td class="e"><b>${n(sale.total - sale.paid)} ${cur}</b></td></tr>` : ''}
       ${sale.returned_total ? `<tr><td>مرتجعات</td><td class="e">- ${n(sale.returned_total)} ${cur}</td></tr>` : ''}
+      ${sale.payments?.length ? `<tr><td>اتحصّل بعد كده</td><td class="e">${n(sale.payments.reduce((a, p) => a + p.amount, 0))} ${cur}</td></tr>` : ''}
+      ${sale.due > 0 && (sale.payments?.length || sale.returned_total) ? `<tr><td><b>المتبقي دلوقتي</b></td><td class="e"><b>${n(sale.due)} ${cur}</b></td></tr>` : ''}
     </table>
+    ${sale.installments?.length ? `<hr><div><b>جدول الأقساط</b></div>
+      <table>${sale.installments.map((i) => `<tr><td>${i.seq}) ${esc(i.due_date)}</td><td class="e">${n(i.amount)} ${cur}${i.state === 'paid' ? ' ✓' : ''}</td></tr>`).join('')}</table>` : ''}
     ${sale.notes ? `<hr><div>ملاحظات: ${esc(sale.notes)}</div>` : ''}
     <hr>
     <div class="c" style="margin:2mm auto;max-width:${a4 ? '70mm' : '60mm'}">${barcodeSvg(sale.invoice_no, { heightMm: 10 })}</div>

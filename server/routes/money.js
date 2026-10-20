@@ -73,7 +73,7 @@ module.exports = function moneyRoutes(api, db) {
   api.get('/drawer', requirePerm('drawer.close'), (req, res) => {
     const now = drawerNow(db);
     const out = { ...now };
-    // Staff see what to count, not the history
+    // Managers see the expected amount, what moved, and the history
     if (can(req.user, 'drawer.view')) {
       out.closings = db.prepare(`SELECT d.*, u.full_name AS user_name FROM drawer_closings d LEFT JOIN users u ON u.id = d.user_id
                                  ORDER BY d.id DESC LIMIT 30`).all();
@@ -82,10 +82,10 @@ module.exports = function moneyRoutes(api, db) {
                               WHERE m.created_at > ? AND m.created_at <= ? ORDER BY m.id DESC`).all(from, now.to);
       out.expenses = db.prepare(`SELECT e.*, u.full_name AS user_name FROM expenses e LEFT JOIN users u ON u.id = e.user_id
                                  WHERE e.from_drawer = 1 AND e.created_at > ? AND e.created_at <= ? ORDER BY e.id DESC`).all(from, now.to);
-    } else {
-      delete out.last;
+      return res.json(out);
     }
-    res.json(out);
+    // Staff count the drawer blind: they don't see what should be there until they've counted
+    res.json({ blind: true, from: now.from });
   });
 
   api.post('/drawer/close', requirePerm('drawer.close'), (req, res) => {

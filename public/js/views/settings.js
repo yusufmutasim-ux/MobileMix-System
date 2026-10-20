@@ -38,6 +38,12 @@ export async function render(el) {
           <label class="field"><span>بادئة تذكرة الصيانة</span><input class="input ltr" name="repair_prefix" value="${esc(s.repair_prefix)}"></label>
           <div></div>
           <label class="field full"><span>شروط الصيانة (بتتطبع على إيصال الاستلام)</span><textarea class="input" name="repair_terms" rows="3">${esc(s.repair_terms)}</textarea></label>
+          <label class="field full"><span>أنواع المصروفات (كل نوع في سطر)</span><textarea class="input" name="expense_categories" rows="4">${esc(s.expense_categories || '')}</textarea></label>
+          <label class="field"><span>ملخص اليوم على الموبايل</span><select class="input" name="daily_summary">
+            <option value="1" ${s.daily_summary !== '0' ? 'selected' : ''}>يتبعت كل يوم</option><option value="0" ${s.daily_summary === '0' ? 'selected' : ''}>مقفول</option></select></label>
+          <label class="field"><span>الساعة كام؟</span><input class="input num" type="time" name="daily_summary_time" value="${esc(s.daily_summary_time || '23:00')}"></label>
+          <label class="field full"><span>تذكير الأقساط المتأخرة (الساعة 10 الصبح)</span><select class="input" name="installment_reminders">
+            <option value="1" ${s.installment_reminders !== '0' ? 'selected' : ''}>شغال</option><option value="0" ${s.installment_reminders === '0' ? 'selected' : ''}>مقفول</option></select></label>
           <div class="full"><button class="btn btn-primary" id="save-shop">${icon('check')} حفظ الإعدادات</button></div>
         </form>
       </div>` : ''}
@@ -101,7 +107,8 @@ export async function render(el) {
 
   el.querySelector('#save-shop')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
     state.settings = await api.put('/settings', formData(el.querySelector('#shop')));
-    document.querySelector('.brand-name').firstChild.textContent = state.settings.shop_name;
+    const sub = document.querySelector('.brand-sub');
+    if (sub) sub.textContent = state.settings.shop_name && state.settings.shop_name !== 'Mobile Mix' ? state.settings.shop_name : 'نظام المبيعات والصيانة';
     toast('تم حفظ الإعدادات', 'ok');
   }));
 
@@ -277,7 +284,10 @@ export async function render(el) {
   el.querySelector('#reset-btn')?.addEventListener('click', async () => {
     const c = await api.get('/system/data-counts');
     const PARTS = [
-      ['sales', 'الفواتير والمرتجعات', c.sales, true],
+      ['sales', 'الفواتير والمرتجعات والأقساط', c.sales, true],
+      ['customers', 'العملاء', c.customers, true],
+      ['money', 'المصروفات وتقفيلات الدرج', c.money, true],
+      ['purchases', 'فواتير الشراء والموردين', c.purchases, true],
       ['repairs', 'تذاكر الصيانة', c.repairs, true],
       ['products', 'المنتجات والمخزن والجرد', c.products, true],
       ['attendance', 'الحضور والانصراف', c.attendance, true],
@@ -301,7 +311,7 @@ export async function render(el) {
         const sync = () => {
           if (get('categories').checked) { get('products').checked = true; }
           const prod = get('products').checked;
-          for (const k of ['sales', 'repairs']) { if (prod) get(k).checked = true; get(k).disabled = prod; }
+          for (const k of ['sales', 'repairs', 'purchases']) { if (prod) get(k).checked = true; get(k).disabled = prod; }
           get('products').disabled = get('categories').checked;
           const ready = m.querySelector('#rz-confirm').value.trim() === 'امسح' && m.querySelector('#rz-pw').value && boxes().some((b) => b.checked);
           m.querySelector('[data-ok]').disabled = !ready;

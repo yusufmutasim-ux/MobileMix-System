@@ -91,6 +91,7 @@ export async function render(el, { query, actions }) {
 
   await load();
   if (query.get('new') && edit) { if (await productForm(cats)) reload(); }
+  if (query.get('open')) { await productDetails(Number(query.get('open')), cats); reload(); }
 }
 
 // ---------------- forms ----------------
@@ -107,6 +108,8 @@ function productForm(cats, p = null) {
       <label class="field"><span>سعر البيع *</span><input class="input num" type="number" step="any" min="0" name="sell_price" value="${p?.sell_price ?? ''}" required></label>
       <label class="field"><span>الباركود</span><input class="input ltr" name="barcode" value="${esc(p?.barcode || '')}" placeholder="سيبه فاضي ويتعمل تلقائي"></label>
       <label class="field"><span>حد الطلب (تنبيه النواقص)</span><input class="input num" type="number" min="0" name="min_qty" value="${p?.min_qty ?? 1}"></label>
+      <label class="field"><span>الضمان (بالأيام — 0 = من غير)</span><input class="input num" type="number" min="0" name="warranty_days" value="${p?.warranty_days ?? 0}" list="warranty-presets">
+        <datalist id="warranty-presets"><option value="7"><option value="14"><option value="30"><option value="90"><option value="180"><option value="365"></datalist></label>
       ${isNew ? `
         <label class="check full"><input type="checkbox" name="has_serial" id="hs"> جهاز بـ IMEI / سيريال (كل قطعة ليها رقم)</label>
         <label class="field full" id="qty-f"><span>الكمية الموجودة دلوقتي</span><input class="input num" type="number" min="0" name="initial_qty" value="0"></label>

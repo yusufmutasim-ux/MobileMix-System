@@ -13,7 +13,17 @@ export async function render(el, { actions }) {
   ] : [];
   if (d.today.profit !== undefined) {
     kpis.push(`<div class="kpi bg-lavender"><div class="label">${icon('trend')} ربح النهارده</div><div class="value">${n(d.today.profit)} <small>${esc(state.settings.currency)}</small></div>
-      ${d.today.returns ? `<div class="sub">مرتجعات: ${moneyText(d.today.returns)}</div>` : ''}</div>`);
+      ${d.today.net !== undefined ? `<div class="sub">بعد المصاريف: <b>${moneyText(d.today.net)}</b></div>` : d.today.returns ? `<div class="sub">مرتجعات: ${moneyText(d.today.returns)}</div>` : ''}</div>`);
+  }
+  if (d.drawer !== undefined) {
+    kpis.push(`<a href="#/drawer" class="kpi" style="color:inherit"><div class="label">${icon('drawer')} في الدرج دلوقتي</div>
+      <div class="value">${n(d.drawer)} <small>${esc(state.settings.currency)}</small></div>
+      ${d.expenses_today ? `<div class="sub">مصاريف النهارده: ${moneyText(d.expenses_today)}</div>` : ''}</a>`);
+  }
+  if (d.credit && (d.credit.due > 0 || d.credit.late > 0)) {
+    kpis.push(`<a href="#/customers?filter=${d.credit.late > 0 ? 'late' : 'owing'}" class="kpi ${d.credit.late > 0 ? 'bg-peony' : ''}" style="color:inherit">
+      <div class="label">${icon('user')} فلوس عند العملاء</div><div class="value">${n(d.credit.due)} <small>${esc(state.settings.currency)}</small></div>
+      ${d.credit.late > 0 ? `<div class="sub">⚠️ أقساط متأخرة ${moneyText(d.credit.late)} — ${d.credit.late_count} عميل</div>` : ''}</a>`);
   }
   if (d.repairs) {
     kpis.push(`<a href="#/repairs" class="kpi bg-periwinkle" style="color:inherit"><div class="label">${icon('wrench')} أجهزة في الصيانة</div>
@@ -30,9 +40,12 @@ export async function render(el, { actions }) {
     can('repairs.create') && `<a href="#/repairs?new=1" class="bg-aqua">${icon('wrench')}استلام جهاز صيانة</a>`,
     can('products.edit') && `<a href="#/products?new=1" class="bg-sky">${icon('box')}إضافة منتج</a>`,
     can('labels.print') && `<a href="#/labels" class="bg-mint">${icon('tag')}طباعة ليبلات</a>`,
+    can('expenses.create') && `<a href="#/expenses?new=1">${icon('expense')}مصروف</a>`,
+    can('drawer.close') && `<a href="#/drawer?close=1">${icon('drawer')}تقفيل الدرج</a>`,
+    can('purchases.manage') && `<a href="#/purchases?new=1">${icon('truck')}شراء بضاعة</a>`,
     can('reports.view') && `<a href="#/reports" class="bg-lavender">${icon('chart')}التقارير</a>`,
     !can('reports.view') && can('sales.create') && `<a href="#/sales" class="bg-lavender">${icon('receipt')}فواتيري</a>`,
-  ].filter(Boolean).slice(0, 4).join('');
+  ].filter(Boolean).slice(0, 8).join('');
 
   el.innerHTML = `
     <div class="card bg-peony hidden" id="loc-banner" style="box-shadow:none;margin-bottom:12px;padding:16px 20px">

@@ -7,7 +7,7 @@ const hosting = require('./hosting');
 const { createNotifier } = require('./notify');
 
 // Bump with every release so it's easy to see which version a shop is running
-const BUILD = '2026.10.20-sheet1';
+const BUILD = '2026.10.20-money2';
 
 function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSender } = {}) {
   const app = express();
@@ -63,6 +63,7 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
   app.use('/fonts/plex', express.static(path.join(root, 'node_modules/@fontsource/ibm-plex-sans-arabic/files'), { maxAge: '30d' }));
   app.use('/fonts/poppins', express.static(path.join(root, 'node_modules/@fontsource/poppins/files'), { maxAge: '30d' }));
   app.use('/vendor', express.static(path.join(root, 'node_modules/jsbarcode/dist'), { maxAge: '30d' }));
+  app.use('/vendor/zxing', express.static(path.join(root, 'node_modules/@zxing/library/umd'), { maxAge: '30d' }));
   app.use(express.static(path.join(root, 'public'), {
     // Always revalidate app files so updates show up right away (the service worker keeps an offline copy)
     setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),

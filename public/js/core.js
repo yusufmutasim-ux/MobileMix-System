@@ -62,6 +62,7 @@ export function fmtDate(s, withTime = true) {
 
 export const ROLE_NAMES = { admin: 'مدير', manager: 'مشرف', cashier: 'كاشير', technician: 'فني صيانة' };
 export const PAY_NAMES = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
+export const COLLECT_METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay' };
 export const STATUS_PILLS = {
   completed: '<span class="pill pill-ok">مكتملة</span>',
   partial_return: '<span class="pill pill-warn">مرتجع جزئي</span>',
@@ -107,6 +108,16 @@ const P = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
+  truck: '<path d="M2 6h11v10H2z"/><path d="M13 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  drawer: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M10 16h4"/>',
+  coins: '<ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/><path d="M9 15v2c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.7-2.7-3-6-3"/>',
+  expense: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  arrowIn: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
+  arrowOut: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
 };
 export const icon = (name, cls = '') =>
   `<svg class="${cls}" width="1.15em" height="1.15em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
