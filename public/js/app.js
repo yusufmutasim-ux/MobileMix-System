@@ -233,6 +233,38 @@ function cardify(root = document) {
     }
   }
 }
+/** Tabs (segmented buttons): a pill that slides to the chosen tab. */
+function segIndicators() {
+  document.querySelectorAll('.seg').forEach((seg) => {
+    const on = seg.querySelector(':scope > button.on');
+    let ind = seg.querySelector(':scope > .seg-ind');
+    if (!on || !seg.offsetParent) { if (ind) ind.style.opacity = '0'; return; }
+    const first = !ind;
+    if (first) {
+      ind = document.createElement('span');
+      ind.className = 'seg-ind';
+      seg.prepend(ind);
+      seg.classList.add('has-ind');
+      ind.style.transition = 'none'; // first placement: no slide in from nowhere
+    }
+    ind.style.opacity = '1';
+    ind.style.left = `${on.offsetLeft}px`;
+    ind.style.width = `${on.offsetWidth}px`;
+    if (first) requestAnimationFrame(() => requestAnimationFrame(() => { ind.style.transition = ''; }));
+  });
+}
+
+/** Each person gets their own colour in the round initial badge. */
+const AVATAR_TONES = ['lime', 'blue', 'yellow', 'violet', 'red', 'teal'];
+function avatarColors() {
+  document.querySelectorAll('.avatar:not([data-tone])').forEach((a) => {
+    const t = (a.textContent || '?').trim();
+    let h = 0;
+    for (const ch of t + (a.closest('tr, .side-user, .customer-head')?.textContent || '').slice(0, 30)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    a.dataset.tone = AVATAR_TONES[h % AVATAR_TONES.length];
+  });
+}
+
 /** Phones and tablets: a camera button in every box where you scan a barcode or IMEI. */
 const touchDevice = matchMedia('(pointer: coarse)').matches;
 function cameraButtons() {
@@ -245,8 +277,9 @@ let cardifyQueued = false;
 new MutationObserver(() => {
   if (cardifyQueued) return;
   cardifyQueued = true;
-  requestAnimationFrame(() => { cardifyQueued = false; cardify(); cameraButtons(); });
-}).observe(document.body, { childList: true, subtree: true });
+  requestAnimationFrame(() => { cardifyQueued = false; cardify(); cameraButtons(); avatarColors(); segIndicators(); });
+}).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+window.addEventListener('resize', () => requestAnimationFrame(segIndicators));
 
 boot();
 

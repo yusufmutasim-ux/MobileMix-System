@@ -120,7 +120,7 @@ const P = {
   arrowOut: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
 };
 export const icon = (name, cls = '') =>
-  `<svg class="${cls}" width="1.15em" height="1.15em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
+  `<svg class="i-${name}${cls ? ` ${cls}` : ''}" width="1.15em" height="1.15em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 
 /** Brand mark (phone + arrows) and the full Mobile Mix Services logo, for light and dark themes. */
 export const LOGO = '<img class="brand-mark" src="/brand/mark.svg" alt="Mobile Mix">';

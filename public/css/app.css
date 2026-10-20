@@ -1191,3 +1191,190 @@ body::before {
   .pos-cart .totals { flex-shrink: 0; }
 }
 .pos-cart #checkout { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -10px 18px var(--snow); }
+
+/* =====================================================================
+   Design v3 — calmer colour, stronger numbers, tinted icons, deeper dark
+   ===================================================================== */
+:root {
+  /* Soft tints per section (light) */
+  --t-lime-bg: #eef5d0;   --t-lime-fg: #5d6c10;
+  --t-blue-bg: #e3eefe;   --t-blue-fg: #2860c4;
+  --t-red-bg: #fde6e6;    --t-red-fg: #c73636;
+  --t-yellow-bg: #fff3cf; --t-yellow-fg: #9a6a00;
+  --t-violet-bg: #ede8fd; --t-violet-fg: #6346d1;
+  --t-teal-bg: #dcf5ef;   --t-teal-fg: #13806b;
+  --t-gray-bg: #f0f0f0;   --t-gray-fg: #3a3a3a;
+  --shadow-card: 0 1px 2px rgba(17, 17, 17, .04), 0 12px 32px -14px rgba(17, 17, 17, .14);
+  --shadow-hover: 0 2px 4px rgba(17, 17, 17, .05), 0 18px 40px -16px rgba(17, 17, 17, .22);
+  --hero: linear-gradient(135deg, #C2D64F 0%, #d4e46f 50%, #ecdf7c 100%);
+}
+:root[data-theme="dark"] {
+  --cloud: #070707;
+  --snow: #141414;
+  --aqua: #1c1c1c;
+  --pebble: #232323;
+  --mist: #262626;
+  --fog: #333;
+  --topbar-bg: rgba(7, 7, 7, .82);
+  --t-lime-bg: rgba(194, 214, 79, .14);   --t-lime-fg: #d4e46f;
+  --t-blue-bg: rgba(90, 150, 255, .15);   --t-blue-fg: #8db6ff;
+  --t-red-bg: rgba(255, 99, 99, .15);     --t-red-fg: #ff8a8a;
+  --t-yellow-bg: rgba(255, 212, 92, .14); --t-yellow-fg: #ffd45c;
+  --t-violet-bg: rgba(160, 130, 255, .16); --t-violet-fg: #b9a6ff;
+  --t-teal-bg: rgba(60, 210, 180, .14);   --t-teal-fg: #6fe0c8;
+  --t-gray-bg: #222;                      --t-gray-fg: #d6d6d6;
+  --shadow-card: 0 0 0 1px #1d1d1d, inset 0 1px 0 rgba(255, 255, 255, .03);
+  --shadow-hover: 0 0 0 1px #2a2a2a, 0 18px 40px -16px rgba(0, 0, 0, .8);
+  --hero: linear-gradient(135deg, #C2D64F 0%, #b3c845 55%, #8fa52c 100%);
+}
+
+/* ---------- 1. Type: clear hierarchy, strong money figures ---------- */
+.topbar h1 { font-size: 27px; font-weight: 700; letter-spacing: -0.7px; }
+.card-head h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; display: flex; align-items: center; gap: 8px; }
+.kpi .label { font-size: 13.5px; font-weight: 500; }
+.kpi .value { font-family: 'Poppins', var(--font); font-weight: 700; letter-spacing: -1.2px; font-variant-numeric: tabular-nums; }
+.kpi .value small { font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--iron); margin-inline-start: 2px; }
+.kpi .sub { color: var(--iron); }
+.table td .num, .line-row .num { font-variant-numeric: tabular-nums; }
+.muted.small, .small.muted { color: var(--iron); }
+.hello h2 { font-weight: 700; letter-spacing: -1px; }
+
+/* ---------- 2. Colour: lime only where it matters, soft tints elsewhere ---------- */
+.kpi.bg-mint { background: var(--hero); box-shadow: 0 14px 30px -14px rgba(150, 170, 40, .55); }
+.kpi.bg-mint::after { background: rgba(255, 255, 255, .22); }
+.kpi.bg-mint::before {
+  content: ''; position: absolute; inset-inline-start: -30px; bottom: -50px; width: 120px; height: 120px; border-radius: 50%;
+  background: rgba(255, 255, 255, .14); pointer-events: none;
+}
+.kpi.bg-lavender, .card.bg-lavender { background: var(--t-yellow-bg); box-shadow: none; }
+.kpi.bg-lavender::after { background: rgba(255, 255, 255, .35); }
+.kpi.bg-peony, .card.bg-peony { background: var(--t-red-bg); box-shadow: none; }
+.kpi.bg-lavender .label svg { background: rgba(255, 255, 255, .7); color: var(--t-yellow-fg); }
+.kpi.bg-peony .label svg { background: rgba(255, 255, 255, .7); color: var(--t-red-fg); }
+:root[data-theme="dark"] .kpi.bg-lavender, :root[data-theme="dark"] .card.bg-lavender {
+  --ink: #f2f2f2; --slate: #cfcfcf; --iron: #a3a3a3; color: #f2f2f2;
+}
+:root[data-theme="dark"] .kpi.bg-lavender .label svg, :root[data-theme="dark"] .kpi.bg-peony .label svg { background: rgba(255, 255, 255, .08); }
+:root[data-theme="dark"] .kpi.bg-lavender::after { background: rgba(255, 212, 92, .08); }
+.pill-ok { background: var(--t-lime-bg); color: var(--t-lime-fg); }
+.pill-bad { background: var(--t-red-bg); color: var(--t-red-fg); }
+.pill-warn { background: var(--t-yellow-bg); color: var(--t-yellow-fg); }
+.pill-info { background: var(--t-blue-bg); color: var(--t-blue-fg); }
+.pill-gray { background: var(--t-gray-bg); color: var(--t-gray-fg); }
+
+/* ---------- 3. Cards: softer, deeper shadow; air between sections ---------- */
+.card, .kpi, .quick, .seg { box-shadow: var(--shadow-card); }
+a.kpi:hover, .quick a:hover { box-shadow: var(--shadow-hover); }
+.card + .card { margin-top: 20px; }
+.hello { margin-top: 4px; }
+@media (min-width: 861px) { .quick { margin-top: 28px !important; } }
+
+/* ---------- 4. Icons: a tinted tile per section ---------- */
+.kpi .label svg, .quick a svg, .si-icon, .card-head h2 > svg { --tone-bg: var(--t-gray-bg); --tone-fg: var(--t-gray-fg); }
+:is(.kpi .label, .quick a, .si-icon, .card-head h2, .nav a) :is(.i-wallet, .i-cart, .i-receipt, .i-trend, .i-coins, .i-check, .i-drawer) { --tone-bg: var(--t-lime-bg); --tone-fg: var(--t-lime-fg); }
+:is(.kpi .label, .quick a, .si-icon, .card-head h2, .nav a) :is(.i-wrench, .i-phone, .i-clock, .i-calendar, .i-shield, .i-history) { --tone-bg: var(--t-blue-bg); --tone-fg: var(--t-blue-fg); }
+:is(.kpi .label, .quick a, .si-icon, .card-head h2, .nav a) :is(.i-alert, .i-expense, .i-trash, .i-arrowOut, .i-undo) { --tone-bg: var(--t-red-bg); --tone-fg: var(--t-red-fg); }
+:is(.kpi .label, .quick a, .si-icon, .card-head h2, .nav a) :is(.i-box, .i-truck, .i-tag, .i-clipboard, .i-layers, .i-barcode) { --tone-bg: var(--t-yellow-bg); --tone-fg: var(--t-yellow-fg); }
+:is(.kpi .label, .quick a, .si-icon, .card-head h2, .nav a) :is(.i-user, .i-users, .i-key) { --tone-bg: var(--t-violet-bg); --tone-fg: var(--t-violet-fg); }
+:is(.kpi .label, .quick a, .si-icon, .card-head h2, .nav a) :is(.i-chart, .i-settings) { --tone-bg: var(--t-teal-bg); --tone-fg: var(--t-teal-fg); }
+.kpi .label svg { background: var(--tone-bg); color: var(--tone-fg); border-radius: 12px; }
+.kpi.bg-mint .label svg { background: rgba(255, 255, 255, .55); color: #141414; border-radius: 12px; }
+.quick a svg { background: var(--tone-bg); color: var(--tone-fg); border-radius: 18px; }
+.quick a:first-child svg { background: var(--lime); color: #141414; }
+.si-icon { background: none; }
+.si-icon svg { width: 38px; height: 38px; padding: 9px; border-radius: 12px; background: var(--tone-bg); color: var(--tone-fg); }
+.si-icon { --tone-bg: var(--t-gray-bg); --tone-fg: var(--t-gray-fg); }
+.search-item.on .si-icon { background: none; }
+.search-item.on .si-icon svg { background: var(--violet); color: var(--snow); }
+.card-head h2 > svg { width: 30px; height: 30px; padding: 6px; border-radius: 10px; background: var(--tone-bg); color: var(--tone-fg); }
+@media (max-width: 860px) {
+  .nav a svg { background: var(--tone-bg, var(--cloud)); color: var(--tone-fg, var(--ink)); }
+  .nav a.active svg { background: var(--violet); color: var(--snow); }
+}
+
+/* ---------- 5. Tabs: one capsule, a pill slides to the choice ---------- */
+.seg.has-ind { position: relative; isolation: isolate; }
+.seg-ind {
+  position: absolute; top: 4px; bottom: 4px; left: 0; border-radius: var(--r-pill); background: var(--violet); z-index: -1;
+  transition: left .32s var(--ease), width .32s var(--ease), opacity .2s; pointer-events: none;
+}
+.seg.has-ind button.on { background: transparent; box-shadow: none; color: var(--snow); }
+.seg button { transition: color .25s; position: relative; }
+:root[data-theme="dark"] .seg.has-ind button.on { color: #141414; }
+
+/* ---------- Tables: calmer on big screens ---------- */
+@media (min-width: 861px) {
+  .table th { font-size: 12.5px; letter-spacing: .1px; border-bottom: 1px solid var(--pebble); }
+  .table td { border-bottom: 1px solid transparent; }
+  .table tbody tr td:first-child { border-start-start-radius: 12px; border-end-start-radius: 12px; }
+  .table tbody tr td:last-child { border-start-end-radius: 12px; border-end-end-radius: 12px; }
+  .table tbody tr:hover td { background: var(--cloud); }
+  .table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--cloud) 45%, transparent); }
+  .table tbody tr:nth-child(even):hover td { background: var(--cloud); }
+}
+
+/* ---------- 6. A little life in the background ---------- */
+.shell { position: relative; isolation: isolate; }
+.shell::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(520px 360px at 92% -6%, rgba(194, 214, 79, .22), transparent 70%),
+    radial-gradient(460px 340px at -4% 38%, rgba(255, 212, 92, .16), transparent 70%),
+    radial-gradient(420px 320px at 70% 110%, rgba(194, 214, 79, .12), transparent 70%);
+}
+:root[data-theme="dark"] .shell::before {
+  background:
+    radial-gradient(520px 360px at 92% -6%, rgba(194, 214, 79, .10), transparent 70%),
+    radial-gradient(460px 340px at -4% 38%, rgba(255, 212, 92, .06), transparent 70%);
+}
+.main, .content { background: transparent; }
+
+/* Empty states: a friendly icon above the message */
+td.empty, .card.empty, div.empty:not(.loading):not(:has(svg)) { padding-top: 26px; }
+td.empty::before, .card.empty::before, div.empty:not(.loading):not(:has(svg))::before {
+  content: ''; display: block; width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 22px;
+  background-color: var(--t-lime-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237d8f1c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 8 12 3 3 8v8l9 5 9-5z'/%3E%3Cpath d='m3 8 9 5 9-5M12 13v8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 30px;
+}
+.card.empty:has(svg)::before { display: none; }
+.empty svg { width: 48px; height: 48px; padding: 12px; border-radius: 18px; background: var(--t-lime-bg); color: var(--t-lime-fg); display: block; margin: 0 auto 10px; }
+
+/* Avatars: each person their own colour */
+.avatar[data-tone="lime"] { background: var(--t-lime-bg); color: var(--t-lime-fg); }
+.avatar[data-tone="blue"] { background: var(--t-blue-bg); color: var(--t-blue-fg); }
+.avatar[data-tone="yellow"] { background: var(--t-yellow-bg); color: var(--t-yellow-fg); }
+.avatar[data-tone="violet"] { background: var(--t-violet-bg); color: var(--t-violet-fg); }
+.avatar[data-tone="red"] { background: var(--t-red-bg); color: var(--t-red-fg); }
+.avatar[data-tone="teal"] { background: var(--t-teal-bg); color: var(--t-teal-fg); }
+.avatar { font-weight: 700; border: 0; }
+
+/* ---------- Login: dark backdrop, big logo, a lime line that breathes ---------- */
+.login { background: radial-gradient(900px 600px at 80% 0%, rgba(194, 214, 79, .22), transparent 60%), radial-gradient(700px 500px at 0% 100%, rgba(255, 212, 92, .12), transparent 60%), #0d0d0d; }
+.login-form .box { box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .6); }
+.login-panel { background: transparent; }
+.login-logo { flex-direction: column; align-items: center; gap: 14px; }
+.login-logo::after {
+  content: ''; width: 56px; height: 4px; border-radius: 99px; background: var(--lime);
+  animation: breathe 2.6s ease-in-out infinite;
+}
+@keyframes breathe { 50% { width: 110px; opacity: .65; } }
+body:has(.login)::before { background: #0d0d0d; }
+@media (prefers-reduced-motion: reduce) { .login-logo::after { animation: none; } }
+/* Decorative circles stay behind the text; plain cards are white */
+.kpi > * { position: relative; z-index: 1; }
+.kpi::before, .kpi::after { z-index: 0; }
+.kpi:not([class*="bg-"]) { background: var(--snow); }
+/* Phones: the header is solid (iOS), so keep the background glow lower down — no seam under it */
+@media (max-width: 860px) {
+  .shell::before {
+    background:
+      radial-gradient(360px 300px at 100% 42%, rgba(194, 214, 79, .18), transparent 70%),
+      radial-gradient(320px 280px at 0% 78%, rgba(255, 212, 92, .14), transparent 70%);
+  }
+  :root[data-theme="dark"] .shell::before {
+    background:
+      radial-gradient(360px 300px at 100% 42%, rgba(194, 214, 79, .09), transparent 70%),
+      radial-gradient(320px 280px at 0% 78%, rgba(255, 212, 92, .05), transparent 70%);
+  }
+}
