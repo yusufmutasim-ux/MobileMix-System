@@ -1264,7 +1264,7 @@ body::before {
 
 /* ---------- 3. Cards: softer, deeper shadow; air between sections ---------- */
 .card, .kpi, .quick, .seg { box-shadow: var(--shadow-card); }
-a.kpi:hover, .quick a:hover { box-shadow: var(--shadow-hover); }
+a.kpi:hover { box-shadow: var(--shadow-hover); }
 .card + .card { margin-top: 20px; }
 .hello { margin-top: 4px; }
 @media (min-width: 861px) { .quick { margin-top: 28px !important; } }
@@ -1389,3 +1389,10 @@ body:has(.login) {
 }
 .login { background: transparent; min-height: 100vh; min-height: 100lvh; }
 body:has(.login)::before { background: transparent; }
+
+/* Quick actions: no box on hover — only the icon lifts, with a soft shadow under it */
+.quick a, .quick a:hover, .quick a:focus-visible { background: none !important; box-shadow: none !important; transform: none !important; }
+.quick a svg { transition: transform .2s var(--ease), box-shadow .2s var(--ease); }
+.quick a:hover svg, .quick a:focus-visible svg { transform: translateY(-3px); box-shadow: 0 10px 18px -8px rgba(17, 17, 17, .35); }
+.quick a:active svg { transform: scale(.94); box-shadow: none; }
+.quick a:hover { color: var(--ink); }
