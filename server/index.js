@@ -7,9 +7,11 @@ const dataDir = path.dirname(dbFile);
 const db = require('./db').open(dbFile);
 const { createApp } = require('./app');
 const { scheduleBackups } = require('./backup');
+const { startScheduler } = require('./scheduler');
 
 const PORT = Number(process.env.PORT) || 3000;
-createApp(db, { dataDir }).listen(PORT, '0.0.0.0', () => {
+const app = createApp(db, { dataDir });
+app.listen(PORT, '0.0.0.0', () => {
   console.log('\n  Mobile Mix شغّال ✅');
   console.log(`  على الجهاز ده:   http://localhost:${PORT}`);
   for (const list of Object.values(os.networkInterfaces())) {
@@ -27,4 +29,5 @@ createApp(db, { dataDir }).listen(PORT, '0.0.0.0', () => {
   }
   console.log('');
   scheduleBackups(db, dataDir);
+  startScheduler(db, app.locals.notifier);
 });

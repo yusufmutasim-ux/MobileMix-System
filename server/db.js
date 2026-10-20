@@ -251,6 +251,120 @@ CREATE TABLE IF NOT EXISTS secrets (
   value TEXT
 );
 
+-- ---------- money: expenses & the cash drawer ----------
+CREATE TABLE IF NOT EXISTS expenses (
+  id INTEGER PRIMARY KEY,
+  category TEXT NOT NULL,
+  amount REAL NOT NULL,
+  from_drawer INTEGER NOT NULL DEFAULT 1,   -- paid in cash out of the shop drawer
+  note TEXT,
+  employee_id INTEGER REFERENCES users(id), -- salaries / advances
+  period TEXT,                              -- salary month (YYYY-MM)
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(created_at);
+
+-- Money the owner puts into or takes out of the drawer
+CREATE TABLE IF NOT EXISTS cash_moves (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('in','out')),
+  amount REAL NOT NULL,
+  note TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Counting the drawer: what should be there vs what was counted
+CREATE TABLE IF NOT EXISTS drawer_closings (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  opened_at TEXT,
+  closed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  opening REAL NOT NULL DEFAULT 0,
+  expected REAL NOT NULL,
+  counted REAL NOT NULL,
+  diff REAL NOT NULL,
+  left_in_drawer REAL NOT NULL DEFAULT 0,
+  details TEXT,
+  note TEXT
+);
+
+-- ---------- suppliers & purchases ----------
+CREATE TABLE IF NOT EXISTS suppliers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT,
+  notes TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS purchases (
+  id INTEGER PRIMARY KEY,
+  purchase_no TEXT UNIQUE,
+  supplier_id INTEGER REFERENCES suppliers(id),
+  ref_no TEXT,                -- the supplier's own invoice number
+  user_id INTEGER REFERENCES users(id),
+  total REAL NOT NULL,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier_id);
+
+CREATE TABLE IF NOT EXISTS purchase_items (
+  id INTEGER PRIMARY KEY,
+  purchase_id INTEGER NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  name TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  unit_cost REAL NOT NULL,
+  line_total REAL NOT NULL,
+  serials TEXT
+);
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+  id INTEGER PRIMARY KEY,
+  supplier_id INTEGER REFERENCES suppliers(id),  -- empty: goods bought for cash without a saved supplier
+  purchase_id INTEGER REFERENCES purchases(id),
+  amount REAL NOT NULL,
+  from_drawer INTEGER NOT NULL DEFAULT 1,
+  note TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments ON supplier_payments(supplier_id);
+
+-- ---------- customers, credit sales & installments ----------
+CREATE TABLE IF NOT EXISTS customers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL UNIQUE,  -- digits only
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Money collected later on a sale that wasn't fully paid
+CREATE TABLE IF NOT EXISTS sale_payments (
+  id INTEGER PRIMARY KEY,
+  sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  amount REAL NOT NULL,
+  method TEXT NOT NULL DEFAULT 'cash',
+  note TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_sale_payments ON sale_payments(sale_id);
+
+CREATE TABLE IF NOT EXISTS sale_installments (
+  id INTEGER PRIMARY KEY,
+  sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  due_date TEXT NOT NULL,
+  amount REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_installments_sale ON sale_installments(sale_id);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
   user_id INTEGER,
@@ -280,12 +394,18 @@ const DEFAULT_SETTINGS = {
   shop_lng: '',
   zone_radius: '100',
   shop_networks: '',
+  expense_categories: 'إيجار\nكهربا ومياه\nنت وتليفون\nمرتبات\nسلفة\nأكل ومشروبات\nمواصلات\nصيانة المحل\nأخرى',
+  daily_summary: '1',
+  daily_summary_time: '23:00',
+  installment_reminders: '1',
 };
 
 function open(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+  // digits('010 1234-5678') = '01012345678' — to match phone numbers however they were typed
+  db.function('digits', { deterministic: true }, (v) => String(v ?? '').replace(/\D/g, ''));
   upgrade(db);
   db.exec(SCHEMA);
   addMissingColumns(db);
@@ -308,6 +428,7 @@ function open(file) {
       addCat.run(c);
   }
   applyAdminPassword(db);
+  backfillCustomers(db);
   return db;
 }
 
@@ -347,6 +468,10 @@ function addMissingColumns(db) {
   const wanted = {
     shifts: ['in_method TEXT', 'in_lat REAL', 'in_lng REAL', 'in_accuracy REAL', 'in_distance REAL',
       'out_method TEXT', 'out_lat REAL', 'out_lng REAL', 'out_accuracy REAL', 'out_distance REAL'],
+    returns: ['cash_out REAL'],                       // cash handed back (old rows: the whole amount)
+    products: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
+    sale_items: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
+    users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0'],
   };
   for (const [table, cols] of Object.entries(wanted)) {
     const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
@@ -383,6 +508,20 @@ function upgrade(db) {
   } finally {
     db.exec('PRAGMA foreign_keys = ON');
   }
+}
+
+/** Customers list started in a later version: fill it once from earlier sales and repairs. */
+function backfillCustomers(db) {
+  if (db.prepare("SELECT value FROM settings WHERE key = 'customers_backfilled'").get()) return;
+  db.exec(`
+    INSERT OR IGNORE INTO customers (name, phone, created_at)
+    SELECT name, phone, first FROM (
+      SELECT COALESCE(NULLIF(TRIM(customer_name), ''), 'عميل') AS name, digits(customer_phone) AS phone, MIN(created_at) AS first
+      FROM (SELECT customer_name, customer_phone, created_at FROM sales WHERE customer_phone IS NOT NULL
+            UNION ALL SELECT customer_name, customer_phone, created_at FROM repairs)
+      WHERE length(digits(customer_phone)) >= 6 GROUP BY digits(customer_phone)
+    )`);
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('customers_backfilled', '1')").run();
 }
 
 /** Run fn inside a transaction; rolls back on throw. */

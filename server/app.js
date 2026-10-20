@@ -51,6 +51,11 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
   require('./routes/reports')(api, db);
   require('./routes/shifts')(api, db);
   require('./routes/notifications')(api, db);
+  require('./routes/money')(api, db);
+  require('./routes/purchases')(api, db);
+  require('./routes/customers')(api, db);
+  require('./routes/payroll')(api, db);
+  require('./routes/search')(api, db);
   api.use((_req, res) => res.status(404).json({ error: 'غير موجود' }));
   app.use('/api', api);
 

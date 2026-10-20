@@ -22,6 +22,8 @@ function verifyPassword(pw, stored) {
  *  - manager: everything except users, settings and backups
  *  - cashier: sell, print, see products (without cost), own sales; receive & hand over repairs
  *  - technician: repairs work (diagnosis, status, parts, price) and looking up parts
+ * Money: cashiers can record a drawer expense, count/close the drawer and collect customer payments;
+ * managers also see all expenses, drawer history, suppliers and purchases. Salaries are the admin's.
  */
 const PERMISSIONS = {
   admin: ['*'],
@@ -31,8 +33,11 @@ const PERMISSIONS = {
     'stock.edit', 'stocktake', 'labels.print', 'reports.view',
     'repairs.view', 'repairs.create', 'repairs.work', 'repairs.cash',
     'attendance.view', 'notifications.receive',
+    'expenses.create', 'expenses.view', 'drawer.close', 'drawer.view',
+    'purchases.manage', 'customers.view', 'customers.pay',
   ],
-  cashier: ['sales.create', 'products.view', 'labels.print', 'repairs.view', 'repairs.create', 'repairs.cash'],
+  cashier: ['sales.create', 'products.view', 'labels.print', 'repairs.view', 'repairs.create', 'repairs.cash',
+    'expenses.create', 'drawer.close', 'customers.view', 'customers.pay'],
   technician: ['products.view', 'repairs.view', 'repairs.create', 'repairs.work'],
 };
 

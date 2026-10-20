@@ -11,10 +11,16 @@ const TYPES = {
   shift_in: 'تسجيل حضور',
   shift_out: 'تسجيل انصراف',
   shift_denied: 'محاولة حضور/انصراف من برة المحل',
+  expense: 'مصروف من الدرج',
+  drawer_close: 'تقفيل الدرج',
+  customer_payment: 'تحصيل من عميل (آجل / قسط)',
+  purchase: 'فاتورة شراء بضاعة',
+  installments_due: 'أقساط متأخرة (تذكير الصبح)',
+  daily_summary: 'ملخص اليوم (آخر اليوم)',
 };
 
 // Types added after people already saved their choices: on for them unless they turn it off
-const ADDED_LATER = ['shift_denied'];
+const ADDED_LATER = ['shift_denied', 'expense', 'drawer_close', 'customer_payment', 'purchase', 'installments_due', 'daily_summary'];
 
 /**
  * Sends each event to managers/admins three ways:

@@ -221,7 +221,10 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
 
   // ---------- start over: wipe test data, keep staff and shop settings ----------
   const RESET_PARTS = {
-    sales: ['sale_items', 'returns', 'sales'],
+    sales: ['sale_payments', 'sale_installments', 'sale_items', 'returns', 'sales'],
+    money: ['expenses', 'cash_moves', 'drawer_closings'],
+    purchases: ['supplier_payments', 'purchase_items', 'purchases', 'suppliers'],
+    customers: ['customers'],
     repairs: ['repair_parts', 'repair_payments', 'repair_events', 'repairs'],
     products: ['stocktake_serials', 'stocktake_items', 'stocktakes', 'stock_movements', 'serials', 'products'],
     attendance: ['shifts'],
@@ -233,6 +236,8 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     const count = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
     res.json({
       sales: count('sales'), repairs: count('repairs'), products: count('products'), attendance: count('shifts'),
+      money: count('expenses') + count('cash_moves') + count('drawer_closings'), purchases: count('purchases') + count('suppliers'),
+      customers: count('customers'),
       log: count('notifications') + count('audit_log'), categories: count('categories'), users: count('users'),
     });
   });
@@ -245,13 +250,13 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     const parts = new Set((Array.isArray(b.parts) ? b.parts : []).filter((p) => RESET_PARTS[p]));
     // Products can't go without the sales, repairs and counts that point at them
     if (parts.has('categories')) parts.add('products');
-    if (parts.has('products')) { parts.add('sales'); parts.add('repairs'); }
+    if (parts.has('products')) { parts.add('sales'); parts.add('repairs'); parts.add('purchases'); }
     if (!parts.size) throw bad('اختار حاجة تتمسح');
 
     let file;
     try { file = snapshot(db, dataDir, 'before-reset'); } catch (e) { throw bad(`مقدرناش ناخد نسخة احتياطية قبل المسح: ${e.message}`); }
 
-    const order = ['log', 'attendance', 'sales', 'repairs', 'products', 'categories'];
+    const order = ['log', 'attendance', 'money', 'customers', 'sales', 'repairs', 'purchases', 'products', 'categories'];
     const deleted = {};
     tx(db, () => {
       for (const part of order) {
@@ -306,7 +311,9 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
       tx(db, () => {
         const tables = db.prepare("SELECT name FROM bk.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()
           .map((t) => t.name).filter((t) => !KEEP.has(t));
+        const seen = new Set();
         for (const t of tables) {
+          seen.add(t);
           const mine = db.prepare(`PRAGMA main.table_info(${t})`).all().map((c) => c.name);
           if (!mine.length) continue; // table no longer exists
           const theirs = new Set(db.prepare(`PRAGMA bk.table_info(${t})`).all().map((c) => c.name));
@@ -314,6 +321,9 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
           db.exec(`DELETE FROM main.${t}`);
           db.exec(`INSERT INTO main.${t} (${cols}) SELECT ${cols} FROM bk.${t}`);
         }
+        // A backup from an older version has no data for newer parts (e.g. expenses): those start empty
+        const mainTables = db.prepare("SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all().map((x) => x.name);
+        for (const t of mainTables) if (!seen.has(t) && !KEEP.has(t) && t !== 'users' && t !== 'settings') db.exec(`DELETE FROM main.${t}`);
       });
     } finally {
       db.exec('PRAGMA foreign_keys = ON');

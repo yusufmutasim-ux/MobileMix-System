@@ -1,4 +1,5 @@
 'use strict';
+const stock = require('../stock');
 const { tx } = require('../db');
 const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit } = require('../util');
@@ -29,37 +30,10 @@ module.exports = function productRoutes(api, db) {
     return p;
   }
 
-  function addMovement(productId, type, change, qtyAfter, refId, note, userId) {
-    db.prepare(`INSERT INTO stock_movements (product_id, type, qty_change, qty_after, ref_id, note, user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`).run(productId, type, change, qtyAfter, refId ?? null, note ?? null, userId);
-  }
-
-  function cleanSerials(list) {
-    if (!Array.isArray(list)) return [];
-    const out = [...new Set(list.map((s) => String(s).trim()).filter(Boolean))];
-    for (const s of out) if (s.length > 40) throw bad(`رقم سيريال طويل جداً: ${s}`);
-    return out;
-  }
-
-  /** Add stock (purchase). Updates average cost. Must run inside a transaction. */
-  function receiveStock(product, { qty, cost, serials, note }, userId) {
-    if (product.has_serial) {
-      if (!serials.length) throw bad('لازم تدخل رقم IMEI / سيريال لكل جهاز');
-      qty = serials.length;
-      const ins = db.prepare('INSERT INTO serials (product_id, serial, cost_price) VALUES (?, ?, ?)');
-      for (const s of serials) ins.run(product.id, s, cost ?? product.cost_price);
-    }
-    if (!(qty > 0)) throw bad('الكمية لازم تكون أكبر من صفر');
-    const newQty = product.qty + qty;
-    let newCost = product.cost_price;
-    if (cost != null) {
-      newCost = product.qty > 0 ? round2((product.qty * product.cost_price + qty * cost) / newQty) : cost;
-    }
-    db.prepare("UPDATE products SET qty = ?, cost_price = ?, updated_at = datetime('now','localtime') WHERE id = ?")
-      .run(newQty, newCost, product.id);
-    addMovement(product.id, 'purchase', qty, newQty, null, note, userId);
-    return newQty;
-  }
+  const addMovement = (productId, type, change, qtyAfter, refId, note, userId) =>
+    stock.addMovement(db, productId, type, change, qtyAfter, refId, note, userId);
+  const cleanSerials = stock.cleanSerials;
+  const receiveStock = (product, opts, userId) => stock.receiveStock(db, product, opts, userId);
 
   function readFields(body, existing = {}) {
     const has = (k) => body[k] !== undefined;
@@ -72,6 +46,7 @@ module.exports = function productRoutes(api, db) {
       sell_price: has('sell_price') ? num(body.sell_price, 'سعر البيع', { min: 0 }) : existing.sell_price,
       min_qty: has('min_qty') ? num(body.min_qty, 'حد الطلب', { min: 0, int: true, optional: true }) ?? 0 : existing.min_qty ?? 0,
       notes: has('notes') ? str(body.notes, 'الملاحظات', { optional: true, max: 500 }) : existing.notes ?? null,
+      warranty_days: has('warranty_days') ? num(body.warranty_days, 'مدة الضمان', { min: 0, int: true, optional: true }) ?? 0 : existing.warranty_days ?? 0,
     };
     if (f.sell_price == null) throw bad('سعر البيع مطلوب');
     if (f.name == null) throw bad('اسم المنتج مطلوب');
@@ -140,9 +115,9 @@ module.exports = function productRoutes(api, db) {
     const serials = cleanSerials(req.body.serials);
 
     const id = tx(db, () => {
-      const r = db.prepare(`INSERT INTO products (name, brand, category_id, barcode, cost_price, sell_price, min_qty, has_serial, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(f.name, f.brand, f.category_id, f.barcode, f.cost_price, f.sell_price, f.min_qty, hasSerial, f.notes);
+      const r = db.prepare(`INSERT INTO products (name, brand, category_id, barcode, cost_price, sell_price, min_qty, has_serial, notes, warranty_days)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(f.name, f.brand, f.category_id, f.barcode, f.cost_price, f.sell_price, f.min_qty, hasSerial, f.notes, f.warranty_days);
       const id = Number(r.lastInsertRowid);
       if (!f.barcode) db.prepare('UPDATE products SET barcode = ? WHERE id = ?').run(autoBarcode(id), id);
       const product = getProduct(id);
@@ -161,8 +136,8 @@ module.exports = function productRoutes(api, db) {
     const barcode = f.barcode || autoBarcode(existing.id);
     const active = req.body.active !== undefined ? (req.body.active ? 1 : 0) : existing.active;
     db.prepare(`UPDATE products SET name=?, brand=?, category_id=?, barcode=?, cost_price=?, sell_price=?, min_qty=?, notes=?, active=?,
-                updated_at = datetime('now','localtime') WHERE id = ?`)
-      .run(f.name, f.brand, f.category_id, barcode, f.cost_price, f.sell_price, f.min_qty, f.notes, active, existing.id);
+                warranty_days=?, updated_at = datetime('now','localtime') WHERE id = ?`)
+      .run(f.name, f.brand, f.category_id, barcode, f.cost_price, f.sell_price, f.min_qty, f.notes, active, f.warranty_days, existing.id);
     if (existing.sell_price !== f.sell_price) {
       audit(db, req.user.id, 'product.price', { id: existing.id, from: existing.sell_price, to: f.sell_price });
     }

@@ -3,6 +3,7 @@ const { tx } = require('../db');
 const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit, getSettings } = require('../util');
 const { requireOpenShift } = require('./shifts');
+const { rememberCustomer } = require('../money');
 const fmtMoney = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
 
 /*
@@ -126,6 +127,7 @@ module.exports = function repairRoutes(api, db) {
       const id = Number(r.lastInsertRowid);
       db.prepare('UPDATE repairs SET ticket_no = ? WHERE id = ?').run(`${settings.repair_prefix || 'R-'}${pad(id, 6)}`, id);
       event(id, 'received', 'استلام الجهاز', req.user.id);
+      rememberCustomer(db, f.customer_name, f.customer_phone);
       const deposit = num(b.deposit, 'العربون', { optional: true, min: 0 }) || 0;
       if (deposit > 0) {
         if (!can(req.user, 'repairs.cash')) throw bad('مش مسموحلك تستلم فلوس');

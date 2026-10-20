@@ -3,6 +3,8 @@ const { tx } = require('../db');
 const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit, getSettings, dateRange } = require('../util');
 const { requireOpenShift } = require('./shifts');
+const { saleMoney, installmentsOf, rememberCustomer, DUE_SQL } = require('../money');
+const { today } = require('../util');
 
 const PAY_AR = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
 const fmtMoney = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
@@ -74,11 +76,18 @@ module.exports = function salesRoutes(api, db) {
       }
 
       const paid = round2(num(body.paid, 'المدفوع', { optional: true, min: 0 }) ?? total);
+      const due = round2(total - Math.min(paid, total));
+      const customerName = str(body.customer_name, 'اسم العميل', { optional: true, max: 80 });
+      const customerPhone = str(body.customer_phone, 'تليفون العميل', { optional: true, max: 30 });
+      if (due > 0.004 && (!customerName || String(customerPhone || '').replace(/\D/g, '').length < 8)) {
+        throw bad('في فلوس متبقية على العميل — لازم تكتب اسمه وتليفونه عشان تتسجل عليه');
+      }
+      const plan = due > 0.004 ? installmentPlan(body.installments, due) : [];
       const r = db.prepare(`INSERT INTO sales (user_id, customer_name, customer_phone, subtotal, discount, total, paid, payment_method, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         req.user.id,
-        str(body.customer_name, 'اسم العميل', { optional: true, max: 80 }),
-        str(body.customer_phone, 'تليفون العميل', { optional: true, max: 30 }),
+        customerName,
+        customerPhone,
         subtotal, discount, total, paid, paymentMethod,
         str(body.notes, 'الملاحظات', { optional: true, max: 300 }),
       );
@@ -86,16 +95,19 @@ module.exports = function salesRoutes(api, db) {
       const invoiceNo = `${settings.invoice_prefix || ''}${pad(saleId, 6)}`;
       db.prepare('UPDATE sales SET invoice_no = ? WHERE id = ?').run(invoiceNo, saleId);
 
-      const addItem = db.prepare(`INSERT INTO sale_items (sale_id, product_id, name, serial, qty, unit_price, unit_cost, line_total)
-                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+      const addItem = db.prepare(`INSERT INTO sale_items (sale_id, product_id, name, serial, qty, unit_price, unit_cost, line_total, warranty_days)
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       for (const l of lines) {
-        addItem.run(saleId, l.p.id, l.p.name, l.serial, l.qty, l.unitPrice, l.unitCost, l.lineTotal);
+        addItem.run(saleId, l.p.id, l.p.name, l.serial, l.qty, l.unitPrice, l.unitCost, l.lineTotal, l.p.warranty_days || 0);
         const { qty: current } = db.prepare('SELECT qty FROM products WHERE id = ?').get(l.p.id);
         const after = current - l.qty;
         db.prepare("UPDATE products SET qty = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(after, l.p.id);
         if (l.serial) db.prepare("UPDATE serials SET status = 'sold', sale_id = ? WHERE serial = ?").run(saleId, l.serial);
         movement.run(l.p.id, 'sale', -l.qty, after, saleId, invoiceNo, req.user.id);
       }
+      const addInst = db.prepare('INSERT INTO sale_installments (sale_id, seq, due_date, amount) VALUES (?, ?, ?, ?)');
+      plan.forEach((p, i) => addInst.run(saleId, i + 1, p.due_date, p.amount));
+      if (customerPhone) rememberCustomer(db, customerName, customerPhone);
       return saleId;
     });
 
@@ -133,7 +145,7 @@ module.exports = function salesRoutes(api, db) {
     }
     const rows = db.prepare(`
       SELECT s.id, s.invoice_no, s.customer_name, s.customer_phone, s.total, s.returned_total, s.payment_method,
-             s.status, s.created_at, u.full_name AS user_name,
+             s.status, s.created_at, u.full_name AS user_name, ${DUE_SQL} AS due,
              (SELECT SUM(qty) FROM sale_items WHERE sale_id = s.id) AS items_count
       FROM sales s JOIN users u ON u.id = s.user_id
       WHERE ${where.join(' AND ')}
@@ -168,9 +180,13 @@ module.exports = function salesRoutes(api, db) {
         touched.push({ item, qty });
       }
       amount = round2(amount);
+      // What's still owed is reduced first; cash is handed back only for what the customer paid beyond the new total
+      const before = saleMoney(db, sale.id);
+      const kept = before.received - before.refunded;
+      const cashOut = round2(Math.max(0, kept - (before.net - amount)) - Math.max(0, kept - before.net));
 
-      const r = db.prepare('INSERT INTO returns (sale_id, user_id, amount, cost, reason) VALUES (?, ?, ?, ?, ?)')
-        .run(sale.id, req.user.id, amount, round2(cost), reason);
+      const r = db.prepare('INSERT INTO returns (sale_id, user_id, amount, cost, reason, cash_out) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(sale.id, req.user.id, amount, round2(cost), reason, cashOut);
       const returnId = Number(r.lastInsertRowid);
 
       for (const { item, qty } of touched) {
@@ -197,14 +213,77 @@ module.exports = function salesRoutes(api, db) {
     res.json(sale);
   });
 
+  // ---------- collecting money later on a credit / installment sale ----------
+  api.post('/sales/:id/payments', requirePerm('customers.pay'), (req, res) => {
+    const b = req.body || {};
+    const method = PAYMENT_METHODS.includes(b.method) && b.method !== 'installment' ? b.method : 'cash';
+    const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(req.params.id);
+    if (!sale) throw notFound('الفاتورة غير موجودة');
+    requireOpenShift(db, req.user);
+    const amount = round2(num(b.amount, 'المبلغ', { min: 0.01 }));
+    tx(db, () => {
+      const { due } = saleMoney(db, sale.id);
+      if (due <= 0.004) throw bad('الفاتورة دي مدفوعة بالكامل');
+      if (amount > due + 0.004) throw bad(`المتبقي على الفاتورة ${due} بس`);
+      db.prepare('INSERT INTO sale_payments (sale_id, amount, method, note, user_id) VALUES (?, ?, ?, ?, ?)')
+        .run(sale.id, amount, method, str(b.note, 'الملاحظة', { optional: true, max: 200 }), req.user.id);
+    });
+    audit(db, req.user.id, 'sale.payment', { sale: sale.invoice_no, amount, method });
+    const after = loadSale(sale.id, req.user);
+    req.app.locals.notifier.notify({
+      type: 'customer_payment', actorId: req.user.id, url: `#/sales?open=${sale.id}`,
+      title: `تحصيل — ${fmtMoney(amount, getSettings(db).currency)}`,
+      body: `${req.user.full_name} • ${sale.customer_name || ''} • فاتورة ${sale.invoice_no}${after.due > 0 ? ` • باقي ${fmtMoney(after.due, getSettings(db).currency)}` : ' • خلصت ✅'}`,
+    });
+    res.status(201).json(after);
+  });
+
+  /** Split what's owed into equal installments: { count, every: 'month' | 'week' | days, first_date }. */
+  function installmentPlan(raw, due) {
+    if (!raw || !raw.count) return [];
+    const count = num(raw.count, 'عدد الأقساط', { min: 1, int: true });
+    if (count > 60) throw bad('عدد الأقساط كبير جداً');
+    const first = /^\d{4}-\d{2}-\d{2}$/.test(String(raw.first_date || '')) ? raw.first_date : null;
+    if (!first) throw bad('حدد ميعاد أول قسط');
+    if (first < today()) throw bad('ميعاد أول قسط عدّى');
+    const every = raw.every === 'week' ? 'week' : 'month';
+    const each = Math.floor((due / count) * 100) / 100;
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const d = new Date(`${first}T12:00:00`);
+      if (every === 'week') d.setDate(d.getDate() + 7 * i);
+      else {
+        const day = d.getDate();
+        d.setDate(1);
+        d.setMonth(d.getMonth() + i);
+        d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+      }
+      const amount = i === count - 1 ? round2(due - each * (count - 1)) : each;
+      out.push({ due_date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, amount });
+    }
+    return out;
+  }
+
   function loadSale(id, user) {
     const sale = db.prepare(`SELECT s.*, u.full_name AS user_name FROM sales s JOIN users u ON u.id = s.user_id WHERE s.id = ?`).get(id);
     if (!sale) throw notFound('الفاتورة غير موجودة');
     if (!can(user, 'sales.view_all') && sale.user_id !== user.id) throw notFound('الفاتورة غير موجودة');
     sale.items = db.prepare('SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id').all(sale.id);
-    sale.returns = db.prepare(`SELECT r.id, r.amount, r.reason, r.created_at, u.full_name AS user_name
+    sale.returns = db.prepare(`SELECT r.id, r.amount, r.cash_out, r.reason, r.created_at, u.full_name AS user_name
                                FROM returns r JOIN users u ON u.id = r.user_id WHERE r.sale_id = ? ORDER BY r.id`).all(sale.id);
     if (!can(user, 'products.view_cost')) sale.items.forEach((i) => delete i.unit_cost);
+    Object.assign(sale, saleMoney(db, sale.id));
+    sale.payments = db.prepare(`SELECT p.*, u.full_name AS user_name FROM sale_payments p LEFT JOIN users u ON u.id = p.user_id
+                                WHERE p.sale_id = ? ORDER BY p.id`).all(sale.id);
+    sale.installments = installmentsOf(db, sale.id);
+    const day = sale.created_at.slice(0, 10);
+    sale.items.forEach((i) => {
+      if (i.warranty_days > 0) {
+        const d = new Date(`${day}T12:00:00`);
+        d.setDate(d.getDate() + i.warranty_days);
+        i.warranty_until = d.toISOString().slice(0, 10);
+      }
+    });
     return sale;
   }
 };

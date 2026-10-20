@@ -1,6 +1,7 @@
 'use strict';
 const { requireAuth, requirePerm, can } = require('../auth');
 const { round2, dateRange, today } = require('../util');
+const { DUE_SQL, drawerNow, lateInstallments } = require('../money');
 
 /*
  * Money rules used everywhere:
@@ -169,6 +170,58 @@ module.exports = function reportRoutes(api, db) {
     });
   });
 
+  /**
+   * The whole picture: profit from sales and repairs, minus expenses = what the shop really made.
+   * Plus money owed to us (customers) and by us (suppliers).
+   */
+  api.get('/reports/finance', requirePerm('reports.view'), (req, res) => {
+    const { from, to } = dateRange(req.query);
+    const salesProfit = db.prepare(`SELECT COALESCE(SUM(${NET} - si.unit_cost * si.qty), 0) AS p, COALESCE(SUM(${NET}), 0) AS revenue
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE date(s.created_at) BETWEEN ? AND ?`).get(from, to);
+    const rets = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(cost), 0) AS cost FROM returns
+      WHERE date(created_at) BETWEEN ? AND ?`).get(from, to);
+    const PARTS = '(SELECT COALESCE(SUM(qty * unit_cost), 0) FROM repair_parts WHERE repair_id = r.id)';
+    const rep = db.prepare(`SELECT COALESCE(SUM(r.price), 0) AS revenue, COALESCE(SUM(COALESCE(r.price, 0) - ${PARTS} - r.extra_cost), 0) AS p
+      FROM repairs r WHERE r.status = 'delivered' AND date(r.delivered_at) BETWEEN ? AND ?`).get(from, to);
+    const expenses = db.prepare(`SELECT category, SUM(amount) AS total, COUNT(*) AS count FROM expenses
+      WHERE date(created_at) BETWEEN ? AND ? GROUP BY category ORDER BY total DESC`).all(from, to);
+    const expByDay = Object.fromEntries(db.prepare(`SELECT date(created_at) AS day, SUM(amount) AS t FROM expenses
+      WHERE date(created_at) BETWEEN ? AND ? GROUP BY day`).all(from, to).map((r) => [r.day, r.t]));
+    const salesByDay = Object.fromEntries(db.prepare(`SELECT date(s.created_at) AS day, SUM(${NET} - si.unit_cost * si.qty) AS p
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE date(s.created_at) BETWEEN ? AND ? GROUP BY day`).all(from, to).map((r) => [r.day, r.p]));
+    const repByDay = Object.fromEntries(db.prepare(`SELECT date(r.delivered_at) AS day, SUM(COALESCE(r.price, 0) - ${PARTS} - r.extra_cost) AS p
+      FROM repairs r WHERE r.status = 'delivered' AND date(r.delivered_at) BETWEEN ? AND ? GROUP BY day`).all(from, to).map((r) => [r.day, r.p]));
+    const retByDay = Object.fromEntries(db.prepare(`SELECT date(created_at) AS day, SUM(amount - cost) AS p FROM returns
+      WHERE date(created_at) BETWEEN ? AND ? GROUP BY day`).all(from, to).map((r) => [r.day, r.p]));
+    const days = [...new Set([...Object.keys(expByDay), ...Object.keys(salesByDay), ...Object.keys(repByDay), ...Object.keys(retByDay)])].sort();
+    const byDay = days.map((day) => {
+      const gross = (salesByDay[day] || 0) - (retByDay[day] || 0) + (repByDay[day] || 0);
+      return { day, profit: round2(gross), expenses: round2(expByDay[day] || 0), net: round2(gross - (expByDay[day] || 0)) };
+    });
+    const purchases = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS t FROM purchases WHERE date(created_at) BETWEEN ? AND ?').get(from, to);
+    const collected = db.prepare('SELECT COALESCE(SUM(amount), 0) AS t FROM sale_payments WHERE date(created_at) BETWEEN ? AND ?').get(from, to).t;
+    const receivable = db.prepare(`SELECT COALESCE(SUM(${DUE_SQL}), 0) AS t, COUNT(*) AS n FROM sales s WHERE ${DUE_SQL} > 0`).get();
+    const payable = db.prepare(`SELECT COALESCE(SUM(b), 0) AS t, COUNT(*) AS n FROM (
+      SELECT (COALESCE((SELECT SUM(total) FROM purchases WHERE supplier_id = s.id), 0)
+            - COALESCE((SELECT SUM(amount) FROM supplier_payments WHERE supplier_id = s.id), 0)) AS b FROM suppliers s) WHERE b > 0.004`).get();
+    const sp = salesProfit.p - (rets.amount - rets.cost);
+    const exp = expenses.reduce((a, e) => a + e.total, 0);
+    res.json({
+      from, to,
+      totals: {
+        sales_revenue: round2(salesProfit.revenue - rets.amount), sales_profit: round2(sp),
+        repairs_revenue: round2(rep.revenue), repairs_profit: round2(rep.p),
+        expenses: round2(exp), net_profit: round2(sp + rep.p - exp),
+        purchases: round2(purchases.t), purchases_count: purchases.n, collected: round2(collected),
+        receivable: round2(receivable.t), receivable_count: receivable.n,
+        payable: round2(payable.t), payable_count: payable.n,
+        late_installments: round2(lateInstallments(db).reduce((a, i) => a + i.left, 0)),
+      },
+      expenses: expenses.map((e) => ({ ...e, total: round2(e.total) })),
+      by_day: byDay,
+    });
+  });
+
   /** Home screen numbers. Cashiers see only their own sales and no profit. */
   api.get('/dashboard', requireAuth, (req, res) => {
     const all = can(req.user, 'sales.view_all');
@@ -202,6 +255,19 @@ module.exports = function reportRoutes(api, db) {
       if (can(req.user, 'repairs.cash')) {
         out.repairs.cash_today = round2(db.prepare('SELECT COALESCE(SUM(amount), 0) AS s FROM repair_payments WHERE date(created_at) = ?').get(today()).s);
       }
+    }
+    if (can(req.user, 'expenses.view')) {
+      out.expenses_today = round2(db.prepare('SELECT COALESCE(SUM(amount), 0) AS s FROM expenses WHERE date(created_at) = ?').get(today()).s);
+      if (out.today.profit !== undefined) out.today.net = round2(out.today.profit - out.expenses_today);
+    }
+    if (can(req.user, 'drawer.close')) out.drawer = drawerNow(db).expected;
+    if (can(req.user, 'customers.view')) {
+      const late = lateInstallments(db);
+      out.credit = {
+        due: round2(db.prepare(`SELECT COALESCE(SUM(${DUE_SQL}), 0) AS t FROM sales s WHERE ${DUE_SQL} > 0`).get().t),
+        late: round2(late.reduce((a, i) => a + i.left, 0)),
+        late_count: new Set(late.map((i) => i.phone)).size,
+      };
     }
     if (!can(req.user, 'sales.create')) {
       out.recent = [];
