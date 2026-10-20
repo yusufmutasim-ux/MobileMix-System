@@ -1055,3 +1055,53 @@ body::before {
 }
 /* Login: just the logo, centred above the form */
 .login-logo { display: flex; justify-content: center; margin: 4px 0 30px; }
+
+/* ============ Phone menu: a bottom sheet with app-style tiles ============ */
+.sheet-handle { display: none; }
+@media (max-width: 860px) {
+  .sidebar {
+    top: auto; bottom: 0; inset-inline: 0; width: 100%; height: auto;
+    max-height: calc(100dvh - var(--top) - 24px);
+    border-radius: 30px 30px 0 0; border: 0;
+    padding: 8px 16px calc(14px + env(safe-area-inset-bottom));
+    transform: translateY(105%); transition: transform .38s var(--ease), box-shadow .38s;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, .18);
+  }
+  .sidebar.open { transform: none; }
+  .sheet-handle { display: block; width: 42px; height: 5px; border-radius: 99px; background: var(--fog); margin: 4px auto 12px; flex-shrink: 0; order: -2; }
+  .sidebar .brand { display: none; }
+
+  /* Account row on top, as a soft card */
+  .side-user { order: -1; border: 0; background: var(--cloud); border-radius: 20px; padding: 10px 12px; margin-bottom: 14px; }
+  .side-user .btn-icon { background: var(--snow); border-radius: 50%; width: 40px; height: 40px; }
+  #app-version { order: 5; }
+
+  /* Sections as a grid of tiles */
+  .nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 4px; overflow-y: auto; flex: 0 1 auto; }
+  .nav-sep { grid-column: 1 / -1; padding: 10px 6px 2px; font-size: 12px; }
+  .nav a {
+    flex-direction: column; justify-content: flex-start; gap: 7px; padding: 6px 2px; border-radius: 16px;
+    background: none; font-size: 12px; text-align: center; line-height: 1.25; color: var(--slate);
+  }
+  .nav a svg {
+    width: 54px; height: 54px; padding: 16px; border-radius: 18px; background: var(--cloud); color: var(--ink);
+    transition: background .25s, color .25s, transform .15s;
+  }
+  .nav a:active svg { transform: scale(.94); }
+  .nav a, .nav a:hover { background: none; }
+  .nav a.active { background: none; color: var(--ink); font-weight: 600; }
+  .nav a.active svg { background: var(--violet); color: var(--snow); }
+  :root[data-theme="dark"] .nav a.active svg { background: var(--lime); color: #141414; }
+
+  /* Tiles drop in one after another when the sheet opens */
+  .sidebar.open .nav a { animation: rise .4s var(--ease) backwards; }
+  .sidebar.open .nav a:nth-child(-n+5) { animation-delay: 40ms; }
+  .sidebar.open .nav a:nth-child(n+6) { animation-delay: 90ms; }
+  .sidebar.open .nav a:nth-child(n+10) { animation-delay: 140ms; }
+
+  .scrim { background: rgba(0, 0, 0, .38); }
+  body:has(.sidebar.open)::before { background: transparent; }
+}
+
+/* Desktop always shows the side menu, so no menu button there */
+@media (min-width: 861px) { .menu-btn { display: none; } }

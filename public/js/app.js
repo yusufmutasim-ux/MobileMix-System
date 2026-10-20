@@ -126,7 +126,8 @@ function shell() {
   const visible = links.filter((n, i) => !n.sep || (links[i + 1] && !links[i + 1].sep));
   document.getElementById('app').innerHTML = `
   <div class="shell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
+      <div class="sheet-handle" aria-hidden="true"></div>
       <div class="brand"><div>${LOGO_FULL(48)}${state.settings.shop_name && state.settings.shop_name !== 'Mobile Mix'
         ? `<span class="brand-sub">${esc(state.settings.shop_name)}</span>` : '<span class="brand-sub">نظام المبيعات والصيانة</span>'}</div></div>
       <nav class="nav">
@@ -177,6 +178,7 @@ function shell() {
     });
   });
   const toggleMenu = () => document.querySelector('.sidebar').classList.toggle('open');
+  sheetSwipe(document.getElementById('sidebar'));
   document.getElementById('menu').addEventListener('click', toggleMenu);
   document.getElementById('more').addEventListener('click', toggleMenu);
   document.getElementById('scrim').addEventListener('click', toggleMenu);
@@ -228,3 +230,29 @@ new MutationObserver(() => {
 }).observe(document.body, { childList: true, subtree: true });
 
 boot();
+
+/** Phones: the menu is a bottom sheet; drag it down to close it. */
+function sheetSwipe(sheet) {
+  let y0 = null;
+  let dy = 0;
+  sheet.addEventListener('touchstart', (e) => {
+    if (!sheet.classList.contains('open') || matchMedia('(min-width: 861px)').matches) return;
+    const nav = sheet.querySelector('.nav');
+    if (nav.contains(e.target) && nav.scrollTop > 0) return; // let the list scroll first
+    y0 = e.touches[0].clientY;
+    dy = 0;
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (y0 === null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    sheet.style.transition = 'none';
+    sheet.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  sheet.addEventListener('touchend', () => {
+    if (y0 === null) return;
+    y0 = null;
+    sheet.style.transition = '';
+    sheet.style.transform = '';
+    if (dy > 90) sheet.classList.remove('open');
+  });
+}
