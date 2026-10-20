@@ -2,9 +2,9 @@
 // The data always lives on the shop PC, so API calls are never cached.
 // App files are fetched fresh when possible and kept as a fallback, so the app opens fast
 // and shows a clear "can't reach the shop" page instead of a browser error.
-const VERSION = 'mm-v11';
+const VERSION = 'mm-v13';
 const SHELL = [
-  '/', '/offline.html', '/css/app.css', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png',
+  '/', '/offline.html', '/css/app.css', '/brand/logo.svg', '/brand/logo-dark-text.svg', '/brand/mark.svg', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png',
   '/js/app.js', '/js/core.js', '/js/print.js',
   '/js/views/login.js', '/js/views/dashboard.js', '/js/views/pos.js', '/js/views/sales.js', '/js/views/products.js',
   '/js/views/stocktake.js', '/js/views/labels.js', '/js/views/reports.js', '/js/views/users.js', '/js/views/settings.js',

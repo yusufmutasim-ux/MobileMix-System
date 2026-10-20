@@ -104,17 +104,29 @@ const P = {
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
 };
 export const icon = (name, cls = '') =>
   `<svg class="${cls}" width="1.15em" height="1.15em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 
-export const LOGO = `<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-  <defs><linearGradient id="mmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8181ff"/><stop offset=".45" stop-color="#33dbdb"/><stop offset=".7" stop-color="#ffd633"/><stop offset="1" stop-color="#fc527d"/></linearGradient></defs>
-  <rect x="9" y="2" width="22" height="36" rx="7" fill="url(#mmg)"/>
-  <rect x="12" y="6" width="16" height="25" rx="3" fill="#fff"/>
-  <path d="M15 24V13l5 6 5-6v11" fill="none" stroke="#6161ff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="20" cy="34.5" r="1.4" fill="#fff"/></svg>`;
+/** Brand mark (phone + arrows) and the full Mobile Mix Services logo, for light and dark themes. */
+export const LOGO = '<img class="brand-mark" src="/brand/mark.svg" alt="Mobile Mix">';
+export const LOGO_FULL = (h = 46) =>
+  `<img class="brand-logo on-light" src="/brand/logo-dark-text.svg" alt="Mobile Mix Services" style="height:${h}px">` +
+  `<img class="brand-logo on-dark" src="/brand/logo.svg" alt="Mobile Mix Services" style="height:${h}px">`;
+
+// ---------- light / dark theme ----------
+export function currentTheme() {
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
+export function setTheme(mode) {
+  try { localStorage.setItem('mm_theme', mode); } catch { /* ignore */ }
+  const dark = mode === 'dark' || (mode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0b0b0b' : '#efefef');
+}
 
 // ---------- toast ----------
 export function toast(msg, type = '') {

@@ -4,7 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mobile Mix</title>
-  <meta name="theme-color" content="#6161ff">
+  <meta name="theme-color" content="#efefef">
+  <script>
+    // Apply the saved light/dark theme before anything is drawn (no flash)
+    (function () {
+      var m = 'auto';
+      try { m = localStorage.getItem('mm_theme') || 'auto'; } catch (e) {}
+      var dark = m === 'dark' || (m === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      if (dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b0b0b');
+    })();
+  </script>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-180.png">

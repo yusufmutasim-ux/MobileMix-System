@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, LOGO, ROLE_NAMES, toastErr, modal, busy, toast } from './core.js';
+import { api, state, can, icon, esc, LOGO_FULL, ROLE_NAMES, toastErr, modal, busy, toast, currentTheme, setTheme } from './core.js';
 import { initShift, initNotifications } from './live.js';
 
 const NAV = [
@@ -119,13 +119,15 @@ function shell() {
   document.getElementById('app').innerHTML = `
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand">${LOGO}<div class="brand-name">${esc(state.settings.shop_name || 'Mobile Mix')}<small>نظام المبيعات والمخزن</small></div></div>
+      <div class="brand"><div>${LOGO_FULL(48)}${state.settings.shop_name && state.settings.shop_name !== 'Mobile Mix'
+        ? `<span class="brand-sub">${esc(state.settings.shop_name)}</span>` : '<span class="brand-sub">نظام المبيعات والصيانة</span>'}</div></div>
       <nav class="nav">
         ${visible.map((n) => n.sep ? `<div class="nav-sep">${n.sep}</div>` : `<a href="#${n.path}">${icon(n.icon)}<span>${n.title}</span></a>`).join('')}
       </nav>
       <div class="side-user">
         <div class="avatar">${esc(u.full_name.trim()[0] || '?')}</div>
         <div class="who"><b>${esc(u.full_name)}</b><span class="muted small">${ROLE_NAMES[u.role]}</span></div>
+        <button class="btn btn-ghost btn-icon theme-btn" id="theme" title="الوضع الفاتح / الغامق">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}</button>
         <button class="btn btn-ghost btn-icon" id="logout" title="تسجيل خروج">${icon('logout')}</button>
       </div>
       <div class="small muted num" id="app-version" style="padding:8px 4px 0;font-size:11px;text-align:center"></div>
@@ -158,6 +160,11 @@ function shell() {
     location.reload();
   });
   api.get('/version').then((v) => { document.getElementById('app-version').textContent = `نسخة ${v.build}`; }).catch(() => {});
+  document.getElementById('theme').addEventListener('click', (e) => {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    e.currentTarget.innerHTML = icon(next === 'dark' ? 'sun' : 'moon');
+  });
   const toggleMenu = () => document.querySelector('.sidebar').classList.toggle('open');
   document.getElementById('menu').addEventListener('click', toggleMenu);
   document.getElementById('more').addEventListener('click', toggleMenu);

@@ -43,7 +43,8 @@ export async function render(el, { actions }) {
       <div class="shift-banner"><span style="flex:1;min-width:200px">${icon('clock', '')} <b>إنت مش مسجل حضور.</b> ابدأ الشيفت عشان يتسجل وقت وصولك${state.settings.require_shift === '1' && state.user.role !== 'admin' ? ' — <b>لازم تسجل حضور قبل البيع أو استلام الأجهزة</b>' : ''}.</span>
       <button class="btn btn-primary btn-sm" id="banner-in">${icon('logout')} بدء الشيفت</button></div>
     </div>
-    <p class="muted" style="margin:0 0 20px;font-size:17px">${greet}، <b style="color:var(--ink);font-weight:500">${esc(state.user.full_name)}</b> 👋</p>
+    <div class="hello"><h2>${greet}، ${esc(state.user.full_name.split(' ')[0])} 👋</h2>
+      <p class="muted">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })} — يوم موفق في ${esc(state.settings.shop_name || 'Mobile Mix')}</p></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">${kpis.join('')}</div>
     <div class="quick" style="margin-top:24px">${quick}</div>
     <div class="grid ${d.week ? 'grid-2' : ''} ${d.recent.length || can('sales.create') ? '' : 'hidden'}" style="margin-top:24px">

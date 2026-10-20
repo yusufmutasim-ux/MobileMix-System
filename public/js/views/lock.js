@@ -1,5 +1,5 @@
 // What staff see before checking in, when the owner locked the system until check in.
-import { api, state, LOGO, icon, esc } from '../core.js';
+import { api, state, LOGO_FULL, icon, esc } from '../core.js';
 import { startShiftFlow, getPosition, locationHelp, zoneOn } from '../live.js';
 
 export async function render(el) {
@@ -7,7 +7,7 @@ export async function render(el) {
   el.innerHTML = `
   <div class="lock-screen">
     <div class="lock-box">
-      <div class="brand" style="padding:0;justify-content:center">${LOGO}<div class="brand-name">${esc(state.settings.shop_name || 'Mobile Mix')}</div></div>
+      <div style="display:flex;justify-content:center">${LOGO_FULL(52)}</div>
       <h1>${hour < 12 ? 'صباح الخير' : 'مساء الخير'}، <span class="grad">${esc(state.user.full_name)}</span></h1>
       <p class="muted">سجّل حضورك عشان تبدأ الشيفت وتفتح السيستم.</p>
       <button class="btn btn-primary btn-lg" id="lock-in" style="width:100%">${icon('logout')} بدء الشيفت</button>
