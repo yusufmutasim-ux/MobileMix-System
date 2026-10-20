@@ -104,7 +104,8 @@ async function route() {
     initNotifications();
   }
 
-  document.querySelectorAll('.nav a, .tabbar a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + item.path));
+  document.querySelectorAll('.nav a, .tabbar a, .topnav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + item.path));
+  document.querySelectorAll('.topnav .dd').forEach((d) => { d.classList.toggle('has-active', !!d.querySelector('a.active')); d.classList.remove('open'); });
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('page-title').textContent = item.title;
   document.title = `${item.title} — ${state.settings.shop_name || 'Mobile Mix'}`;
@@ -144,12 +145,13 @@ function shell() {
       <div class="side-user">
         <div class="avatar">${esc(u.full_name.trim()[0] || '?')}</div>
         <div class="who"><b>${esc(u.full_name)}</b><span class="muted small">${ROLE_NAMES[u.role]}</span></div>
-        <button class="btn btn-ghost btn-icon theme-btn" id="theme" title="الوضع الفاتح / الغامق">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}</button>
-        <button class="btn btn-ghost btn-icon" id="logout" title="تسجيل خروج">${icon('logout')}</button>
+        <button class="btn btn-ghost btn-icon theme-btn" data-act="theme" title="الوضع الفاتح / الغامق">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}</button>
+        <button class="btn btn-ghost btn-icon" data-act="logout" title="تسجيل خروج">${icon('logout')}</button>
       </div>
-      <div class="small muted num" id="app-version" style="padding:8px 4px 0;font-size:11px;text-align:center"></div>
+      <div class="small muted num app-version" style="padding:8px 4px 0;font-size:11px;text-align:center"></div>
     </aside>
     <main class="main">
+      ${topNav(visible, u)}
       <header class="topbar">
         <button class="btn btn-ghost btn-icon menu-btn" id="menu">${icon('menu')}</button>
         <h1 id="page-title"></h1>
@@ -172,27 +174,79 @@ function shell() {
       <button id="more">${icon('menu')}<span>المزيد</span></button>
     </nav>
   </div>`;
-  document.getElementById('logout').addEventListener('click', async () => {
+  document.querySelectorAll('[data-act="logout"]').forEach((b) => b.addEventListener('click', async () => {
     await api.post('/auth/logout').catch(() => {});
     location.hash = '#/';
     location.reload();
-  });
-  api.get('/version').then((v) => { document.getElementById('app-version').textContent = `نسخة ${v.build}`; }).catch(() => {});
+  }));
+  api.get('/version').then((v) => { document.querySelectorAll('.app-version').forEach((x) => { x.textContent = `نسخة ${v.build}`; }); }).catch(() => {});
+  initTopNav();
   document.getElementById('search-btn').addEventListener('click', openSearch);
   initSearchKeys();
-  document.getElementById('theme').addEventListener('click', (e) => {
+  document.querySelectorAll('[data-act="theme"]').forEach((b) => b.addEventListener('click', () => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
-    const btn = e.currentTarget;
     softly(() => {
       setTheme(next);
-      btn.innerHTML = icon(next === 'dark' ? 'sun' : 'moon');
+      document.querySelectorAll('[data-act="theme"]').forEach((x) => {
+        x.querySelector('svg').outerHTML = icon(next === 'dark' ? 'sun' : 'moon');
+        const label = x.querySelector('.theme-label');
+        if (label) label.textContent = next === 'dark' ? 'الوضع الفاتح' : 'الوضع الغامق';
+      });
     });
-  });
+  }));
   const toggleMenu = () => document.querySelector('.sidebar').classList.toggle('open');
   sheetSwipe(document.getElementById('sidebar'));
   document.getElementById('menu').addEventListener('click', toggleMenu);
   document.getElementById('more').addEventListener('click', toggleMenu);
   document.getElementById('scrim').addEventListener('click', toggleMenu);
+}
+
+/**
+ * Computers: navigation runs across the top. Main pages are links; each section
+ * (stock, accounts, admin) opens a small menu; the account menu sits at the end.
+ */
+function topNav(visible, u) {
+  const groups = [{ title: null, items: [] }];
+  for (const n of visible) {
+    if (n.sep) groups.push({ title: n.sep, items: [] });
+    else groups[groups.length - 1].items.push(n);
+  }
+  const link = (n) => `<a href="#${n.path}" title="${n.title}">${icon(n.icon)}<span>${n.short || n.title}</span></a>`;
+  return `<nav class="topnav" aria-label="القائمة">
+    <a class="tn-brand" href="#/">${LOGO_FULL(34)}</a>
+    <div class="tn-links">
+      ${groups[0].items.map(link).join('')}
+      ${groups.slice(1).filter((g) => g.items.length).map((g) => `
+        <div class="dd">
+          <button type="button" class="dd-btn">${icon(g.items[0].icon)}<span>${g.title}</span><svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="dd-menu">${g.items.map((n) => `<a href="#${n.path}">${icon(n.icon)}<span>${n.title}</span></a>`).join('')}</div>
+        </div>`).join('')}
+    </div>
+    <div class="dd tn-account">
+      <button type="button" class="dd-btn"><span class="avatar">${esc(u.full_name.trim()[0] || '?')}</span><span class="tn-name">${esc(u.full_name)}</span><svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="dd-menu">
+        <div class="dd-head"><b>${esc(u.full_name)}</b><span class="muted small">${ROLE_NAMES[u.role]}</span></div>
+        <button type="button" data-act="theme">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}<span class="theme-label">${currentTheme() === 'dark' ? 'الوضع الفاتح' : 'الوضع الغامق'}</span></button>
+        <button type="button" data-act="logout">${icon('logout')}<span>تسجيل خروج</span></button>
+        <div class="small muted num app-version dd-foot"></div>
+      </div>
+    </div>
+  </nav>`;
+}
+
+function initTopNav() {
+  const nav = document.querySelector('.topnav');
+  if (!nav) return;
+  nav.querySelectorAll('.dd-btn').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dd = b.closest('.dd');
+    const open = !dd.classList.contains('open');
+    nav.querySelectorAll('.dd.open').forEach((x) => x.classList.remove('open'));
+    dd.classList.toggle('open', open);
+  }));
+  nav.querySelectorAll('.dd-menu a').forEach((a) => a.addEventListener('click', () => a.closest('.dd').classList.remove('open')));
+  document.addEventListener('click', (e) => { if (!e.target.closest('.topnav .dd')) nav.querySelectorAll('.dd.open').forEach((x) => x.classList.remove('open')); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') nav.querySelectorAll('.dd.open').forEach((x) => x.classList.remove('open')); });
 }
 
 /** Staff can't see anything until they check in, when the owner turned that on. */
