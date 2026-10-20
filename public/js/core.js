@@ -136,7 +136,10 @@ export function toast(msg, type = '') {
   t.className = `toast ${type}`;
   t.textContent = msg;
   box.append(t);
-  setTimeout(() => t.remove(), type === 'err' ? 5000 : 3000);
+  setTimeout(() => {
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 220);
+  }, type === 'err' ? 5000 : 3000);
 }
 export const toastErr = (e) => toast(e?.message || String(e), 'err');
 
@@ -152,8 +155,14 @@ export function modal({ title, body, foot = '', wide = false, onMount, locked = 
       <div class="modal-head"><h3>${title}</h3>${locked ? '' : `<button class="btn btn-ghost btn-icon" data-close>${icon('x')}</button>`}</div>
       <div class="modal-body">${body}</div>
       ${foot ? `<div class="modal-foot">${foot}</div>` : ''}</div>`;
+    let closed = false;
     const close = (v) => {
-      back.remove();
+      if (closed) return;
+      closed = true;
+      // Slide out softly, then remove (it can't be clicked while leaving)
+      if (back.contains(document.activeElement)) document.activeElement.blur();
+      back.classList.add('closing');
+      setTimeout(() => back.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('hashchange', onNav);
       resolve(v);

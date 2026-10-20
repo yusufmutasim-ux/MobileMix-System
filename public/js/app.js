@@ -1,4 +1,5 @@
 import { api, state, can, icon, esc, LOGO_FULL, ROLE_NAMES, toastErr, modal, busy, toast, currentTheme, setTheme } from './core.js';
+import { enterView, softly } from './motion.js';
 import { initShift, initNotifications } from './live.js';
 
 const NAV = [
@@ -29,7 +30,12 @@ async function boot() {
   window.addEventListener('hashchange', route);
   await route();
   if (state.user && state.mustChangePassword) forcePasswordChange();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((reg) => {
+      // An app left open for days still picks up new versions (and the new icon) when it comes back to the front
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+  }
 }
 
 /** The factory password can't stay — the system may be reachable from the internet. */
@@ -98,8 +104,10 @@ async function route() {
   actions.innerHTML = '';
   // Each visit gets its own container, so late async work from the previous page can't touch the new one
   const el = document.createElement('div');
-  el.innerHTML = '<div class="empty">جاري التحميل…</div>';
+  el.className = 'page';
+  el.innerHTML = '<div class="empty loading" role="status" aria-label="جاري التحميل…"><span></span><span></span><span></span></div>';
   document.getElementById('view').replaceChildren(el);
+  enterView(el);
   try {
     const mod = await import(`./views/${item.view}.js`);
     el.innerHTML = '';
@@ -162,8 +170,11 @@ function shell() {
   api.get('/version').then((v) => { document.getElementById('app-version').textContent = `نسخة ${v.build}`; }).catch(() => {});
   document.getElementById('theme').addEventListener('click', (e) => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    e.currentTarget.innerHTML = icon(next === 'dark' ? 'sun' : 'moon');
+    const btn = e.currentTarget;
+    softly(() => {
+      setTheme(next);
+      btn.innerHTML = icon(next === 'dark' ? 'sun' : 'moon');
+    });
   });
   const toggleMenu = () => document.querySelector('.sidebar').classList.toggle('open');
   document.getElementById('menu').addEventListener('click', toggleMenu);
