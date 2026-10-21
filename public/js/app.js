@@ -196,6 +196,8 @@ function shell() {
   }));
   const toggleMenu = () => document.querySelector('.sidebar').classList.toggle('open');
   sheetSwipe(document.getElementById('sidebar'));
+  // Tapping the page you're already on still closes the menu
+  document.querySelectorAll('.sidebar .nav a').forEach((a) => a.addEventListener('click', () => document.querySelector('.sidebar').classList.remove('open')));
   document.getElementById('menu').addEventListener('click', toggleMenu);
   document.getElementById('more').addEventListener('click', toggleMenu);
   document.getElementById('scrim').addEventListener('click', toggleMenu);
