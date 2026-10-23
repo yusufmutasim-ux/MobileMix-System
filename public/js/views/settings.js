@@ -14,6 +14,7 @@ export async function render(el) {
   const s = state.settings;
 
   el.innerHTML = `
+    ${can('users.manage') ? '<div class="card" id="sched-card" style="margin-bottom:20px"><div class="empty">…</div></div>' : ''}
     <div class="grid ${admin ? 'grid-2' : ''}" style="align-items:start">
       ${admin ? `
       <div class="card">
@@ -221,6 +222,51 @@ export async function render(el) {
     }));
   }
   loadZone().catch(toastErrLocal);
+  loadSchedules().catch(toastErrLocal);
+
+  // ---------- shift schedules: from – to and work days for each employee ----------
+  async function loadSchedules() {
+    const card = el.querySelector('#sched-card');
+    if (!card) return;
+    const [users, st] = await Promise.all([api.get('/users'), api.get('/settings')]);
+    const staff = users.filter((u) => u.active && u.role !== 'admin');
+    const DAYS = [['6', 'السبت'], ['0', 'الأحد'], ['1', 'الاتنين'], ['2', 'التلات'], ['3', 'الأربع'], ['4', 'الخميس'], ['5', 'الجمعة']];
+    card.innerHTML = `
+      <div class="card-head"><h2>${icon('clock')} مواعيد الشيفتات</h2>
+        <span class="muted small">السيستم بيعلّم اللي اتأخر أو مشي بدري، ويبلغك لو حد شيفته بدأ ولسه مجاش</span></div>
+      <div class="sched-list">${staff.length ? staff.map((u) => `
+        <div class="sched-row" data-id="${u.id}">
+          <div class="sched-who"><span class="avatar">${esc(u.full_name.trim()[0] || '?')}</span><b>${esc(u.full_name)}</b></div>
+          <label class="sched-time"><span>من</span><input class="input num" type="time" data-f="start" value="${esc(u.shift_start || '')}"></label>
+          <label class="sched-time"><span>لحد</span><input class="input num" type="time" data-f="end" value="${esc(u.shift_end || '')}"></label>
+          <div class="toggle-chips sched-days">${DAYS.map(([d, name]) => `<button type="button" data-d="${d}" class="${String(u.work_days ?? '0123456').includes(d) ? 'on' : ''}">${name}</button>`).join('')}</div>
+          <button class="btn btn-outline btn-sm" data-save>${icon('check')} حفظ</button>
+        </div>`).join('') : '<div class="empty">ضيف موظفين الأول من صفحة الموظفين</div>'}</div>
+      <div class="sched-rules">
+        <label class="field"><span>سماحية التأخير (بالدقايق)</span><input class="input num" type="number" min="0" max="120" id="grace" value="${esc(st.late_grace ?? '10')}"></label>
+        <label class="field"><span>لو حد شيفته بدأ ومسجلش حضور</span><select class="input" id="absence">
+          <option value="1" ${st.absence_alert !== '0' ? 'selected' : ''}>ابعتلي إشعار</option><option value="0" ${st.absence_alert === '0' ? 'selected' : ''}>من غير إشعار</option></select></label>
+        <button class="btn btn-outline btn-sm" id="save-rules">${icon('check')} حفظ</button>
+        <p class="muted small" style="margin:0;flex-basis:100%">سيب الميعاد فاضي للموظف اللي مالوش شيفت ثابت. الشيفت اللي بيعدّي نص الليل (زي 6 م لحد 2 ص) شغال عادي.</p>
+      </div>`;
+    card.querySelectorAll('.sched-days').forEach((g) => g.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (b) b.classList.toggle('on');
+    }));
+    card.querySelectorAll('[data-save]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
+      const row = b.closest('.sched-row');
+      await api.put(`/users/${row.dataset.id}/schedule`, {
+        shift_start: row.querySelector('[data-f=start]').value,
+        shift_end: row.querySelector('[data-f=end]').value,
+        work_days: [...row.querySelectorAll('.sched-days .on')].map((x) => x.dataset.d).join(''),
+      });
+      toast('اتحفظ الشيفت', 'ok');
+    })));
+    card.querySelector('#save-rules').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      state.settings = await api.put('/settings', { late_grace: card.querySelector('#grace').value, absence_alert: card.querySelector('#absence').value });
+      toast('تم الحفظ', 'ok');
+    }));
+  }
 
   // ---------- location test (any employee) ----------
   el.querySelector('#loc-test-btn').addEventListener('click', (e) => busy(e.currentTarget, async () => {

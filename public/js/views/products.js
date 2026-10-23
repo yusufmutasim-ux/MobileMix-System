@@ -14,6 +14,7 @@ export async function render(el, { query, actions }) {
   actions.innerHTML = `
     <button class="btn btn-outline btn-sm" id="csv">${icon('download')} تصدير</button>
     ${edit ? `<button class="btn btn-outline btn-sm" id="cats-btn">${icon('layers')} الأقسام</button>
+              <button class="btn btn-outline btn-sm" id="brands-btn">${icon('tag')} البراندات</button>
               <button class="btn btn-primary" id="add">${icon('plus')} منتج جديد</button>` : ''}`;
 
   el.innerHTML = `
@@ -21,6 +22,7 @@ export async function render(el, { query, actions }) {
       <div class="toolbar">
         <div class="search">${icon('search')}<input class="input" id="q" placeholder="اسم، ماركة، باركود أو IMEI…"></div>
         <select class="input" id="cat"><option value="">كل الأقسام</option></select>
+        <select class="input" id="brand"><option value="">كل البراندات</option></select>
         <label class="check"><input type="checkbox" id="low" ${query.get('low') ? 'checked' : ''}> النواقص بس</label>
         ${edit ? '<label class="check"><input type="checkbox" id="inactive"> إظهار الموقوف</label>' : ''}
       </div>
@@ -38,11 +40,19 @@ export async function render(el, { query, actions }) {
     $('#cat').value = v;
   };
   fillCats();
+  const fillBrands = async () => {
+    const v = $('#brand').value;
+    const list = await api.get('/brands');
+    $('#brand').innerHTML = `<option value="">كل البراندات</option>${list.map((b) => `<option value="${esc(b.name)}">${esc(b.name)} (${b.products})</option>`).join('')}`;
+    $('#brand').value = v;
+  };
+  await fillBrands();
 
   async function load() {
     const p = new URLSearchParams();
     if ($('#q').value.trim()) p.set('q', $('#q').value.trim());
     if ($('#cat').value) p.set('category_id', $('#cat').value);
+    if ($('#brand').value) p.set('brand', $('#brand').value);
     if ($('#low').checked) p.set('low', '1');
     if ($('#inactive')?.checked) p.set('inactive', '1');
     rows = await api.get('/products?' + p);
@@ -77,7 +87,12 @@ export async function render(el, { query, actions }) {
     else { await productDetails(id, cats); reload(); }
   });
   $('#q').addEventListener('input', debounce(reload, 250));
-  ['#cat', '#low', '#inactive'].forEach((s) => $(s)?.addEventListener('change', reload));
+  ['#cat', '#brand', '#low', '#inactive'].forEach((s) => $(s)?.addEventListener('change', reload));
+  actions.querySelector('#brands-btn')?.addEventListener('click', async () => {
+    await brandsModal();
+    await fillBrands();
+    reload();
+  });
   actions.querySelector('#add')?.addEventListener('click', async () => { if (await productForm(cats)) reload(); });
   actions.querySelector('#cats-btn')?.addEventListener('click', async () => {
     await categoriesModal();
@@ -95,13 +110,22 @@ export async function render(el, { query, actions }) {
 }
 
 // ---------------- forms ----------------
-function productForm(cats, p = null) {
+async function productForm(cats, p = null) {
   const isNew = !p;
+  const brands = await api.get('/brands');
+  const current = brands.find((b) => b.name.toLowerCase() === String(p?.brand || '').toLowerCase());
   return modal({
     title: isNew ? 'منتج جديد' : `تعديل — ${esc(p.name)}`,
     body: `<form class="form-grid" autocomplete="off">
       <label class="field full"><span>اسم المنتج *</span><input class="input" name="name" value="${esc(p?.name || '')}" required></label>
-      <label class="field"><span>الماركة</span><input class="input" name="brand" value="${esc(p?.brand || '')}" list="brands"></label>
+      <label class="field"><span>البراند</span><select class="input" name="brand" id="brand-sel">
+        <option value="">— من غير براند —</option>
+        ${brands.map((b) => `<option value="${esc(b.name)}" ${current?.id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}
+        <option value="__new">➕ براند جديد…</option></select></label>
+      <div class="full hidden" id="new-brand" style="display:flex;gap:8px">
+        <input class="input" id="new-brand-name" placeholder="اسم البراند الجديد" style="flex:1">
+        <button type="button" class="btn btn-primary" id="new-brand-add">${icon('plus')} إضافة</button>
+        <button type="button" class="btn btn-ghost" id="new-brand-cancel">إلغاء</button></div>
       <label class="field"><span>القسم</span><select class="input" name="category_id"><option value="">—</option>
         ${cats.map((c) => `<option value="${c.id}" ${p?.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       ${can('products.view_cost') ? `<label class="field"><span>سعر الشراء</span><input class="input num" type="number" step="any" min="0" name="cost_price" value="${p?.cost_price ?? ''}"></label>` : ''}
@@ -124,10 +148,33 @@ function productForm(cats, p = null) {
         m.querySelector('#qty-f').classList.toggle('hidden', hs.checked);
         m.querySelector('#ser-f').classList.toggle('hidden', !hs.checked);
       });
+      // Brand: pick from the list, or add a new one right here
+      const sel = m.querySelector('#brand-sel');
+      const box = m.querySelector('#new-brand');
+      let prev = sel.value;
+      sel.addEventListener('change', () => {
+        if (sel.value === '__new') { box.classList.remove('hidden'); m.querySelector('#new-brand-name').focus(); }
+        else { prev = sel.value; box.classList.add('hidden'); }
+      });
+      m.querySelector('#new-brand-cancel').addEventListener('click', () => { sel.value = prev; box.classList.add('hidden'); });
+      const addBrand = (e) => busy(e?.currentTarget || null, async () => {
+        const b = await api.post('/brands', { name: m.querySelector('#new-brand-name').value });
+        if (![...sel.options].some((o) => o.value === b.name)) {
+          const o = document.createElement('option'); o.value = b.name; o.textContent = b.name;
+          sel.insertBefore(o, sel.querySelector('option[value="__new"]'));
+        }
+        sel.value = b.name; prev = b.name;
+        m.querySelector('#new-brand-name').value = '';
+        box.classList.add('hidden');
+        toast(`اتضاف البراند ${b.name}`, 'ok');
+      });
+      m.querySelector('#new-brand-add').addEventListener('click', addBrand);
+      m.querySelector('#new-brand-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addBrand(); } });
       // Scanner sends Enter after each code: keep it inside the textarea
       m.querySelector('form').addEventListener('submit', (e) => e.preventDefault());
       m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
         const f = formData(m.querySelector('form'));
+        if (f.brand === '__new') throw new Error('اكتب اسم البراند الجديد ودوس إضافة، أو اختار براند من القايمة');
         const body = { ...f, category_id: f.category_id || null };
         if (isNew) {
           body.serials = (f.serials || '').split(/\s+/).filter(Boolean);
@@ -265,6 +312,44 @@ function categoriesModal() {
         try {
           if (e.target.closest('[data-save]')) { await api.put('/categories/' + row.dataset.id, { name: row.querySelector('[data-name]').value }); toast('تم الحفظ', 'ok'); }
           if (e.target.closest('[data-del]')) { await api.del('/categories/' + row.dataset.id); await refresh(); }
+        } catch (err) { toastErr(err); }
+      });
+    },
+  });
+}
+
+/** Manage the brand list: add, rename (products follow), merge duplicates, delete unused. */
+function brandsModal() {
+  const draw = (list) => list.length ? list.map((b) => `
+    <div style="display:flex;gap:8px;align-items:center;padding:6px 0" data-id="${b.id}">
+      <input class="input" value="${esc(b.name)}" data-name>
+      <span class="pill pill-gray" style="flex-shrink:0">${b.products} منتج</span>
+      <button class="btn btn-ghost btn-icon" data-save title="حفظ">${icon('check')}</button>
+      <button class="btn btn-ghost btn-icon" data-del title="حذف">${icon('trash')}</button>
+    </div>`).join('') : '<div class="empty">لسه مفيش براندات — ضيف أول براند تحت</div>';
+  return modal({
+    title: 'البراندات',
+    body: `<p class="muted small" style="margin-top:0">لو غيّرت اسم براند، كل منتجاته بتتغير معاه. ولو كتبت اسم براند موجود قبل كده، الاتنين بيتدمجوا في براند واحد.</p>
+      <div id="list"></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><input class="input" id="new" placeholder="براند جديد (مثلاً Samsung)"><button class="btn btn-primary" id="add">${icon('plus')} إضافة</button></div>`,
+    onMount: async (m) => {
+      const refresh = async () => { m.querySelector('#list').innerHTML = draw(await api.get('/brands')); };
+      await refresh();
+      const add = async () => {
+        try { await api.post('/brands', { name: m.querySelector('#new').value }); m.querySelector('#new').value = ''; await refresh(); } catch (e) { toastErr(e); }
+      };
+      m.querySelector('#add').addEventListener('click', add);
+      m.querySelector('#new').addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+      m.querySelector('#list').addEventListener('click', async (e) => {
+        const row = e.target.closest('[data-id]');
+        if (!row) return;
+        try {
+          if (e.target.closest('[data-save]')) {
+            const r = await api.put('/brands/' + row.dataset.id, { name: row.querySelector('[data-name]').value });
+            toast(r.merged ? 'اتدمجوا في براند واحد' : 'تم الحفظ', 'ok');
+            await refresh();
+          }
+          if (e.target.closest('[data-del]')) { await api.del('/brands/' + row.dataset.id); await refresh(); }
         } catch (err) { toastErr(err); }
       });
     },

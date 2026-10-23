@@ -9,6 +9,7 @@ const { bad, notFound, str, audit, getSettings, today } = require('../util');
 const { DEFAULT_SETTINGS } = require('../db');
 const { runBackup, listBackups, backupDir, snapshot } = require('../backup');
 const { tx } = require('../db');
+const { TIME } = require('../schedule');
 const hosting = require('../hosting');
 
 /** Same machine or the shop's own network (not coming in through the internet). */
@@ -99,7 +100,22 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
   const manageUsers = requirePerm('users.manage');
 
   api.get('/users', manageUsers, (_req, res) => {
-    res.json(db.prepare('SELECT id, username, full_name, role, active, created_at FROM users ORDER BY active DESC, id').all());
+    res.json(db.prepare('SELECT id, username, full_name, role, active, created_at, shift_start, shift_end, work_days FROM users ORDER BY active DESC, id').all());
+  });
+
+  /** Each employee's shift: from – to, and the week days they work. Empty times = no fixed shift. */
+  api.put('/users/:id/schedule', manageUsers, (req, res) => {
+    const u = db.prepare('SELECT id, full_name FROM users WHERE id = ?').get(req.params.id);
+    if (!u) throw notFound('الموظف غير موجود');
+    const b = req.body || {};
+    const start = String(b.shift_start || '').trim(), end = String(b.shift_end || '').trim();
+    if ((start || end) && !(TIME.test(start) && TIME.test(end))) throw bad('اكتب ميعاد البداية والنهاية الاتنين (زي 10:00 و 18:00)');
+    if (start && start === end) throw bad('ميعاد البداية زي النهاية');
+    const days = [...new Set(String(b.work_days ?? '0123456').replace(/[^0-6]/g, ''))].sort().join('');
+    if (start && !days) throw bad('اختار يوم شغل واحد على الأقل');
+    db.prepare('UPDATE users SET shift_start = ?, shift_end = ?, work_days = ? WHERE id = ?').run(start || null, end || null, days || '0123456', u.id);
+    audit(db, req.user.id, 'user.schedule', { id: u.id, start, end, days });
+    res.json(db.prepare('SELECT id, full_name, shift_start, shift_end, work_days FROM users WHERE id = ?').get(u.id));
   });
 
   // Small list (id + name) used in report filters
@@ -179,6 +195,46 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     res.json({ ok: true });
   });
 
+  // ---------- brands ----------
+  api.get('/brands', requireAuth, (_req, res) => {
+    res.json(db.prepare(`SELECT b.id, b.name, COUNT(p.id) AS products FROM brands b
+      LEFT JOIN products p ON p.brand = b.name COLLATE NOCASE AND p.active = 1
+      GROUP BY b.id ORDER BY b.name COLLATE NOCASE`).all());
+  });
+
+  api.post('/brands', requirePerm('products.edit'), (req, res) => {
+    const name = str(req.body?.name, 'اسم البراند', { max: 60 });
+    const found = db.prepare('SELECT * FROM brands WHERE name = ? COLLATE NOCASE').get(name);
+    if (found) return res.json(found); // already there: just use it
+    const r = db.prepare('INSERT INTO brands (name) VALUES (?)').run(name);
+    res.status(201).json(db.prepare('SELECT * FROM brands WHERE id = ?').get(r.lastInsertRowid));
+  });
+
+  /** Rename a brand; its products follow. Renaming to a brand that already exists merges the two. */
+  api.put('/brands/:id', requirePerm('products.edit'), (req, res) => {
+    const b = db.prepare('SELECT * FROM brands WHERE id = ?').get(req.params.id);
+    if (!b) throw notFound('البراند غير موجود');
+    const name = str(req.body?.name, 'اسم البراند', { max: 60 });
+    const other = db.prepare('SELECT * FROM brands WHERE name = ? COLLATE NOCASE AND id <> ?').get(name, b.id);
+    tx(db, () => {
+      const target = other ? other.name : name;
+      db.prepare("UPDATE products SET brand = ?, updated_at = datetime('now','localtime') WHERE brand = ? COLLATE NOCASE").run(target, b.name);
+      if (other) db.prepare('DELETE FROM brands WHERE id = ?').run(b.id);
+      else db.prepare('UPDATE brands SET name = ? WHERE id = ?').run(name, b.id);
+    });
+    audit(db, req.user.id, other ? 'brand.merge' : 'brand.rename', { from: b.name, to: other ? other.name : name });
+    res.json({ ok: true, merged: !!other });
+  });
+
+  api.delete('/brands/:id', requirePerm('products.edit'), (req, res) => {
+    const b = db.prepare('SELECT * FROM brands WHERE id = ?').get(req.params.id);
+    if (!b) throw notFound('البراند غير موجود');
+    const used = db.prepare('SELECT COUNT(*) AS n FROM products WHERE brand = ? COLLATE NOCASE').get(b.name).n;
+    if (used) throw bad(`البراند ده عليه ${used} منتج — غيّر براند المنتجات دي الأول، أو غيّر اسمه لاسم براند تاني عشان يتدمجوا`);
+    db.prepare('DELETE FROM brands WHERE id = ?').run(b.id);
+    res.json({ ok: true });
+  });
+
   // ---------- backup & audit ----------
   api.get('/backup', requirePerm('backup'), (req, res) => {
     const file = path.join(os.tmpdir(), `mobilemix-backup-${Date.now()}.db`);
@@ -229,7 +285,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     products: ['stocktake_serials', 'stocktake_items', 'stocktakes', 'stock_movements', 'serials', 'products'],
     attendance: ['shifts'],
     log: ['notifications', 'audit_log'],
-    categories: ['categories'],
+    categories: ['categories', 'brands'],
   };
 
   api.get('/system/data-counts', requirePerm('data.reset'), (_req, res) => {
@@ -238,7 +294,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
       sales: count('sales'), repairs: count('repairs'), products: count('products'), attendance: count('shifts'),
       money: count('expenses') + count('cash_moves') + count('drawer_closings'), purchases: count('purchases') + count('suppliers'),
       customers: count('customers'),
-      log: count('notifications') + count('audit_log'), categories: count('categories'), users: count('users'),
+      log: count('notifications') + count('audit_log'), categories: count('categories') + count('brands'), users: count('users'),
     });
   });
 

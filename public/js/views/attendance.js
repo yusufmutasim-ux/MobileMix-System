@@ -52,9 +52,12 @@ export async function render(el, { actions }) {
         ${n.on.map((s) => `<div class="kpi bg-mint" style="min-height:0">
             <div class="label"><span class="dot-live"></span> ${esc(s.full_name)}</div>
             <div class="sub" style="margin-top:6px">من الساعة <b class="num">${time(s.check_in_at)}</b> — ${dur(s.minutes)}</div>
+            ${s.shift_start ? `<div class="sub">شيفته <span class="num">${esc(s.shift_start)} – ${esc(s.shift_end)}</span>${s.late_minutes > 0 ? ` <span class="pill pill-warn">اتأخر ${dur(s.late_minutes)}</span>` : ''}</div>` : ''}
             <button class="btn btn-ghost btn-sm" data-close-shift="${s.id}" style="margin-top:6px;align-self:flex-start">إنهاء الشيفت</button>
           </div>`).join('') || '<div class="muted">مفيش حد مسجل حضور دلوقتي</div>'}
       </div>
+      ${n.missing?.length ? `<div class="missing-box">${icon('alert')} <b>شيفتهم بدأ ولسه مسجلوش حضور:</b>
+        ${n.missing.map((u) => `<span class="pill pill-bad">${esc(u.full_name)} — من <span class="num">${esc(u.shift_start)}</span> (عدّى ${dur(u.late)})</span>`).join(' ')}</div>` : ''}
       ${n.off.length ? `<p class="small muted" style="margin:14px 0 0">مش موجودين: ${n.off.map((u) => `${esc(u.full_name)} <span class="muted">(${ROLE_NAMES[u.role]})</span>`).join('، ')}</p>` : ''}`;
     $('#now').querySelectorAll('[data-close-shift]').forEach((b) => b.addEventListener('click', () => closeShift(b.dataset.closeShift)));
   }
@@ -66,12 +69,15 @@ export async function render(el, { actions }) {
     $('#totals').innerHTML = data.by_user.map((u) => `
       <div class="kpi bg-periwinkle" style="min-height:0"><div class="label">${esc(u.full_name)}</div>
         <div class="value" style="font-size:22px">${dur(u.minutes)}</div>
-        <div class="sub">${u.days} يوم — ${u.shifts} شيفت</div></div>`).join('') || '';
+        <div class="sub">${u.days} يوم — ${u.shifts} شيفت</div>
+        ${u.late_count ? `<div class="sub" style="color:var(--t-yellow-fg)">اتأخر ${u.late_count} مرة (${dur(u.late_minutes)})</div>` : ''}
+        ${u.early_count ? `<div class="sub">مشي بدري ${u.early_count} مرة</div>` : ''}</div>`).join('') || '';
     $('#rows').innerHTML = data.shifts.length ? data.shifts.map((s) => `<tr>
       <td><b style="font-weight:500">${esc(s.full_name)}</b></td>
       <td class="small">${fmtDate(s.check_in_at, false)}</td>
-      <td><span class="num">${time(s.check_in_at)}</span> ${place(s.in_method, s.in_distance)}</td>
+      <td><span class="num">${time(s.check_in_at)}</span> ${place(s.in_method, s.in_distance)}${s.late_minutes > 0 ? ` <span class="pill pill-warn">متأخر ${dur(s.late_minutes)}</span>` : ''}</td>
       <td>${s.check_out_at ? `<span class="num">${time(s.check_out_at)}</span> ${place(s.out_method, s.out_distance)}${s.check_out_at.slice(0, 10) !== s.check_in_at.slice(0, 10) ? ' <span class="small muted">(اليوم التالي)</span>' : ''}` : '<span class="pill pill-ok">لسه في الشيفت</span>'}
+        ${s.early_minutes > 0 ? ` <span class="pill pill-warn">مشي بدري ${dur(s.early_minutes)}</span>` : ''}
         ${s.closed_by_name ? `<div class="small muted">قفله ${esc(s.closed_by_name)}</div>` : ''}</td>
       <td class="num">${dur(s.minutes)}</td>
       <td class="small">${esc(s.note || '')}</td>

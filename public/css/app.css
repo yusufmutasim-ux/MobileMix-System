@@ -1463,3 +1463,25 @@ body:has(.login)::before { background: transparent; }
 @media (min-width: 1505px) {
   .topnav { padding-inline: calc((100% - 1440px) / 2 + 32px); }
 }
+.missing-box { margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: var(--t-red-bg); color: var(--t-red-fg); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.missing-box svg { width: 20px; height: 20px; }
+.missing-box .pill { background: var(--snow); color: var(--t-red-fg); }
+
+/* Settings: shift schedules */
+.sched-list { display: flex; flex-direction: column; gap: 10px; }
+.sched-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 18px; background: var(--cloud); }
+.sched-who { display: flex; align-items: center; gap: 10px; min-width: 150px; flex: 1; }
+.sched-who b { font-weight: 600; }
+.sched-time { display: flex; align-items: center; gap: 6px; }
+.sched-time span { font-size: 13px; color: var(--slate); }
+.sched-time .input { width: 120px; min-height: 40px; background: var(--snow); }
+.sched-days { flex-wrap: wrap; }
+.sched-days button { padding: 5px 10px; font-size: 12.5px; }
+.sched-rules { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--pebble); }
+.sched-rules .field { min-width: 180px; }
+@media (max-width: 860px) {
+  .sched-who { flex-basis: 100%; }
+  .sched-time { flex: 1; }
+  .sched-time .input { width: 100%; }
+  .sched-row [data-save] { margin-inline-start: auto; }
+}

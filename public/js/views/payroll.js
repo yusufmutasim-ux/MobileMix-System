@@ -27,7 +27,7 @@ export async function render(el) {
       <div class="kpi bg-lavender" style="min-height:0"><div class="label">الباقي للموظفين</div><div class="value">${money(t.due)}</div></div></div>`;
     $('#rows').innerHTML = data.rows.length ? data.rows.map((r) => `<tr data-id="${r.id}" style="${r.active ? '' : 'opacity:.55'}">
       <td><b style="font-weight:500">${esc(r.full_name)}</b><div class="muted small">${ROLE_NAMES[r.role] || ''}${r.commission_pct ? ` • عمولة ${r.commission_pct}%` : ''}</div></td>
-      <td class="num">${r.days}</td><td class="num">${n(r.hours)}</td>
+      <td class="num">${r.days}${r.late_count ? `<div class="small" style="color:var(--t-yellow-fg)">تأخير ${r.late_count}</div>` : ''}</td><td class="num">${n(r.hours)}</td>
       <td>${r.salary ? money(r.salary) : '<span class="muted small">مش متحدد</span>'}</td>
       <td>${money(r.sales)}</td><td>${money(r.commission)}</td><td>${money(r.advances)}</td><td>${money(r.paid)}</td>
       <td><b style="${r.due > 0 ? 'color:var(--danger)' : ''}">${money(r.due)}</b></td>

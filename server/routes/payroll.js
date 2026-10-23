@@ -28,7 +28,9 @@ module.exports = function payrollRoutes(api, db) {
       const advances = sum('سلفة');
       const paid = sum('مرتبات');
       const due = round2((u.salary || 0) + commission - advances - paid);
-      return { ...u, days: att.days, hours: round2(att.minutes / 60), sales, commission, advances, paid, due };
+      const late = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(late_minutes), 0) AS m FROM shifts
+        WHERE user_id = ? AND check_in_at LIKE ? AND late_minutes > 0`).get(u.id, like);
+      return { ...u, days: att.days, hours: round2(att.minutes / 60), late_count: late.n, late_minutes: late.m, sales, commission, advances, paid, due };
     });
   }
 

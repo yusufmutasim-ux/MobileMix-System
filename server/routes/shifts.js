@@ -2,6 +2,7 @@
 const { requireAuth, requirePerm } = require('../auth');
 const { bad, notFound, str, dateRange, audit, getSettings } = require('../util');
 const hosting = require('../hosting');
+const { lateMinutes, earlyMinutes, missingNow } = require('../schedule');
 
 /** Distance in meters between two GPS points. */
 function haversine(lat1, lng1, lat2, lng2) {
@@ -100,10 +101,17 @@ module.exports = function shiftRoutes(api, db) {
     const z = zoneOrAlert(req, 'in');
     const r = db.prepare(`INSERT INTO shifts (user_id, note, in_method, in_lat, in_lng, in_accuracy, in_distance)
                           VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.user.id, note, z.method, z.lat, z.lng, z.accuracy, z.distance);
-    const s = db.prepare('SELECT * FROM shifts WHERE id = ?').get(r.lastInsertRowid);
+    let s = db.prepare('SELECT * FROM shifts WHERE id = ?').get(r.lastInsertRowid);
+    const me = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    const late = lateMinutes(db, me, s.check_in_at);
+    if (late !== null) {
+      db.prepare('UPDATE shifts SET late_minutes = ? WHERE id = ?').run(late, s.id);
+      s = db.prepare('SELECT * FROM shifts WHERE id = ?').get(s.id);
+    }
     req.app.locals.notifier.notify({
       type: 'shift_in', actorId: req.user.id, url: '#/attendance',
-      title: `${req.user.full_name} بدأ الشيفت`, body: `تسجيل حضور الساعة ${timeOf(s.check_in_at)}${placeText(z)}${note ? ` — ${note}` : ''}`,
+      title: `${req.user.full_name} بدأ الشيفت${late ? ` — متأخر ${fmtDuration(late)}` : ''}`,
+      body: `تسجيل حضور الساعة ${timeOf(s.check_in_at)}${me.shift_start ? ` (الشيفت من ${me.shift_start})` : ''}${placeText(z)}${note ? ` — ${note}` : ''}`,
     });
     res.status(201).json({ open: s, minutes: 0 });
   });
@@ -118,9 +126,13 @@ module.exports = function shiftRoutes(api, db) {
                 out_method = ?, out_lat = ?, out_lng = ?, out_accuracy = ?, out_distance = ? WHERE id = ?`)
       .run(out, note, z.method, z.lat, z.lng, z.accuracy, z.distance, s.id);
     const mins = minutesBetween(s.check_in_at, out);
+    const me = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    const early = earlyMinutes(db, me, s.check_in_at, out);
+    if (early !== null) db.prepare('UPDATE shifts SET early_minutes = ? WHERE id = ?').run(early, s.id);
     req.app.locals.notifier.notify({
       type: 'shift_out', actorId: req.user.id, url: '#/attendance',
-      title: `${req.user.full_name} أنهى الشيفت`, body: `انصراف الساعة ${timeOf(out)} — مدة الشيفت ${fmtDuration(mins)}${placeText(z)}`,
+      title: `${req.user.full_name} أنهى الشيفت${early ? ` — مشي بدري ${fmtDuration(early)}` : ''}`,
+      body: `انصراف الساعة ${timeOf(out)}${me.shift_end ? ` (الشيفت لحد ${me.shift_end})` : ''} — مدة الشيفت ${fmtDuration(mins)}${placeText(z)}`,
     });
     res.json({ open: null, minutes: mins });
   });
@@ -169,12 +181,13 @@ module.exports = function shiftRoutes(api, db) {
 
   api.get('/shifts/now', view, (_req, res) => {
     const now = nowLocal(db);
-    const on = db.prepare(`SELECT s.id, s.check_in_at, u.id AS user_id, u.full_name, u.role FROM shifts s JOIN users u ON u.id = s.user_id
+    const on = db.prepare(`SELECT s.id, s.check_in_at, s.late_minutes, u.id AS user_id, u.full_name, u.role, u.shift_start, u.shift_end FROM shifts s JOIN users u ON u.id = s.user_id
                            WHERE s.check_out_at IS NULL ORDER BY s.check_in_at`).all()
       .map((s) => ({ ...s, minutes: minutesBetween(s.check_in_at, now) }));
-    const off = db.prepare(`SELECT id, full_name, role FROM users WHERE active = 1
+    const off = db.prepare(`SELECT id, full_name, role, shift_start, shift_end FROM users WHERE active = 1
                             AND id NOT IN (SELECT user_id FROM shifts WHERE check_out_at IS NULL) ORDER BY full_name`).all();
-    res.json({ on, off });
+    // Shift started but they haven't checked in yet
+    res.json({ on, off, missing: missingNow(db, now) });
   });
 
   api.get('/shifts', view, (req, res) => {
@@ -189,8 +202,10 @@ module.exports = function shiftRoutes(api, db) {
       .map((s) => ({ ...s, minutes: minutesBetween(s.check_in_at, s.check_out_at || now) }));
     const totals = {};
     for (const s of rows) {
-      const t = (totals[s.user_id] ||= { user_id: s.user_id, full_name: s.full_name, shifts: 0, minutes: 0, days: new Set() });
+      const t = (totals[s.user_id] ||= { user_id: s.user_id, full_name: s.full_name, shifts: 0, minutes: 0, days: new Set(), late_count: 0, late_minutes: 0, early_count: 0 });
       t.shifts++; t.minutes += s.minutes; t.days.add(s.check_in_at.slice(0, 10));
+      if (s.late_minutes > 0) { t.late_count++; t.late_minutes += s.late_minutes; }
+      if (s.early_minutes > 0) t.early_count++;
     }
     const denied = db.prepare(`
       SELECT a.id, a.details, a.created_at, u.full_name, a.user_id FROM audit_log a JOIN users u ON u.id = a.user_id

@@ -1,6 +1,7 @@
 'use strict';
 const { getSettings, today, round2 } = require('./util');
 const { drawerNow, lateInstallments } = require('./money');
+const { missingNow } = require('./schedule');
 
 const fmt = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
 const NET = 'si.line_total * (CASE WHEN s.subtotal > 0 THEN s.total / s.subtotal ELSE 0 END)';
@@ -57,6 +58,23 @@ function startScheduler(db, notifier, { every = 60_000 } = {}) {
             body: `${people} عميل عليهم أقساط عدّى ميعادها — افتح العملاء وابعتلهم تذكير واتساب`,
           });
         }
+      }
+      // Someone's shift started (past the grace) and they haven't checked in: tell the owner once a day per person
+      if (st.absence_alert !== '0') {
+        const nowStr = db.prepare("SELECT datetime('now','localtime') AS t").get().t;
+        let sent = {};
+        try { sent = JSON.parse(st.absence_alerted || '{}'); } catch { /* start fresh */ }
+        if (sent.day !== today()) sent = { day: today(), ids: [] };
+        for (const u of missingNow(db, nowStr)) {
+          if (sent.ids.includes(u.id)) continue;
+          sent.ids.push(u.id);
+          notifier.notify({
+            type: 'shift_missing', url: '#/attendance',
+            title: `${u.full_name} لسه مسجلش حضور`,
+            body: `شيفته من ${u.shift_start} لحد ${u.shift_end} — عدّى ${u.late} دقيقة`,
+          });
+        }
+        db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('absence_alerted', ?)").run(JSON.stringify(sent));
       }
     } catch (e) {
       console.error('  ⚠️ scheduler:', e.message);

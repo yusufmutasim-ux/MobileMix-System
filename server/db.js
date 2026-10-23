@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS categories (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE
 );
 
+-- Brands to pick from when adding a product (so "Samsung" isn't typed five different ways)
+CREATE TABLE IF NOT EXISTS brands (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
@@ -398,6 +405,8 @@ const DEFAULT_SETTINGS = {
   daily_summary: '1',
   daily_summary_time: '23:00',
   installment_reminders: '1',
+  late_grace: '10',        // minutes after the shift start before someone counts as late
+  absence_alert: '1',      // tell the owner when someone hasn't checked in after their shift started
 };
 
 function open(file) {
@@ -429,6 +438,7 @@ function open(file) {
   }
   applyAdminPassword(db);
   backfillCustomers(db);
+  backfillBrands(db);
   return db;
 }
 
@@ -467,11 +477,14 @@ function applyAdminPassword(db) {
 function addMissingColumns(db) {
   const wanted = {
     shifts: ['in_method TEXT', 'in_lat REAL', 'in_lng REAL', 'in_accuracy REAL', 'in_distance REAL',
-      'out_method TEXT', 'out_lat REAL', 'out_lng REAL', 'out_accuracy REAL', 'out_distance REAL'],
+      'out_method TEXT', 'out_lat REAL', 'out_lng REAL', 'out_accuracy REAL', 'out_distance REAL',
+      'late_minutes INTEGER', 'early_minutes INTEGER'],
     returns: ['cash_out REAL'],                       // cash handed back (old rows: the whole amount)
     products: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
     sale_items: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
-    users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0'],
+    users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0',
+      // Work schedule: from / to (HH:MM) and the week days they work (0 = Sunday … 6 = Saturday)
+      'shift_start TEXT', 'shift_end TEXT', "work_days TEXT NOT NULL DEFAULT '0123456'"],
   };
   for (const [table, cols] of Object.entries(wanted)) {
     const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
@@ -522,6 +535,13 @@ function backfillCustomers(db) {
       WHERE length(digits(customer_phone)) >= 6 GROUP BY digits(customer_phone)
     )`);
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('customers_backfilled', '1')").run();
+}
+
+/** Every brand already used on a product is in the brands list (runs on every start; cheap and safe). */
+function backfillBrands(db) {
+  if (!db.prepare('PRAGMA table_info(products)').all().some((c) => c.name === 'brand')) return;
+  db.exec(`INSERT OR IGNORE INTO brands (name)
+           SELECT DISTINCT TRIM(brand) FROM products WHERE brand IS NOT NULL AND TRIM(brand) <> ''`);
 }
 
 /** Run fn inside a transaction; rolls back on throw. */

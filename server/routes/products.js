@@ -48,6 +48,12 @@ module.exports = function productRoutes(api, db) {
       notes: has('notes') ? str(body.notes, 'الملاحظات', { optional: true, max: 500 }) : existing.notes ?? null,
       warranty_days: has('warranty_days') ? num(body.warranty_days, 'مدة الضمان', { min: 0, int: true, optional: true }) ?? 0 : existing.warranty_days ?? 0,
     };
+    if (f.brand) {
+      // Brands come from the list, written exactly as saved there
+      const b = db.prepare('SELECT name FROM brands WHERE name = ? COLLATE NOCASE').get(f.brand);
+      if (!b) throw bad(`البراند "${f.brand}" مش في القايمة — ضيفه من "البراندات" الأول`);
+      f.brand = b.name;
+    }
     if (f.sell_price == null) throw bad('سعر البيع مطلوب');
     if (f.name == null) throw bad('اسم المنتج مطلوب');
     return f;
@@ -60,6 +66,7 @@ module.exports = function productRoutes(api, db) {
     if (req.query.inactive !== '1') where.push('p.active = 1');
     if (req.query.category_id) { where.push('p.category_id = ?'); params.push(Number(req.query.category_id)); }
     if (req.query.low === '1') where.push('p.qty <= p.min_qty');
+    if (req.query.brand) { where.push('p.brand = ? COLLATE NOCASE'); params.push(String(req.query.brand)); }
     const q = String(req.query.q || '').trim();
     if (q) {
       where.push(`(p.name LIKE ? OR p.brand LIKE ? OR p.barcode = ?

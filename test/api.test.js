@@ -87,11 +87,17 @@ test('products, stock and serials', async () => {
   assert.match(cable.data.barcode, /^2000\d{8}$/);
   state.cable = cable.data;
 
+  // Brands come from the list: an unknown one is refused until it's added
+  assert.equal((await admin.post('/products', { name: 'x', brand: 'Samsung', sell_price: 1 })).status, 400);
+  assert.equal((await cashier.post('/brands', { name: 'Samsung' })).status, 403);
+  assert.equal((await admin.post('/brands', { name: 'Samsung' })).status, 201);
+  assert.equal((await admin.post('/brands', { name: 'samsung' })).data.name, 'Samsung'); // same brand, any case
   const phone = await admin.post('/products', {
-    name: 'Samsung A15', brand: 'Samsung', category_id: phones.id, cost_price: 6000, sell_price: 7000,
+    name: 'Samsung A15', brand: 'SAMSUNG', category_id: phones.id, cost_price: 6000, sell_price: 7000,
     has_serial: true, serials: ['350000000000001', '350000000000002'],
   });
   assert.equal(phone.status, 201);
+  assert.equal(phone.data.brand, 'Samsung'); // saved exactly as in the list
   assert.equal(phone.data.qty, 2);
   state.phone = phone.data;
 
@@ -253,4 +259,23 @@ test('remote safety: lockout by address and logout of other devices', async () =
   assert.equal((await admin.post('/auth/password', { current: 'admin123', password: 'admin123' })).status, 400);
   assert.equal((await admin.post('/auth/password', { current: 'admin123', password: 'Shop@2026' })).status, 200);
   assert.equal((await admin.get('/auth/me')).data.must_change_password, false);
+});
+
+test('brands: rename follows products, rename onto another brand merges, used brand cannot be deleted', async () => {
+  const list = async () => (await admin.get('/brands')).data;
+  const sam = (await list()).find((b) => b.name === 'Samsung');
+  assert.ok(sam.products >= 1);
+  assert.equal((await admin.del('/brands/' + sam.id)).status, 400); // still used
+  await admin.put('/brands/' + sam.id, { name: 'Samsung Electronics' });
+  let prods = (await admin.get('/products?brand=Samsung Electronics')).data;
+  assert.ok(prods.length >= 1);
+  const dup = (await admin.post('/brands', { name: 'سامسونج' })).data;
+  await admin.post('/products', { name: 'Galaxy Buds', brand: 'سامسونج', sell_price: 2500 });
+  const r = await admin.put('/brands/' + dup.id, { name: 'samsung electronics' }); // same as the other one → merge
+  assert.equal(r.data.merged, true);
+  prods = (await admin.get('/products?brand=Samsung Electronics')).data;
+  assert.ok(prods.some((x) => x.name === 'Galaxy Buds'));
+  assert.ok(!(await list()).some((b) => b.name === 'سامسونج'));
+  const empty = (await admin.post('/brands', { name: 'Nokia' })).data;
+  assert.equal((await admin.del('/brands/' + empty.id)).status, 200);
 });
