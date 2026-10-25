@@ -9,109 +9,184 @@ const AUDIT_NAMES = {
   'stocktake.open': 'فتح جرد', 'stocktake.apply': 'تطبيق جرد', 'repair.create': 'استلام صيانة', 'repair.deliver': 'تسليم صيانة', 'logout.others': 'خروج من الأجهزة التانية', 'shift.close': 'إنهاء شيفت موظف', 'zone.network': 'تسجيل إنترنت المحل', 'shift.denied': 'محاولة حضور مرفوضة', 'data.reset': 'مسح البيانات', 'data.restore': 'استرجاع نسخة', 'backup.auto': 'نسخة احتياطية',
 };
 
-export async function render(el) {
+export async function render(el, { query } = {}) {
   const admin = can('settings.manage');
   const s = state.settings;
 
-  el.innerHTML = `
-    ${can('users.manage') ? '<div class="card" id="sched-card" style="margin-bottom:20px"><div class="empty">…</div></div>' : ''}
-    <div class="grid ${admin ? 'grid-2' : ''}" style="align-items:start">
-      ${admin ? `
+  const sel = (name, value, opts) => `<select class="input" name="${name}">${opts.map(([v, t]) => `<option value="${v}" ${value === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  const saveBtn = `<div class="full"><button class="btn btn-primary save-settings">${icon('check')} حفظ</button></div>`;
+
+  // Each section: id, menu label, icon, one-line description, and its content (empty = hidden for this user)
+  const SECTIONS = [
+    { id: 'shop', label: 'المحل والفواتير', icon: 'home', desc: 'اسم المحل وبياناته، والفاتورة والليبل', html: admin ? `
       <div class="card">
-        <div class="card-head"><h2>بيانات المحل والفاتورة</h2></div>
-        <form class="form-grid" id="shop" onsubmit="return false">
+        <div class="card-head"><h2>${icon('home')} بيانات المحل</h2></div>
+        <form class="form-grid settings-form" onsubmit="return false">
           <label class="field full"><span>اسم المحل</span><input class="input" name="shop_name" value="${esc(s.shop_name)}"></label>
           <label class="field full"><span>العنوان</span><input class="input" name="shop_address" value="${esc(s.shop_address)}"></label>
           <label class="field"><span>التليفون</span><input class="input ltr" name="shop_phone" value="${esc(s.shop_phone)}"></label>
           <label class="field"><span>العملة</span><input class="input" name="currency" value="${esc(s.currency)}"></label>
+          ${saveBtn}
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>${icon('receipt')} الفاتورة والليبل</h2></div>
+        <form class="form-grid settings-form" onsubmit="return false">
           <label class="field"><span>بادئة رقم الفاتورة</span><input class="input ltr" name="invoice_prefix" value="${esc(s.invoice_prefix)}"></label>
-          <label class="field"><span>مقاس الفاتورة الافتراضي</span><select class="input" name="invoice_size">
-            <option value="80mm" ${s.invoice_size === '80mm' ? 'selected' : ''}>طابعة كاشير 80 مم</option>
-            <option value="a4" ${s.invoice_size === 'a4' ? 'selected' : ''}>ورقة A4</option></select></label>
+          <label class="field"><span>مقاس الفاتورة</span>${sel('invoice_size', s.invoice_size, [['80mm', 'طابعة كاشير 80 مم'], ['a4', 'ورقة A4']])}</label>
           <label class="field full"><span>رسالة آخر الفاتورة (سياسة الاستبدال)</span><textarea class="input" name="invoice_footer" rows="2">${esc(s.invoice_footer)}</textarea></label>
-          <label class="field"><span>مقاس الليبل الافتراضي</span><select class="input" name="label_size">
+          <label class="field"><span>مقاس الليبل</span><select class="input" name="label_size">
             ${Object.entries(LABEL_SIZES).map(([k, v]) => `<option value="${k}" ${s.label_size === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
+          <div></div>
+          ${saveBtn}
+        </form>
+      </div>` : '' },
+
+    { id: 'sales', label: 'البيع والصيانة', icon: 'cart', desc: 'الخصم، تذاكر الصيانة، وأنواع المصروفات', html: admin ? `
+      <div class="card">
+        <div class="card-head"><h2>${icon('cart')} البيع</h2></div>
+        <form class="form-grid settings-form" onsubmit="return false">
           <label class="field"><span>أقصى خصم للكاشير %</span><input class="input num" type="number" min="0" max="100" name="cashier_max_discount" value="${esc(s.cashier_max_discount)}"></label>
-          <label class="field full"><span>الحضور والانصراف</span><select class="input" name="require_shift">
-            <option value="0" ${!['1', '2'].includes(s.require_shift) ? 'selected' : ''}>اختياري — الموظف يسجل حضور لو حب</option>
-            <option value="1" ${s.require_shift === '1' ? 'selected' : ''}>إجباري للبيع — مينفعش يبيع أو يستلم جهاز من غير حضور</option>
-            <option value="2" ${s.require_shift === '2' ? 'selected' : ''}>إجباري لكل حاجة — السيستم مقفول للموظف لحد ما يسجل حضور</option></select></label>
+          <p class="muted small" style="margin:0;align-self:end">الكاشير مش هيقدر يدّي خصم أكبر من كده من غير المدير.</p>
+          ${saveBtn}
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>${icon('wrench')} الصيانة</h2></div>
+        <form class="form-grid settings-form" onsubmit="return false">
           <label class="field"><span>بادئة تذكرة الصيانة</span><input class="input ltr" name="repair_prefix" value="${esc(s.repair_prefix)}"></label>
           <div></div>
           <label class="field full"><span>شروط الصيانة (بتتطبع على إيصال الاستلام)</span><textarea class="input" name="repair_terms" rows="3">${esc(s.repair_terms)}</textarea></label>
-          <label class="field full"><span>أنواع المصروفات (كل نوع في سطر)</span><textarea class="input" name="expense_categories" rows="4">${esc(s.expense_categories || '')}</textarea></label>
-          <label class="field"><span>ملخص اليوم على الموبايل</span><select class="input" name="daily_summary">
-            <option value="1" ${s.daily_summary !== '0' ? 'selected' : ''}>يتبعت كل يوم</option><option value="0" ${s.daily_summary === '0' ? 'selected' : ''}>مقفول</option></select></label>
-          <label class="field"><span>الساعة كام؟</span><input class="input num" type="time" name="daily_summary_time" value="${esc(s.daily_summary_time || '23:00')}"></label>
-          <label class="field full"><span>تذكير الأقساط المتأخرة (الساعة 10 الصبح)</span><select class="input" name="installment_reminders">
-            <option value="1" ${s.installment_reminders !== '0' ? 'selected' : ''}>شغال</option><option value="0" ${s.installment_reminders === '0' ? 'selected' : ''}>مقفول</option></select></label>
-          <div class="full"><button class="btn btn-primary" id="save-shop">${icon('check')} حفظ الإعدادات</button></div>
+          ${saveBtn}
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>${icon('expense')} أنواع المصروفات</h2></div>
+        <form class="form-grid settings-form" onsubmit="return false">
+          <label class="field full"><span>كل نوع في سطر</span><textarea class="input" name="expense_categories" rows="6">${esc(s.expense_categories || '')}</textarea></label>
+          ${saveBtn}
+        </form>
+      </div>` : '' },
+
+    { id: 'staff', label: 'الموظفين والحضور', icon: 'clock', desc: 'مواعيد الشيفتات، قواعد الحضور، وموقع المحل', html: `
+      ${admin ? `<div class="card">
+        <div class="card-head"><h2>${icon('clock')} تسجيل الحضور</h2></div>
+        <form class="form-grid settings-form" onsubmit="return false">
+          <label class="field full"><span>الحضور والانصراف</span>${sel('require_shift', ['1', '2'].includes(s.require_shift) ? s.require_shift : '0', [
+            ['0', 'اختياري — الموظف يسجل حضور لو حب'],
+            ['1', 'إجباري للبيع — مينفعش يبيع أو يستلم جهاز من غير حضور'],
+            ['2', 'إجباري لكل حاجة — السيستم مقفول للموظف لحد ما يسجل حضور']])}</label>
+          ${saveBtn}
         </form>
       </div>` : ''}
+      ${can('users.manage') ? '<div class="card" id="sched-card"><div class="empty">…</div></div>' : ''}
+      ${admin ? '<div class="card" id="zone-card"><div class="empty">…</div></div>' : ''}
+      <div class="card" id="loc-test">
+        <div class="card-head"><h2>📍 اختبار الموقع</h2></div>
+        <p class="muted" style="margin-top:0">اعرف الموبايل ده هيقدر يسجل حضور من المحل ولا لأ، وليه.</p>
+        <button class="btn btn-outline" id="loc-test-btn">📍 اختبر موقعي</button>
+        <div id="loc-test-out" style="margin-top:12px"></div>
+      </div>` },
 
-      <div class="stack">
-        <div class="card" id="loc-test">
-          <div class="card-head"><h2>📍 اختبار الموقع</h2></div>
-          <p class="muted" style="margin-top:0">اعرف الموبايل ده هيقدر يسجل حضور من المحل ولا لأ، وليه.</p>
-          <button class="btn btn-outline" id="loc-test-btn">📍 اختبر موقعي</button>
-          <div id="loc-test-out" style="margin-top:12px"></div>
-        </div>
-        ${admin ? '<div class="card" id="zone-card"><div class="empty">…</div></div>' : ''}
-        ${can('notifications.receive') ? '<div class="card" id="notif-card"><div class="empty">…</div></div>' : ''}
-        <div class="card">
-          <div class="card-head"><h2>${icon('key', '')} تغيير كلمة السر</h2></div>
-          <form class="form-grid" id="pw" onsubmit="return false">
-            <label class="field full"><span>كلمة السر الحالية</span><input class="input ltr" type="password" name="current" autocomplete="current-password"></label>
-            <label class="field"><span>الجديدة</span><input class="input ltr" type="password" name="password" autocomplete="new-password"></label>
-            <label class="field"><span>تأكيد الجديدة</span><input class="input ltr" type="password" name="confirm" autocomplete="new-password"></label>
-            <div class="full"><button class="btn btn-outline" id="save-pw">تغيير</button></div>
-          </form>
-        </div>
-        ${can('backup') ? `
-        <div class="card bg-periwinkle" style="box-shadow:none">
-          <div class="card-head"><h2>${icon('download', '')} النسخ الاحتياطي</h2></div>
-          <p style="margin-top:0">السيستم بياخد <b>نسخة تلقائية كل يوم</b>. لو حطيت فولدر Google Drive أو OneDrive اللي على جهاز المحل، النسخ بتتحفظ أونلاين كمان.</p>
-          <div id="backups" class="small muted" style="margin-bottom:12px">…</div>
-          ${admin ? `<form class="form-grid" id="bk" onsubmit="return false" style="margin-bottom:12px">
-            <label class="field full"><span>فولدر النسخ (سيبه فاضي = data/backups)</span><input class="input ltr" name="backup_dir" value="${esc(s.backup_dir)}" placeholder="C:\\Users\\Shop\\Google Drive\\MobileMix"></label>
-            <label class="field"><span>عدد النسخ اللي تفضل</span><input class="input num" type="number" min="1" name="backup_keep" value="${esc(s.backup_keep)}"></label>
-            <div class="field" style="justify-content:flex-end"><button class="btn btn-outline" id="save-bk">حفظ</button></div>
-          </form>` : ''}
-          <div class="btn-row">
-            <button class="btn btn-outline" id="backup-now">${icon('check')} نسخة دلوقتي</button>
-            <a class="btn btn-primary" href="/api/backup" download>${icon('download')} تحميل نسخة على الجهاز ده</a>
-          </div>
-        </div>` : ''}
-        <div class="card">
-          <div class="card-head"><h2>${icon('logout', '')} الأجهزة المتصلة</h2></div>
-          <p class="muted" style="margin-top:0">لو موبايلك ضاع أو دخلت من جهاز مش بتاعك، اقفل حسابك على كل الأجهزة التانية.</p>
-          <button class="btn btn-outline" id="logout-others">تسجيل خروج من كل الأجهزة التانية</button>
-        </div>
+    { id: 'notify', label: 'الإشعارات', icon: 'bell', desc: 'إشعارات الموبايل، ملخص اليوم، وتذكير الأقساط', html: `
+      ${can('notifications.receive') ? '<div class="card" id="notif-card"><div class="empty">…</div></div>' : ''}
+      ${admin ? `<div class="card">
+        <div class="card-head"><h2>${icon('calendar')} تذكيرات تلقائية</h2></div>
+        <form class="form-grid settings-form" onsubmit="return false">
+          <label class="field"><span>ملخص اليوم على الموبايل</span>${sel('daily_summary', s.daily_summary === '0' ? '0' : '1', [['1', 'يتبعت كل يوم'], ['0', 'مقفول']])}</label>
+          <label class="field"><span>الساعة كام؟</span><input class="input num" type="time" name="daily_summary_time" value="${esc(s.daily_summary_time || '23:00')}"></label>
+          <label class="field full"><span>تذكير الأقساط المتأخرة (الساعة 10 الصبح)</span>${sel('installment_reminders', s.installment_reminders === '0' ? '0' : '1', [['1', 'شغال'], ['0', 'مقفول']])}</label>
+          ${saveBtn}
+        </form>
+      </div>` : ''}` },
+
+    { id: 'account', label: 'حسابي', icon: 'key', desc: 'كلمة السر والأجهزة المتصلة', html: `
+      <div class="card">
+        <div class="card-head"><h2>${icon('key', '')} تغيير كلمة السر</h2></div>
+        <form class="form-grid" id="pw" onsubmit="return false">
+          <label class="field full"><span>كلمة السر الحالية</span><input class="input ltr" type="password" name="current" autocomplete="current-password"></label>
+          <label class="field"><span>الجديدة</span><input class="input ltr" type="password" name="password" autocomplete="new-password"></label>
+          <label class="field"><span>تأكيد الجديدة</span><input class="input ltr" type="password" name="confirm" autocomplete="new-password"></label>
+          <div class="full"><button class="btn btn-primary" id="save-pw">${icon('check')} تغيير</button></div>
+        </form>
       </div>
-    </div>
-    ${admin ? `<div class="card" style="margin-top:24px" id="remote"><div class="empty">…</div></div>` : ''}
-    ${can('data.reset') ? `
-    <div class="card" id="danger-card" style="margin-top:24px;border:1px solid var(--danger-wash)">
-      <div class="card-head"><h2>🧹 البدء من جديد</h2></div>
-      <p style="margin-top:0">خلصت تجربة؟ امسح البيانات الوهمية (منتجات، فواتير، صيانة، حضور…) وابدأ على نضيف.
-        <b>الموظفين وإعدادات المحل مش بيتمسحوا</b>، والسيستم بياخد نسخة احتياطية قبل المسح عشان تقدر ترجّعها.</p>
-      <button class="btn btn-danger" id="reset-btn">🧹 مسح البيانات والبدء من جديد</button>
-      <div class="section-title">💾 النسخ الاحتياطية (تقدر ترجّع أي واحدة)</div>
-      <div id="backup-list"><div class="muted small">…</div></div>
-    </div>` : ''}
-    ${can('audit.view') ? `
-    <div class="card" style="margin-top:24px">
-      <div class="card-head"><h2>${icon('history', '')} سجل العمليات</h2><span class="muted small">آخر 300 عملية</span></div>
-      <div class="table-wrap" style="max-height:420px;overflow:auto"><table class="table">
-        <thead><tr><th>الوقت</th><th>الموظف</th><th>العملية</th><th>تفاصيل</th></tr></thead><tbody id="audit"></tbody></table></div>
-    </div>` : ''}`;
+      <div class="card">
+        <div class="card-head"><h2>${icon('logout', '')} الأجهزة المتصلة</h2></div>
+        <p class="muted" style="margin-top:0">لو موبايلك ضاع أو دخلت من جهاز مش بتاعك، اقفل حسابك على كل الأجهزة التانية.</p>
+        <button class="btn btn-outline" id="logout-others">تسجيل خروج من كل الأجهزة التانية</button>
+      </div>` },
 
-  el.querySelector('#save-shop')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
-    state.settings = await api.put('/settings', formData(el.querySelector('#shop')));
+    { id: 'data', label: 'النسخ الاحتياطي والبيانات', icon: 'download', desc: 'النسخ التلقائية، الاسترجاع، الدخول من برة، والبدء من جديد', html: `
+      ${can('backup') ? `
+      <div class="card">
+        <div class="card-head"><h2>${icon('download', '')} النسخ الاحتياطي</h2></div>
+        <p style="margin-top:0">السيستم بياخد <b>نسخة تلقائية كل يوم</b>. لو حطيت فولدر Google Drive أو OneDrive اللي على جهاز المحل، النسخ بتتحفظ أونلاين كمان.</p>
+        <div id="backups" class="small muted" style="margin-bottom:12px">…</div>
+        ${admin ? `<form class="form-grid" id="bk" onsubmit="return false" style="margin-bottom:12px">
+          <label class="field full"><span>فولدر النسخ (سيبه فاضي = data/backups)</span><input class="input ltr" name="backup_dir" value="${esc(s.backup_dir)}" placeholder="C:\\Users\\Shop\\Google Drive\\MobileMix"></label>
+          <label class="field"><span>عدد النسخ اللي تفضل</span><input class="input num" type="number" min="1" name="backup_keep" value="${esc(s.backup_keep)}"></label>
+          <div class="field" style="justify-content:flex-end"><button class="btn btn-outline" id="save-bk">حفظ</button></div>
+        </form>` : ''}
+        <div class="btn-row">
+          <button class="btn btn-outline" id="backup-now">${icon('check')} نسخة دلوقتي</button>
+          <a class="btn btn-primary" href="/api/backup" download>${icon('download')} تحميل نسخة على الجهاز ده</a>
+        </div>
+      </div>` : ''}
+      ${admin ? '<div class="card" id="remote"><div class="empty">…</div></div>' : ''}
+      ${can('data.reset') ? `
+      <div class="card" id="danger-card" style="border:1px solid var(--danger-wash)">
+        <div class="card-head"><h2>🧹 البدء من جديد</h2></div>
+        <p style="margin-top:0">خلصت تجربة؟ امسح البيانات الوهمية (منتجات، فواتير، صيانة، حضور…) وابدأ على نضيف.
+          <b>الموظفين وإعدادات المحل مش بيتمسحوا</b>، والسيستم بياخد نسخة احتياطية قبل المسح عشان تقدر ترجّعها.</p>
+        <button class="btn btn-danger" id="reset-btn">🧹 مسح البيانات والبدء من جديد</button>
+        <div class="section-title">💾 النسخ الاحتياطية (تقدر ترجّع أي واحدة)</div>
+        <div id="backup-list"><div class="muted small">…</div></div>
+      </div>` : ''}` },
+
+    { id: 'log', label: 'سجل العمليات', icon: 'history', desc: 'مين عمل إيه وإمتى', html: can('audit.view') ? `
+      <div class="card">
+        <div class="card-head"><h2>${icon('history', '')} سجل العمليات</h2><span class="muted small">آخر 300 عملية</span></div>
+        <div class="table-wrap" style="max-height:620px;overflow:auto"><table class="table">
+          <thead><tr><th>الوقت</th><th>الموظف</th><th>العملية</th><th>تفاصيل</th></tr></thead><tbody id="audit"></tbody></table></div>
+      </div>` : '' },
+  ].filter((x) => x.html.replace(/\s/g, ''));
+
+  let tab = query?.get('tab');
+  try { tab ||= localStorage.getItem('mm_settings_tab'); } catch { /* ignore */ }
+  if (!SECTIONS.some((x) => x.id === tab)) tab = SECTIONS[0].id;
+
+  el.innerHTML = `
+    <div class="settings-layout">
+      <nav class="settings-nav" aria-label="أقسام الإعدادات">
+        ${SECTIONS.map((x) => `<button type="button" data-tab="${x.id}" class="${x.id === tab ? 'on' : ''}">${icon(x.icon)}<span><b>${x.label}</b><small>${x.desc}</small></span></button>`).join('')}
+      </nav>
+      <div class="settings-panes">
+        ${SECTIONS.map((x) => `<section class="settings-pane ${x.id === tab ? '' : 'hidden'}" data-pane="${x.id}">
+          <div class="pane-head"><h2>${x.label}</h2><p class="muted">${x.desc}</p></div>
+          ${x.html}
+        </section>`).join('')}
+      </div>
+    </div>`;
+
+  const showTab = (id) => {
+    tab = id;
+    el.querySelectorAll('.settings-nav [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
+    el.querySelectorAll('.settings-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== id));
+    try { localStorage.setItem('mm_settings_tab', id); } catch { /* ignore */ }
+    history.replaceState(null, '', `#/settings?tab=${id}`);
+    el.querySelector(`.settings-nav [data-tab="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    if (matchMedia('(max-width: 860px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  el.querySelector('.settings-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab); });
+
+  // Every small settings form saves just its own fields
+  el.querySelectorAll('.settings-form .save-settings').forEach((btn) => btn.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    state.settings = await api.put('/settings', formData(btn.closest('form')));
     const sub = document.querySelector('.brand-sub');
     if (sub) sub.textContent = state.settings.shop_name && state.settings.shop_name !== 'Mobile Mix' ? state.settings.shop_name : 'نظام المبيعات والصيانة';
-    toast('تم حفظ الإعدادات', 'ok');
-  }));
+    toast('تم الحفظ', 'ok');
+  })));
+
 
   async function loadNotif() {
     const card = el.querySelector('#notif-card');

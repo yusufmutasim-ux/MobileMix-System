@@ -1485,3 +1485,49 @@ body:has(.login)::before { background: transparent; }
   .sched-time .input { width: 100%; }
   .sched-row [data-save] { margin-inline-start: auto; }
 }
+
+/* ============ Settings: a section menu + one section at a time ============ */
+.settings-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
+.settings-nav {
+  position: sticky; top: 84px; display: flex; flex-direction: column; gap: 4px; padding: 8px;
+  background: var(--snow); border-radius: 24px; box-shadow: var(--shadow-card);
+}
+.settings-nav button {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 0; background: none; border-radius: 16px;
+  text-align: start; cursor: pointer; color: var(--ink); font: inherit; transition: background .2s;
+}
+.settings-nav button svg { width: 38px; height: 38px; padding: 9px; border-radius: 12px; flex-shrink: 0; background: var(--tone-bg, var(--cloud)); color: var(--tone-fg, var(--ink)); }
+.settings-nav button span { display: flex; flex-direction: column; min-width: 0; }
+.settings-nav button b { font-weight: 600; font-size: 14.5px; }
+.settings-nav button small { color: var(--iron); font-size: 12px; line-height: 1.35; }
+.settings-nav button:hover { background: var(--cloud); }
+.settings-nav button.on { background: var(--violet); color: var(--snow); }
+.settings-nav button.on small { color: color-mix(in srgb, var(--snow) 70%, transparent); }
+.settings-nav button.on svg { background: rgba(255, 255, 255, .14); color: var(--snow); }
+:root[data-theme="dark"] .settings-nav button.on { color: #141414; }
+:root[data-theme="dark"] .settings-nav button.on small { color: rgba(20, 20, 20, .65); }
+:root[data-theme="dark"] .settings-nav button.on svg { background: rgba(0, 0, 0, .12); color: #141414; }
+.settings-nav :is(.i-home, .i-cart) { --tone-bg: var(--t-lime-bg); --tone-fg: var(--t-lime-fg); }
+.settings-nav :is(.i-clock) { --tone-bg: var(--t-blue-bg); --tone-fg: var(--t-blue-fg); }
+.settings-nav :is(.i-bell) { --tone-bg: var(--t-yellow-bg); --tone-fg: var(--t-yellow-fg); }
+.settings-nav :is(.i-key) { --tone-bg: var(--t-violet-bg); --tone-fg: var(--t-violet-fg); }
+.settings-nav :is(.i-download, .i-history) { --tone-bg: var(--t-teal-bg); --tone-fg: var(--t-teal-fg); }
+.settings-pane { display: flex; flex-direction: column; gap: 18px; animation: fade-in .25s ease; }
+.settings-pane .card + .card { margin-top: 0; }
+.pane-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -.4px; margin: 0; }
+.pane-head p { margin: 2px 0 0; font-size: 14px; }
+
+@media (max-width: 1100px) { .settings-layout { grid-template-columns: 230px minmax(0, 1fr); } .settings-nav button small { display: none; } }
+@media (max-width: 860px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .settings-nav {
+    position: sticky; top: calc(var(--top) + 64px); z-index: 15; flex-direction: row; overflow-x: auto; scrollbar-width: none;
+    padding: 6px; border-radius: 99px; scroll-snap-type: x proximity;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-nav button { flex-shrink: 0; padding: 7px 14px 7px 8px; border-radius: 99px; gap: 8px; scroll-snap-align: center; }
+  .settings-nav button svg { width: 30px; height: 30px; padding: 7px; border-radius: 50%; }
+  .settings-nav button b { font-size: 13.5px; white-space: nowrap; }
+  .settings-nav button small { display: none; }
+  .pane-head h2 { font-size: 19px; }
+}
