@@ -1,4 +1,5 @@
 // Shared helpers for all screens.
+import { cacheRead, cacheWrite, cacheClear, setOffline, serverDown } from './offline.js';
 
 export const state = { user: null, permissions: [], settings: {}, mustChangePassword: false };
 
@@ -8,6 +9,18 @@ export function can(perm) {
 
 export async function api(path, { method = 'GET', body } = {}) {
   let res;
+  const noNet = async () => {
+    setOffline(true);
+    if (method === 'GET') {
+      const last = await cacheRead(path);
+      if (last !== undefined) return last; // the last thing this device saw
+    }
+    const err = new Error(method === 'GET'
+      ? 'مفيش نت — والصفحة دي لسه متفتحتش على الجهاز ده قبل كده'
+      : 'مفيش نت — العملية دي محتاجة نت. البيع شغال عادي من غير نت وهيترفع لوحده لما النت يرجع');
+    err.offline = true;
+    throw err;
+  };
   try {
     res = await fetch('/api' + path, {
       method,
@@ -16,8 +29,10 @@ export async function api(path, { method = 'GET', body } = {}) {
       credentials: 'same-origin',
     });
   } catch {
-    throw new Error('مفيش اتصال بالسيستم — اتأكد من النت أو الواي فاي وجرب تاني');
+    return noNet();
   }
+  if (serverDown(res.status)) return noNet();
+  setOffline(false);
   let data = null;
   try { data = await res.json(); } catch { /* empty */ }
   if (res.status === 401 && path !== '/auth/login' && path !== '/auth/me') {
@@ -28,6 +43,8 @@ export async function api(path, { method = 'GET', body } = {}) {
     location.reload();
   }
   if (!res.ok) throw new Error(data?.error || 'حصل خطأ، حاول تاني');
+  if (method === 'GET') cacheWrite(path, data);
+  if (path === '/auth/login' || path === '/auth/logout') await cacheClear(); // someone else may use this device next
   return data;
 }
 api.get = (p) => api(p);
@@ -95,6 +112,8 @@ const P = {
   alert: '<path d="M12 3 2 21h20z"/><path d="M12 10v5M12 18v.01"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  'wifi-off': '<path d="M2 2l20 20"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.8"/><path d="M19 12.9a10 10 0 0 0-2.3-1.7"/><path d="M2 8.8a15 15 0 0 1 4.2-2.6"/><path d="M22 8.8A15 15 0 0 0 11 5"/><path d="M12 20h.01"/>',
+  upload: '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
   wallet: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2"/>',
   trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',

@@ -97,6 +97,17 @@ module.exports = function productRoutes(api, db) {
     res.json({ product: strip(req)(p), serial });
   });
 
+  /** Everything the till needs to keep selling with no internet: products, their in-stock IMEIs, categories. */
+  api.get('/pos/catalog', view, requirePerm('sales.create'), (req, res) => {
+    const products = db.prepare(`${SELECT} WHERE p.active = 1 ORDER BY p.name`).all().map(strip(req));
+    const serials = {};
+    for (const s of db.prepare("SELECT product_id, serial FROM serials WHERE status = 'in_stock' ORDER BY id").all()) {
+      (serials[s.product_id] ||= []).push(s.serial);
+    }
+    const categories = db.prepare('SELECT id, name FROM categories ORDER BY name').all();
+    res.json({ at: new Date().toISOString(), products, serials, categories });
+  });
+
   api.get('/products/:id', view, (req, res) => {
     const p = getProduct(req.params.id);
     if (p.has_serial) {

@@ -1,8 +1,9 @@
-import { api, state, can, icon, esc, LOGO_FULL, ROLE_NAMES, toastErr, modal, busy, toast, currentTheme, setTheme } from './core.js';
+import { api, state, can, icon, esc, LOGO_FULL, ROLE_NAMES, toastErr, modal, busy, toast, currentTheme, setTheme, confirmBox, money, fmtDate } from './core.js';
 import { enterView, softly } from './motion.js';
 import { initShift, initNotifications } from './live.js';
 import { openSearch, initSearchKeys } from './search.js';
 import { addCameraButton } from './camera.js';
+import { initOffline, isOffline, outbox, sync, dropQueued, retryQueued, cacheClear } from './offline.js';
 
 const NAV = [
   { path: '/', title: 'الرئيسية', icon: 'home', view: 'dashboard' },
@@ -32,6 +33,7 @@ async function boot() {
   try {
     const me = await api.get('/auth/me');
     Object.assign(state, { user: me.user, permissions: me.permissions, settings: me.settings, mustChangePassword: me.must_change_password, hosting: me.hosting || {} });
+    initOffline(me.user.id);
   } catch {
     state.user = null;
   }
@@ -157,6 +159,7 @@ function shell() {
         <h1 id="page-title"></h1>
         <div class="top-tools">
           <button class="btn btn-ghost btn-icon search-btn" id="search-btn" title="بحث في كل حاجة (Ctrl+K)">${icon('search')}</button>
+          <button class="net-box hidden" id="net-box" type="button"></button>
           <div id="shift-box"></div>
           <button class="btn btn-ghost btn-icon bell hidden" id="bell" title="الإشعارات">${icon('bell')}<span class="bell-count hidden" id="bell-count"></span></button>
         </div>
@@ -175,12 +178,16 @@ function shell() {
     </nav>
   </div>`;
   document.querySelectorAll('[data-act="logout"]').forEach((b) => b.addEventListener('click', async () => {
+    const waiting = (await outbox()).length;
+    if (waiting && !(await confirmBox(`عندك ${waiting} فاتورة لسه مترفعتش. هتفضل متخزنة على الجهاز وهتترفع لما تدخل تاني بنفس الحساب. تخرج برضه؟`, { ok: 'خروج' }))) return;
     await api.post('/auth/logout').catch(() => {});
+    await cacheClear();
     location.hash = '#/';
     location.reload();
   }));
   api.get('/version').then((v) => { document.querySelectorAll('.app-version').forEach((x) => { x.textContent = `نسخة ${v.build}`; }); }).catch(() => {});
   initTopNav();
+  initNet();
   document.getElementById('search-btn').addEventListener('click', openSearch);
   initSearchKeys();
   document.querySelectorAll('[data-act="theme"]').forEach((b) => b.addEventListener('click', () => {
@@ -201,6 +208,73 @@ function shell() {
   document.getElementById('menu').addEventListener('click', toggleMenu);
   document.getElementById('more').addEventListener('click', toggleMenu);
   document.getElementById('scrim').addEventListener('click', toggleMenu);
+}
+
+/**
+ * No internet: a badge in the header says so, and how many sales are waiting to upload.
+ * Tapping it lists them (with the reason for any the system refused).
+ */
+function initNet() {
+  const box = document.getElementById('net-box');
+  const draw = async () => {
+    const list = await outbox();
+    const waiting = list.filter((x) => x.status === 'pending').length;
+    const refused = list.length - waiting;
+    const off = isOffline();
+    box.className = `net-box${off ? ' off' : refused ? ' warn' : waiting ? ' up' : ' hidden'}`;
+    box.title = off ? 'مفيش نت — البيع شغال والفواتير هتترفع لوحدها' : refused ? 'فواتير محتاجة مراجعة' : 'بيرفع الفواتير';
+    box.innerHTML = `${icon(off ? 'wifi-off' : refused ? 'alert' : 'upload')}<span class="nb-text">${off ? 'من غير نت' : refused ? 'مراجعة' : 'بيرفع'}</span>${list.length ? `<b class="num">${list.length}</b>` : ''}`;
+  };
+  document.addEventListener('mm:net', (e) => {
+    draw();
+    toast(e.detail.offline ? 'النت فصل — تقدر تكمل بيع عادي، والفواتير هتترفع لوحدها أول ما يرجع' : 'النت رجع ✓', e.detail.offline ? 'err' : 'ok');
+  });
+  document.addEventListener('mm:outbox', (e) => {
+    draw();
+    if (e.detail?.sent) toast(`اترفعت ${e.detail.sent} فاتورة كانت متسجلة من غير نت ✓`, 'ok');
+    if (e.detail?.refused) toast(`في ${e.detail.refused} فاتورة السيستم رفضها — دوس على العلامة اللي فوق تشوف السبب`, 'err');
+  });
+  box.addEventListener('click', outboxModal);
+  draw();
+  // The till's product list, so selling keeps working if the internet drops later
+  if (can('sales.create')) api.get('/pos/catalog').catch(() => {});
+}
+
+async function outboxModal() {
+  const rows = async () => {
+    const list = await outbox();
+    if (!list.length) return `<div class="empty">${icon('check')}كل الفواتير اترفعت</div>`;
+    return list.map((x) => `<div class="ob-row ${x.status}" data-ref="${esc(x.ref)}">
+      <div class="ob-main"><b>${money(x.summary?.total ?? 0)}</b>
+        <span class="muted small">${esc(fmtDate(x.body.offline_at))} • ${esc((x.summary?.names || []).slice(0, 2).join('، '))}${(x.summary?.names?.length || 0) > 2 ? ` +${x.summary.names.length - 2}` : ''}</span>
+        ${x.status === 'failed' ? `<span class="small" style="color:var(--danger)">${icon('alert')} ${esc(x.error)}</span>` : '<span class="pill pill-gray">مستنية النت</span>'}</div>
+      ${x.status === 'failed' ? `<div class="btn-row"><button class="btn btn-outline btn-sm" data-a="retry">${icon('undo')} جرب تاني</button>
+        <button class="btn btn-ghost btn-sm" data-a="drop" style="color:var(--danger)">${icon('trash')} امسح</button></div>` : ''}
+    </div>`).join('');
+  };
+  await modal({
+    title: 'فواتير اتعملت من غير نت',
+    body: `<p class="muted small" style="margin-top:0">الفواتير دي متخزنة على الجهاز ده وبتترفع لوحدها أول ما النت يرجع. الفاتورة اللي السيستم يرفضها
+      (مثلاً جهاز اتباع قبل كده) بتفضل هنا لحد ما تشوفها.</p><div class="ob-list" id="ob-list">${await rows()}</div>`,
+    foot: `<button class="btn btn-outline" data-close>قفل</button><button class="btn btn-primary" id="ob-sync">${icon('upload')} ارفع دلوقتي</button>`,
+    onMount: (m) => {
+      const list = m.querySelector('#ob-list');
+      const redraw = async () => { list.innerHTML = await rows(); };
+      document.addEventListener('mm:outbox', redraw);
+      new MutationObserver((_, o) => { if (!m.isConnected) { document.removeEventListener('mm:outbox', redraw); o.disconnect(); } }).observe(document.body, { childList: true });
+      m.querySelector('#ob-sync').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        await sync();
+        if (isOffline()) toast('لسه مفيش نت', 'err');
+      }));
+      list.addEventListener('click', async (e) => {
+        const b = e.target.closest('button[data-a]');
+        if (!b) return;
+        const ref = b.closest('.ob-row').dataset.ref;
+        if (b.dataset.a === 'retry') await busy(b, () => retryQueued(ref));
+        else if (await confirmBox('تمسح الفاتورة دي من الجهاز؟ مش هتتسجل في السيستم خالص — لو البيعة حصلت فعلاً سجلها تاني من نقطة البيع.', { ok: 'امسح', danger: true })) await dropQueued(ref);
+      });
+    },
+  });
 }
 
 /**

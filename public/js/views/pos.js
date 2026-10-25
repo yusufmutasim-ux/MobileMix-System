@@ -1,5 +1,6 @@
 import { api, state, can, icon, esc, money, n, modal, toast, toastErr, busy, debounce, PAY_NAMES, moneyText, todayStr, waLink } from '../core.js';
 import { printInvoice } from '../print.js';
+import { isOffline, getCatalog, takeFromCatalog, queueSale, newRef, localStamp } from '../offline.js';
 
 const CART_KEY = 'mm_cart';
 
@@ -10,6 +11,29 @@ export async function render(el) {
   let category = '';
 
   const cats = await api.get('/categories');
+  // Fresh copy of the full product list for selling with no internet (falls back to the saved one)
+  let catalog = null;
+  api.get('/pos/catalog').then((c) => { catalog = c; }).catch(async () => { catalog = await getCatalog(); });
+  const offlineList = async () => catalog || (catalog = await getCatalog()) || null;
+
+  /** Search the saved list the same way the server does: name / brand, exact barcode or IMEI. */
+  async function localProducts(q) {
+    const c = await offlineList();
+    if (!c) throw Object.assign(new Error('مفيش نت — وقايمة المنتجات لسه متحملتش على الجهاز ده'), { offline: true });
+    const t = q.toLowerCase();
+    return c.products.filter((p) => (!category || String(p.category_id) === String(category))
+      && (!t || String(p.name).toLowerCase().includes(t) || String(p.brand || '').toLowerCase().includes(t)
+        || p.barcode === q || (c.serials[p.id] || []).includes(q))).slice(0, 60);
+  }
+  async function localLookup(code) {
+    const c = await offlineList();
+    const byCode = c?.products.find((p) => p.barcode === code);
+    if (byCode) return { product: byCode, serial: null };
+    for (const [id, list] of Object.entries(c?.serials || {})) {
+      if (list.includes(code)) return { product: c.products.find((p) => p.id === Number(id)), serial: code };
+    }
+    throw new Error('مفيش منتج بالكود ده (أو الجهاز اتباع)');
+  }
 
   el.innerHTML = `
   <button class="cart-bar empty" id="cart-toggle"><span><span class="count" id="cart-count">0</span>عرض الفاتورة</span><span id="cart-sum"></span></button>
@@ -81,7 +105,8 @@ export async function render(el) {
     const params = new URLSearchParams({ limit: '60' });
     if (q) params.set('q', q);
     if (category) params.set('category_id', category);
-    products = await api.get('/products?' + params);
+    if (isOffline()) products = await localProducts(q);
+    else products = await api.get('/products?' + params).catch((e) => (e.offline ? localProducts(q) : Promise.reject(e)));
     $('#grid').innerHTML = products.length ? products.map((p) => `
       <button class="pcard ${p.qty <= 0 ? 'out' : ''}" data-id="${p.id}">
         <span class="t">${esc(p.name)}</span>
@@ -116,7 +141,8 @@ export async function render(el) {
     const code = scan.value.trim();
     if (!code) return;
     try {
-      const r = await api.get('/products/lookup?code=' + encodeURIComponent(code));
+      const r = isOffline() ? await localLookup(code)
+        : await api.get('/products/lookup?code=' + encodeURIComponent(code)).catch((e) => (e.offline ? localLookup(code) : Promise.reject(e)));
       await addProduct(r.product, r.serial);
       scan.value = '';
       loadProducts().catch(() => {});
@@ -133,19 +159,20 @@ export async function render(el) {
       if (!serial) serial = await pickSerial(p);
       if (!serial) return;
       if (cart.some((l) => l.serial === serial)) return toast('الجهاز ده موجود في الفاتورة بالفعل', 'err');
-      cart.push({ product_id: p.id, name: p.name, unit_price: p.sell_price, list_price: p.sell_price, qty: 1, serial, has_serial: true, stock: p.qty });
+      cart.push({ product_id: p.id, name: p.name, unit_price: p.sell_price, list_price: p.sell_price, qty: 1, serial, has_serial: true, stock: p.qty, warranty_days: p.warranty_days || 0 });
     } else {
       const line = cart.find((l) => l.product_id === p.id);
       if (p.qty <= (line?.qty || 0)) return toast(`الكمية المتاحة من "${p.name}" هي ${p.qty} بس`, 'err');
       if (line) line.qty++;
-      else cart.push({ product_id: p.id, name: p.name, unit_price: p.sell_price, list_price: p.sell_price, qty: 1, has_serial: false, stock: p.qty });
+      else cart.push({ product_id: p.id, name: p.name, unit_price: p.sell_price, list_price: p.sell_price, qty: 1, has_serial: false, stock: p.qty, warranty_days: p.warranty_days || 0 });
     }
     draw();
     focusScan();
   }
 
   async function pickSerial(p) {
-    const full = await api.get('/products/' + p.id);
+    const fromList = async () => ({ serials: ((await offlineList())?.serials[p.id] || []).map((serial) => ({ serial })) });
+    const full = isOffline() ? await fromList() : await api.get('/products/' + p.id).catch((e) => (e.offline ? fromList() : Promise.reject(e)));
     const free = (full.serials || []).filter((s) => !cart.some((l) => l.serial === s.serial));
     if (!free.length) { toast(`مفيش أجهزة متاحة من "${p.name}"`, 'err'); return null; }
     return modal({
@@ -274,6 +301,7 @@ export async function render(el) {
     if (!cart.length) return;
     const t = totals();
     const body = {
+      client_ref: newRef(),
       items: cart.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_price: l.unit_price, serial: l.serial })),
       discount: t.disc,
       paid: $('#paid').value === '' ? undefined : Number($('#paid').value),
@@ -287,7 +315,17 @@ export async function render(el) {
       body.installments = { count: Number($('#inst-n').value) || 1, every: $('#inst-every').value, first_date: $('#inst-first').value };
     }
     await busy($('#checkout'), async () => {
-      const sale = await api.post('/sales', body);
+      let sale;
+      try {
+        sale = await api.post('/sales', body);
+      } catch (e) {
+        if (!e.offline) throw e;
+        // No internet: keep the sale on this device; it uploads by itself (same id, so never twice)
+        body.offline_at = localStamp();
+        sale = offlineSale(body, cart);
+        await queueSale(body, { total: sale.total, names: sale.items.map((i) => i.name) });
+      }
+      takeFromCatalog(body.items.map((i) => ({ ...i, qty: i.qty || 1 }))).then(async () => { catalog = await getCatalog() || catalog; });
       cart = [];
       ['#discount', '#paid', '#cname', '#cphone', '#notes'].forEach((s) => { $(s).value = s === '#discount' ? 0 : ''; });
       $('#cust-info').innerHTML = '';
@@ -313,19 +351,46 @@ export async function render(el) {
   return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
 }
 
+/** What the receipt needs, for a sale kept on the device until the internet is back. */
+function offlineSale(body, cart) {
+  const items = cart.map((l) => {
+    const line_total = Math.round(l.unit_price * l.qty * 100) / 100;
+    let warranty_until;
+    if (l.warranty_days > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + l.warranty_days);
+      warranty_until = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return { product_id: l.product_id, name: l.name, serial: l.serial || null, qty: l.qty, unit_price: l.unit_price, line_total, warranty_until };
+  });
+  const subtotal = Math.round(items.reduce((a, i) => a + i.line_total, 0) * 100) / 100;
+  const total = Math.round((subtotal - (body.discount || 0)) * 100) / 100;
+  const paid = body.paid ?? total;
+  return {
+    offline: true,
+    invoice_no: 'OFF-' + body.client_ref.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase(),
+    created_at: body.offline_at, user_name: state.user.full_name,
+    customer_name: body.customer_name, customer_phone: body.customer_phone, notes: body.notes,
+    payment_method: body.payment_method, items, subtotal, discount: body.discount || 0, total, paid,
+    due: Math.max(0, Math.round((total - paid) * 100) / 100), installments: [], payments: [], returned_total: 0,
+  };
+}
+
 function successModal(sale) {
   const change = sale.paid - sale.total;
   return modal({
-    title: 'تم البيع',
+    title: sale.offline ? 'اتسجلت من غير نت' : 'تم البيع',
     body: `<div class="success-hero"><div class="ic">${icon('check')}</div>
       <div class="muted">فاتورة رقم <b class="num" style="color:var(--ink)">${esc(sale.invoice_no)}</b></div>
       <div style="font-size:32px;font-weight:300;margin-top:6px">${money(sale.total)}</div>
       ${change > 0.004 ? `<div class="pill pill-ok" style="font-size:15px;margin-top:8px">الباقي للعميل: ${moneyText(change)}</div>` : ''}
       ${change < -0.004 ? `<div class="pill pill-warn" style="font-size:15px;margin-top:8px">متبقي على العميل: ${moneyText(-change)}</div>` : ''}
+      ${sale.offline ? `<div class="offline-note">${icon('wifi-off')} الفاتورة متخزنة على الجهاز وهتترفع لوحدها أول ما النت يرجع.
+        الرقم ده مؤقت${sale.due > 0 ? '، والأقساط هتتحسب لما تترفع' : ''}.</div>` : ''}
       ${sale.installments?.length ? `<div class="small muted" style="margin-top:8px">${sale.installments.length} قسط — أولهم ${moneyText(sale.installments[0].amount)} يوم <span class="num">${esc(sale.installments[0].due_date)}</span></div>` : ''}
     </div>`,
     foot: `<button class="btn btn-outline" data-close>بيع جديد</button>
-           ${sale.customer_phone ? `<a class="btn btn-outline" target="_blank" rel="noopener" href="${waLink(sale.customer_phone, receiptText(sale))}">${icon('whatsapp')} واتساب</a>` : ''}
+           ${sale.customer_phone && !sale.offline ? `<a class="btn btn-outline" target="_blank" rel="noopener" href="${waLink(sale.customer_phone, receiptText(sale))}">${icon('whatsapp')} واتساب</a>` : ''}
            <button class="btn btn-outline" data-print="a4">${icon('print')} A4</button>
            <button class="btn btn-primary" data-print="80mm" autofocus>${icon('print')} طباعة الفاتورة</button>`,
     onMount: (m, close) => {

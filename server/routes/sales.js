@@ -23,6 +23,15 @@ module.exports = function salesRoutes(api, db) {
     if (!Array.isArray(body.items) || body.items.length === 0) throw bad('الفاتورة فاضية — ضيف منتجات');
     if (body.items.length > 200) throw bad('عدد الأصناف كبير جداً');
     const paymentMethod = PAYMENT_METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
+    // Every checkout carries the device's own id for it: if the same sale arrives twice
+    // (the answer got lost, or it was waiting with no internet) it's saved once.
+    const clientRef = body.client_ref ? str(body.client_ref, 'رقم العملية', { max: 64 }) : null;
+    if (clientRef) {
+      const same = db.prepare('SELECT id FROM sales WHERE client_ref = ?').get(clientRef);
+      if (same) return res.json(loadSale(same.id, req.user));
+    }
+    // When it was sold, for a sale made with no internet (shown on the invoice; the money counts from when it arrives)
+    const offlineAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(body.offline_at || '')) ? body.offline_at : null;
     const settings = getSettings(db);
     requireOpenShift(db, req.user);
 
@@ -58,8 +67,12 @@ module.exports = function salesRoutes(api, db) {
       // Same product may appear on several lines — check total stock per product
       const need = new Map();
       for (const l of lines) need.set(l.p.id, (need.get(l.p.id) || 0) + l.qty);
-      for (const l of lines) {
-        if (need.get(l.p.id) > l.p.qty) throw bad(`الكمية المتاحة من "${l.p.name}" هي ${l.p.qty} بس`);
+      // A sale made with no internet already happened (the goods left the shop), so it isn't refused
+      // for stock: the count goes under zero and shows up for a stock check instead.
+      if (!offlineAt) {
+        for (const l of lines) {
+          if (need.get(l.p.id) > l.p.qty) throw bad(`الكمية المتاحة من "${l.p.name}" هي ${l.p.qty} بس`);
+        }
       }
 
       const subtotal = round2(lines.reduce((s, l) => s + l.lineTotal, 0));
@@ -82,14 +95,15 @@ module.exports = function salesRoutes(api, db) {
       if (due > 0.004 && (!customerName || String(customerPhone || '').replace(/\D/g, '').length < 8)) {
         throw bad('في فلوس متبقية على العميل — لازم تكتب اسمه وتليفونه عشان تتسجل عليه');
       }
-      const plan = due > 0.004 ? installmentPlan(body.installments, due) : [];
-      const r = db.prepare(`INSERT INTO sales (user_id, customer_name, customer_phone, subtotal, discount, total, paid, payment_method, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      const plan = due > 0.004 ? installmentPlan(body.installments, due, offlineAt ? offlineAt.slice(0, 10) : today()) : [];
+      const r = db.prepare(`INSERT INTO sales (user_id, customer_name, customer_phone, subtotal, discount, total, paid, payment_method, notes, client_ref, offline_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         req.user.id,
         customerName,
         customerPhone,
         subtotal, discount, total, paid, paymentMethod,
         str(body.notes, 'الملاحظات', { optional: true, max: 300 }),
+        clientRef, offlineAt,
       );
       const saleId = Number(r.lastInsertRowid);
       const invoiceNo = `${settings.invoice_prefix || ''}${pad(saleId, 6)}`;
@@ -116,7 +130,7 @@ module.exports = function salesRoutes(api, db) {
     req.app.locals.notifier.notify({
       type: 'sale', actorId: req.user.id, url: `#/sales?open=${sale.id}`,
       title: `عملية بيع — ${fmtMoney(sale.total, settings.currency)}`,
-      body: `${req.user.full_name} • ${names.slice(0, 2).join('، ')}${names.length > 2 ? ` +${names.length - 2}` : ''} • ${PAY_AR[sale.payment_method] || sale.payment_method}`,
+      body: `${req.user.full_name} • ${names.slice(0, 2).join('، ')}${names.length > 2 ? ` +${names.length - 2}` : ''} • ${PAY_AR[sale.payment_method] || sale.payment_method}${offlineAt ? ` • اتباعت من غير نت الساعة ${offlineAt.slice(11, 16)}` : ''}`,
     });
     res.status(201).json(sale);
   });
@@ -239,13 +253,13 @@ module.exports = function salesRoutes(api, db) {
   });
 
   /** Split what's owed into equal installments: { count, every: 'month' | 'week' | days, first_date }. */
-  function installmentPlan(raw, due) {
+  function installmentPlan(raw, due, soldOn = today()) {
     if (!raw || !raw.count) return [];
     const count = num(raw.count, 'عدد الأقساط', { min: 1, int: true });
     if (count > 60) throw bad('عدد الأقساط كبير جداً');
     const first = /^\d{4}-\d{2}-\d{2}$/.test(String(raw.first_date || '')) ? raw.first_date : null;
     if (!first) throw bad('حدد ميعاد أول قسط');
-    if (first < today()) throw bad('ميعاد أول قسط عدّى');
+    if (first < soldOn) throw bad('ميعاد أول قسط عدّى');
     const every = raw.every === 'week' ? 'week' : 'month';
     const each = Math.floor((due / count) * 100) / 100;
     const out = [];

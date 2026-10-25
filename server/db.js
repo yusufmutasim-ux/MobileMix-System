@@ -480,6 +480,8 @@ function addMissingColumns(db) {
       'out_method TEXT', 'out_lat REAL', 'out_lng REAL', 'out_accuracy REAL', 'out_distance REAL',
       'late_minutes INTEGER', 'early_minutes INTEGER'],
     returns: ['cash_out REAL'],                       // cash handed back (old rows: the whole amount)
+    // Sales made with no internet: the device's own id for the sale (so it's never saved twice) and when it really happened
+    sales: ['client_ref TEXT', 'offline_at TEXT'],
     products: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
     sale_items: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
     users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0',
@@ -490,6 +492,7 @@ function addMissingColumns(db) {
     const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
     for (const c of cols) if (!have.has(c.split(' ')[0])) db.exec(`ALTER TABLE ${table} ADD COLUMN ${c}`);
   }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_client_ref ON sales(client_ref) WHERE client_ref IS NOT NULL');
 }
 
 function upgrade(db) {

@@ -1531,3 +1531,26 @@ body:has(.login)::before { background: transparent; }
   .settings-nav button small { display: none; }
   .pane-head h2 { font-size: 19px; }
 }
+
+/* ---------- working with no internet ---------- */
+.net-box { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 0; border-radius: 999px;
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  background: var(--t-blue-bg); color: var(--t-blue-fg); animation: net-in .3s ease both; }
+.net-box svg { width: 17px; height: 17px; }
+.net-box b { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+  background: rgba(0,0,0,.08); font-size: 12px; }
+.net-box.off { background: var(--t-red-bg); color: var(--t-red-fg); }
+.net-box.warn { background: var(--t-yellow-bg); color: var(--t-yellow-fg); }
+.net-box.up svg { animation: net-up 1.2s ease-in-out infinite; }
+.net-box.hidden { display: none; }
+@keyframes net-in { from { opacity: 0; transform: scale(.9); } }
+@keyframes net-up { 50% { transform: translateY(-2px); } }
+@media (max-width: 560px) { .net-box .nb-text { display: none; } .net-box { padding: 0 10px; } }
+.ob-list { display: grid; gap: 8px; max-height: 55vh; overflow: auto; }
+.ob-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-radius: 16px; background: var(--t-gray-bg); }
+.ob-row.failed { background: var(--danger-wash); }
+.ob-main { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.ob-main .pill { justify-self: start; }
+.offline-note { display: flex; gap: 8px; align-items: flex-start; text-align: start; margin-top: 12px; padding: 10px 12px; border-radius: 14px;
+  background: var(--t-blue-bg); color: var(--t-blue-fg); font-size: 13px; line-height: 1.6; }
+.offline-note svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
