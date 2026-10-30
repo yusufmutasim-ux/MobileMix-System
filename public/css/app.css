@@ -1566,3 +1566,22 @@ body:has(.login)::before { background: transparent; }
 .print-help ol { margin: 6px 0 12px; padding-inline-start: 20px; }
 .copy-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .copy-row code { direction: ltr; unicode-bidi: isolate; text-align: left; background: rgba(0,0,0,.06); padding: 6px 10px; border-radius: 10px; font-size: 12px; word-break: break-all; min-width: 0; flex: 1; }
+
+/* ---------- adding a product from a photo ---------- */
+.ai-guess { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 16px; background: var(--t-lime-bg); color: var(--t-lime-fg); line-height: 1.6; }
+.ai-guess.medium { background: var(--t-blue-bg); color: var(--t-blue-fg); }
+.ai-guess.low { background: var(--t-yellow-bg); color: var(--t-yellow-fg); }
+.ai-guess img { width: 64px; height: 64px; object-fit: cover; border-radius: 12px; flex: none; }
+.ai-guess .muted { color: inherit; opacity: .75; }
+.ai-reading { display: grid; justify-items: center; gap: 10px; text-align: center; }
+.ai-reading img { max-width: 100%; max-height: 240px; border-radius: 16px; }
+.ai-reading img:not([src]) { display: none; }
+.ai-reading .empty { padding: 8px; }
+.ai-matches { display: grid; gap: 8px; }
+.ai-match { display: grid; gap: 2px; text-align: start; padding: 12px 14px; border-radius: 16px; border: 0; background: var(--t-gray-bg); color: inherit; font: inherit; cursor: pointer; }
+.ai-match:hover { outline: 2px solid var(--ink); }
+.setup-steps { padding-inline-start: 20px; line-height: 1.9; margin: 0; }
+.ai-lines { display: grid; gap: 6px; }
+.ai-lines > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-line { border: 0; border-radius: 999px; padding: 6px 12px; background: var(--t-gray-bg); color: inherit; font: inherit; font-size: 13px; cursor: pointer; direction: ltr; }
+.ai-line.used { opacity: .45; }

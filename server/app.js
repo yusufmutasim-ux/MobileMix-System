@@ -7,7 +7,7 @@ const hosting = require('./hosting');
 const { createNotifier } = require('./notify');
 
 // Bump with every release so it's easy to see which version a shop is running
-const BUILD = '2026.10.30-brands2';
+const BUILD = '2026.10.30-photo1';
 
 function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSender } = {}) {
   const app = express();
@@ -57,6 +57,7 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
   require('./routes/payroll')(api, db);
   require('./routes/search')(api, db);
   require('./routes/printing')(api, db);
+  require('./routes/ai')(api, db);
   api.use((_req, res) => res.status(404).json({ error: 'غير موجود' }));
   app.use('/api', api);
 
@@ -65,6 +66,10 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
   app.use('/fonts/poppins', express.static(path.join(root, 'node_modules/@fontsource/poppins/files'), { maxAge: '30d' }));
   app.use('/vendor', express.static(path.join(root, 'node_modules/jsbarcode/dist'), { maxAge: '30d' }));
   app.use('/vendor/zxing', express.static(path.join(root, 'node_modules/@zxing/library/umd'), { maxAge: '30d' }));
+  // Free text reading in the browser (product from a photo of its box): the reader, its engine and English
+  app.use('/vendor/tesseract', express.static(path.join(root, 'node_modules/tesseract.js/dist'), { maxAge: '30d' }));
+  app.use('/vendor/tesseract-core', express.static(path.join(root, 'node_modules/tesseract.js-core'), { maxAge: '30d' }));
+  app.use('/vendor/tesseract-lang', express.static(path.join(root, 'node_modules/@tesseract.js-data/eng/4.0.0_best_int'), { maxAge: '30d' }));
   app.use(express.static(path.join(root, 'public'), {
     // Always revalidate app files so updates show up right away (the service worker keeps an offline copy)
     setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),

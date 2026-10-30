@@ -2,6 +2,7 @@ import {
   api, can, icon, esc, money, n, fmtDate, modal, toast, toastErr, busy, debounce, formData, emptyRow,
   confirmBox, downloadCsv,
 } from '../core.js';
+import { readBox } from '../box-reader.js';
 
 const MOVE_NAMES = { purchase: 'إضافة', sale: 'بيع', return: 'مرتجع', adjust: 'تعديل', stocktake: 'جرد' };
 
@@ -15,6 +16,7 @@ export async function render(el, { query, actions }) {
     <button class="btn btn-outline btn-sm" id="csv">${icon('download')} تصدير</button>
     ${edit ? `<button class="btn btn-outline btn-sm" id="cats-btn">${icon('layers')} الأقسام</button>
               <button class="btn btn-outline btn-sm" id="brands-btn">${icon('tag')} البراندات</button>
+              <button class="btn btn-outline btn-sm" id="photo-add">${icon('camera')} من صورة</button>
               <button class="btn btn-primary" id="add">${icon('plus')} منتج جديد</button>` : ''}`;
 
   el.innerHTML = `
@@ -94,6 +96,7 @@ export async function render(el, { query, actions }) {
     reload();
   });
   actions.querySelector('#add')?.addEventListener('click', async () => { if (await productForm(cats)) reload(); });
+  actions.querySelector('#photo-add')?.addEventListener('click', async () => { if (await addFromPhotos(cats)) reload(); });
   actions.querySelector('#cats-btn')?.addEventListener('click', async () => {
     await categoriesModal();
     cats = await api.get('/categories');
@@ -110,24 +113,35 @@ export async function render(el, { query, actions }) {
 }
 
 // ---------------- forms ----------------
-async function productForm(cats, p = null) {
+async function productForm(cats, p = null, guess = null) {
   const isNew = !p;
   const brands = await api.get('/brands');
-  const current = brands.find((b) => b.name.toLowerCase() === String(p?.brand || '').toLowerCase());
+  const current = brands.find((b) => b.name.toLowerCase() === String(p?.brand || guess?.brand || '').toLowerCase());
+  // From a photo: a brand that isn't in the list yet is added when the product is saved
+  const newBrand = guess?.brand && !current ? guess.brand : '';
+  const catId = p?.category_id ?? guess?.category_id;
   return modal({
-    title: isNew ? 'منتج جديد' : `تعديل — ${esc(p.name)}`,
+    title: isNew ? (guess ? 'منتج جديد من صورة' : 'منتج جديد') : `تعديل — ${esc(p.name)}`,
     body: `<form class="form-grid" autocomplete="off">
-      <label class="field full"><span>اسم المنتج *</span><input class="input" name="name" value="${esc(p?.name || '')}" required></label>
+      ${guess ? `<div class="full ai-guess ${guess.confidence}">
+        ${guess.photo ? `<img src="${guess.photo}" alt="">` : ''}
+        <div><b>${guess.confidence === 'high' ? '✓ اتعرف من الصورة' : guess.confidence === 'medium' ? 'اتعرف من الصورة — راجع الاسم' : '⚠️ الصورة مش واضحة — راجع كل حاجة'}</b>
+          ${guess.notes ? `<div class="small">${esc(guess.notes)}</div>` : ''}
+          <div class="small muted">اكتب الكمية والسعر واحفظ.</div></div></div>
+        ${guess.lines?.length ? `<div class="full ai-lines"><span class="small muted">الكلام اللي اتقرا من العلبة — دوس على أي سطر يتضاف للاسم:</span>
+          <div>${guess.lines.map((l) => `<button type="button" class="ai-line">${esc(l)}</button>`).join('')}</div></div>` : ''}` : ''}
+      <label class="field full"><span>اسم المنتج *</span><input class="input" name="name" dir="auto" value="${esc(p?.name || guess?.name || '')}" required></label>
       <label class="field"><span>البراند</span><select class="input" name="brand" id="brand-sel">
         <option value="">— من غير براند —</option>
         ${brands.map((b) => `<option value="${esc(b.name)}" ${current?.id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}
+        ${newBrand ? `<option value="__ai:${esc(newBrand)}" selected>${esc(newBrand)} (براند جديد — هيتضاف للقايمة)</option>` : ''}
         <option value="__new">➕ براند جديد…</option></select></label>
       <div class="full hidden" id="new-brand" style="display:flex;gap:8px">
         <input class="input" id="new-brand-name" placeholder="اسم البراند الجديد" style="flex:1">
         <button type="button" class="btn btn-primary" id="new-brand-add">${icon('plus')} إضافة</button>
         <button type="button" class="btn btn-ghost" id="new-brand-cancel">إلغاء</button></div>
       <label class="field"><span>القسم</span><select class="input" name="category_id"><option value="">—</option>
-        ${cats.map((c) => `<option value="${c.id}" ${p?.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        ${cats.map((c) => `<option value="${c.id}" ${catId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       ${can('products.view_cost') ? `<label class="field"><span>سعر الشراء</span><input class="input num" type="number" step="any" min="0" name="cost_price" value="${p?.cost_price ?? ''}"></label>` : ''}
       <label class="field"><span>سعر البيع *</span><input class="input num" type="number" step="any" min="0" name="sell_price" value="${p?.sell_price ?? ''}" required></label>
       <label class="field"><span>الباركود</span><input class="input ltr" name="barcode" value="${esc(p?.barcode || '')}" placeholder="سيبه فاضي ويتعمل تلقائي"></label>
@@ -143,6 +157,11 @@ async function productForm(cats, p = null) {
     </form>`,
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
     onMount: (m, close) => {
+      m.querySelectorAll('.ai-line').forEach((b) => b.addEventListener('click', () => {
+        const inp = m.querySelector('[name=name]');
+        inp.value = `${inp.value.trim()} ${b.textContent}`.trim();
+        b.classList.add('used');
+      }));
       const hs = m.querySelector('#hs');
       hs?.addEventListener('change', () => {
         m.querySelector('#qty-f').classList.toggle('hidden', hs.checked);
@@ -175,6 +194,7 @@ async function productForm(cats, p = null) {
       m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
         const f = formData(m.querySelector('form'));
         if (f.brand === '__new') throw new Error('اكتب اسم البراند الجديد ودوس إضافة، أو اختار براند من القايمة');
+        if (f.brand?.startsWith('__ai:')) f.brand = (await api.post('/brands', { name: f.brand.slice(5) })).name;
         const body = { ...f, category_id: f.category_id || null };
         if (isNew) {
           body.serials = (f.serials || '').split(/\s+/).filter(Boolean);
@@ -189,6 +209,86 @@ async function productForm(cats, p = null) {
       }));
     },
   });
+}
+
+// ---------------- adding products from photos of their boxes ----------------
+/** Smaller copy of a photo for upload (long side 1568px, JPEG). */
+async function shrink(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = url; });
+    const k = Math.min(1, 1568 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * k);
+    c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.85);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/** Pick or take photos; each box is read, then its product form opens filled in. */
+async function addFromPhotos(cats) {
+  // Free reading on the device by default; Claude (better names) only if the shop added its own key
+  const st = await api.get('/ai/status').catch(() => ({ enabled: false }));
+  const brands = await api.get('/brands').catch(() => []);
+  const files = await new Promise((ok) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.addEventListener('change', () => ok([...input.files]));
+    input.addEventListener('cancel', () => ok([]));
+    input.click();
+  });
+  let changed = false;
+  for (const [i, file] of files.entries()) {
+    let photo, guess, closeWait;
+    const waiting = modal({
+      title: files.length > 1 ? `بيقرا الصورة ${i + 1} من ${files.length}` : 'بيقرا الصورة…',
+      body: `<div class="ai-reading"><div class="empty loading"><span></span><span></span><span></span></div><img id="ai-img" alt="">
+        <p class="muted small">بيقرا الكلام المكتوب على العلبة…${!st.enabled && i === 0 ? '<br>أول مرة بتاخد شوية عشان بيحمّل القارئ' : ''}</p></div>`,
+      locked: true,
+      onMount: (m, close) => { closeWait = close; },
+    });
+    try {
+      photo = await shrink(file);
+      document.getElementById('ai-img')?.setAttribute('src', photo);
+      if (st.enabled) guess = await api.post('/products/from-photo', { image: photo });
+      else {
+        guess = await readBox(photo, { brands, cats });
+        const q = guess.model || guess.name;
+        guess.matches = q && guess.model ? (await api.get('/products?limit=3&q=' + encodeURIComponent(q)).catch(() => [])) : [];
+      }
+    } catch (e) {
+      closeWait?.();
+      await waiting;
+      toastErr(e);
+      continue;
+    }
+    closeWait?.();
+    await waiting;
+    guess.photo = photo;
+    // Already there? Usually that means adding to its quantity
+    if (guess.matches?.length) {
+      const pick = await modal({
+        title: 'المنتج ده شكله موجود',
+        body: `<p style="margin-top:0">لقينا منتج قريب من <b>${esc(guess.name)}</b>:</p>
+          <div class="ai-matches">${guess.matches.map((x) => `<button type="button" class="ai-match" data-id="${x.id}"><b>${esc(x.name)}</b><span class="muted small">الكمية ${x.qty} • ${money(x.sell_price)}</span><span class="small">زوّد الكمية عليه ←</span></button>`).join('')}</div>`,
+        foot: `<button class="btn btn-outline" data-close>تخطي</button><button class="btn btn-primary" data-new>منتج جديد برضه</button>`,
+        onMount: (m, close) => {
+          m.querySelector('[data-new]').addEventListener('click', () => close('new'));
+          m.querySelectorAll('[data-id]').forEach((b) => b.addEventListener('click', () => close(Number(b.dataset.id))));
+        },
+      });
+      if (typeof pick === 'number') {
+        if (await stockForm(await api.get('/products/' + pick))) changed = true;
+        continue;
+      }
+      if (pick !== 'new') continue;
+    }
+    if (await productForm(cats, null, guess)) changed = true;
+  }
+  return changed;
 }
 
 function stockForm(p) {

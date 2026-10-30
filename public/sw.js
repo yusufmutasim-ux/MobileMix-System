@@ -2,13 +2,13 @@
 // API calls are never cached here (the app keeps the last answers itself, see js/offline.js).
 // App files are fetched fresh when possible and kept as a fallback, so the app still opens
 // with no internet: the till keeps selling and the sales upload when it's back.
-const VERSION = 'mm-v33';
+const VERSION = 'mm-v34';
 const SHELL = [
   '/', '/offline.html', '/css/app.css', '/brand/logo.svg', '/brand/logo-dark-text.svg', '/brand/mark.svg', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png',
   '/js/app.js', '/js/core.js', '/js/print.js',
   '/js/views/login.js', '/js/views/dashboard.js', '/js/views/pos.js', '/js/views/sales.js', '/js/views/products.js',
   '/js/views/stocktake.js', '/js/views/labels.js', '/js/views/reports.js', '/js/views/users.js', '/js/views/settings.js',
-  '/js/views/repairs.js', '/js/views/attendance.js', '/js/live.js', '/js/motion.js', '/js/money-ui.js', '/js/search.js', '/js/camera.js', '/js/offline.js',
+  '/js/views/repairs.js', '/js/views/attendance.js', '/js/live.js', '/js/motion.js', '/js/money-ui.js', '/js/search.js', '/js/camera.js', '/js/offline.js', '/js/box-reader.js',
   '/js/views/customers.js', '/js/views/purchases.js', '/js/views/drawer.js', '/js/views/expenses.js', '/js/views/payroll.js', '/js/views/lock.js', '/vendor/JsBarcode.all.min.js',
 ];
 
