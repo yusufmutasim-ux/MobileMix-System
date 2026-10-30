@@ -176,7 +176,7 @@ small { font-size: .8em; color: var(--muted); font-weight: 400; }
 .b-left { background: var(--warn-bg); color: var(--warn); margin-inline-start: auto; font-family: var(--font) !important; }
 .card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .card-brand { font: 500 11px var(--latin); color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
-.card-name { font-size: 14px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.9em; unicode-bidi: plaintext; text-align: right; }
+.card-name { font-size: 14px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.9em; text-align: right; }
 .card-price { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: auto; }
 .card-price b { font: 700 17px var(--latin); }
 .card-price s { color: var(--muted); font: 400 13px var(--latin); }
@@ -251,7 +251,7 @@ small { font-size: .8em; color: var(--muted); font-weight: 400; }
   .sticky-buy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
   .sticky-buy b { font: 700 18px var(--latin); }
   .sticky-buy .btn { height: 46px; flex: none; }
-  body[data-page="p"] main { padding-bottom: 150px; }
+  body[data-page="p"] main { padding-bottom: 76px; }
 }
 
 /* ---------- cart (drawer + page) ---------- */
@@ -466,8 +466,8 @@ main, .panel, .co-main, .co-side { min-width: 0; }
 
 /* ---------- motion (all of it switches off for people who ask their phone for less motion) ---------- */
 :root { --ease: cubic-bezier(.2, .8, .2, 1); }
-main.enter { animation: page-in .45s var(--ease) both; }
-@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+main.enter { animation: page-in .35s ease; }
+@keyframes page-in { from { opacity: 0; } }
 .rv { opacity: 0; transform: translateY(18px) scale(.985); transition: opacity .55s var(--ease) var(--d, 0ms), transform .55s var(--ease) var(--d, 0ms), box-shadow .2s, background .2s; }
 .rv.in { opacity: 1; transform: none; }
 .card.rv.in:hover, .tile.rv.in:hover, .brand-tile.rv.in:hover { transform: translateY(-4px); transition-delay: 0ms; }
@@ -512,3 +512,6 @@ img.fading.ld { opacity: 1; }
 .bottom-nav .on svg { animation: heart .4s var(--ease); }
 html { scroll-behavior: smooth; }
 .hscroll, .catbar, .chips, .circles { scroll-behavior: smooth; overscroll-behavior-x: contain; }
+
+/* The add-to-cart bar sits right above the bottom bar on phones, never inside the page */
+@media (max-width: 760px) { body[data-page="p"] .foot { padding-bottom: 70px; } }

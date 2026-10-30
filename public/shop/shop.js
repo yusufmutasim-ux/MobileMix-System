@@ -285,7 +285,7 @@ const card = (p) => `
     <button type="button" class="fav ${isFav(p.id) ? 'on' : ''}" data-fav="${p.id}" aria-label="المفضلة">${svg('heart', 18)}</button>
     <div class="card-body">
       ${p.brand ? `<span class="card-brand">${esc(p.brand)}</span>` : ''}
-      <a href="#/p/${p.id}" class="card-name" title="${esc(p.name)}">${esc(p.name)}</a>
+      <a href="#/p/${p.id}" class="card-name" dir="auto" title="${esc(p.name)}">${esc(p.name)}</a>
       <div class="card-price"><b>${money(p.price)}</b>${p.old_price ? `<s>${nf.format(p.old_price)}</s>` : ''}</div>
       ${p.in_stock ? `<div class="qty-mini" data-id="${p.id}"></div>` : '<span class="soon">هيرجع قريب</span>'}
     </div>
@@ -500,7 +500,8 @@ async function product(id) {
     </section>
     ${row('ممكن يعجبك كمان', p.related || [], p.category_id ? `#/list?cat=${p.category_id}` : '', 'star')}
     ${await seenRow(p.id)}
-    ${p.in_stock ? `<div class="sticky-buy"><div><b>${money(p.price)}</b><small dir="auto">${esc(p.name)}</small></div><button class="btn primary" id="add2">أضف للسلة</button></div>` : ''}`;
+`;
+  $('#sticky-slot').innerHTML = p.in_stock ? `<div class="sticky-buy"><div><b>${money(p.price)}</b><small dir="auto">${esc(p.name)}</small></div><button class="btn primary" id="add2">أضف للسلة</button></div>` : '';
   const qty = $('#qty');
   const n = () => Math.max(1, parseInt(qty?.value, 10) || 1);
   view.querySelectorAll('.buy [data-d]').forEach((b) => b.addEventListener('click', () => { qty.value = Math.max(1, n() + Number(b.dataset.d)); }));
@@ -752,6 +753,7 @@ async function route() {
   document.title = info?.title || 'المتجر';
   window.scrollTo({ top: 0, behavior: 'instant' });
   $('#toast').hidden = true;
+  $('#sticky-slot').innerHTML = '';
   closeCart();
   // Highlight where we are
   const curCat = query.get('cat');
