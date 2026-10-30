@@ -109,6 +109,24 @@ const BATCHES = [
       { name: 'VIDVIE 66W Type-C to Type-C Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 2 },
     ],
   },
+  {
+    id: '2026-10-30-audio-lights',
+    brands: ['VIDVIE', 'PLOXAMA', 'soundcore', 'inkax', 'XO', 'JBL'],
+    products: [
+      { name: 'VIDVIE 33W Dual-Port (Type-C + USB) Fast Charger', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 3 },
+      { name: 'PLOXAMA U160 LED Light 2000mAh', brand: 'PLOXAMA', cat: 'إكسسوارات', qty: 1 },
+      { name: 'PLOXAMA U160 PRO RGB LED Light 2000mAh', brand: 'PLOXAMA', cat: 'إكسسوارات', qty: 1 },
+      { name: 'PLOXAMA U80 PRO RGB Light', brand: 'PLOXAMA', cat: 'إكسسوارات', qty: 1 },
+      { name: 'soundcore Life U2 Neckband Wireless Earphones', brand: 'soundcore', cat: 'سماعات', qty: 1 },
+      { name: 'inkax ANC Wireless Earbuds', brand: 'inkax', cat: 'سماعات', qty: 1 },
+      { name: 'JBL GO 4 Portable Bluetooth Speaker (Camo)', brand: 'JBL', cat: 'سماعات', qty: 1 },
+      { name: 'soundcore R50i NC Wireless Earbuds', brand: 'soundcore', cat: 'سماعات', qty: 2 },
+      { name: 'XO GE-07 Gaming Headset', brand: 'XO', cat: 'سماعات', qty: 2 },
+      { name: 'JBL Clip 5 Portable Bluetooth Speaker (Black)', brand: 'JBL', cat: 'سماعات', qty: 2 },
+      { name: 'JBL JR310BT Kids Wireless Headphones (Blue)', brand: 'JBL', cat: 'سماعات', qty: 2 },
+      { name: 'JBL Tune 520BT Wireless Headphones (Purple)', brand: 'JBL', cat: 'سماعات', qty: 1 },
+    ],
+  },
 ];
 
 function applyStockBatches(db, batches = BATCHES) {
