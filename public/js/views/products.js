@@ -1,5 +1,5 @@
 import {
-  api, can, icon, esc, money, n, fmtDate, modal, toast, toastErr, busy, debounce, formData, emptyRow,
+  api, can, state, icon, esc, money, n, fmtDate, modal, toast, toastErr, busy, debounce, formData, emptyRow,
   confirmBox, downloadCsv,
 } from '../core.js';
 import { readBox } from '../box-reader.js';
@@ -159,10 +159,40 @@ async function productForm(cats, p = null, guess = null) {
         <label class="field full" id="qty-f"><span>الكمية الموجودة دلوقتي</span><input class="input num" type="number" min="0" name="initial_qty" value="0"></label>
         <label class="field full hidden" id="ser-f"><span>أرقام الـ IMEI (رقم في كل سطر — ممكن تمسحهم بالاسكانر)</span><textarea class="input ltr" name="serials" rows="4"></textarea></label>` : ''}
       <label class="field full"><span>ملاحظات</span><input class="input" name="notes" value="${esc(p?.notes || '')}"></label>
+      <div class="full store-fields">
+        <div class="section-title" style="margin:4px 0 8px">${icon('globe')} المتجر الأونلاين</div>
+        <div class="img-pick">
+          <div class="img-prev" id="img-prev">${p?.image ? `<img src="/uploads/${esc(p.image)}" alt="">` : guess?.photo ? `<img src="${guess.photo}" alt="">` : icon('camera')}</div>
+          <div class="btn-row">
+            <label class="btn btn-outline btn-sm photo-add">${icon('camera')} ${p?.image || guess?.photo ? 'غيّر الصورة' : 'صورة المنتج'}<input type="file" accept="image/*" id="img-in" class="visually-hidden-file"></label>
+            <button type="button" class="btn btn-ghost btn-sm ${p?.image || guess?.photo ? '' : 'hidden'}" id="img-del">${icon('trash')} شيل الصورة</button>
+          </div>
+        </div>
+        <label class="field full" style="margin-top:10px"><span>وصف يظهر في الموقع (اختياري)</span><textarea class="input" name="description" rows="2" dir="auto">${esc(p?.description || '')}</textarea></label>
+        <label class="check full" style="margin-top:8px"><input type="checkbox" name="online" ${(state.settings.store_products === 'manual' ? p?.online_show : !p?.online_hidden) ? 'checked' : ''}> يظهر في المتجر الأونلاين ${state.settings.store_products === 'manual' ? '' : '<span class="muted small">(لو ليه سعر وفيه كمية)</span>'}</label>
+      </div>
       ${!isNew ? `<label class="check full"><input type="checkbox" name="active" ${p.active ? 'checked' : ''}> المنتج نشط (يظهر في البيع)</label>` : ''}
     </form>`,
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
     onMount: (m, close) => {
+      // Product picture: chosen here, uploaded after the product is saved (a box photo is used by default)
+      let picture = guess?.photo || null;
+      let dropPicture = false;
+      m.querySelector('#img-in').addEventListener('change', async (e) => {
+        const f = e.target.files[0];
+        e.target.value = '';
+        if (!f) return;
+        picture = await shrink(f);
+        dropPicture = false;
+        m.querySelector('#img-prev').innerHTML = `<img src="${picture}" alt="">`;
+        m.querySelector('#img-del').classList.remove('hidden');
+      });
+      m.querySelector('#img-del').addEventListener('click', () => {
+        picture = null;
+        dropPicture = !!p?.image;
+        m.querySelector('#img-prev').innerHTML = icon('camera');
+        m.querySelector('#img-del').classList.add('hidden');
+      });
       m.querySelectorAll('.ai-line').forEach((b) => b.addEventListener('click', () => {
         const inp = m.querySelector('[name=name]');
         inp.value = `${inp.value.trim()} ${b.textContent}`.trim();
@@ -202,15 +232,21 @@ async function productForm(cats, p = null, guess = null) {
         if (f.brand === '__new') throw new Error('اكتب اسم البراند الجديد ودوس إضافة، أو اختار براند من القايمة');
         if (f.brand?.startsWith('__ai:')) f.brand = (await api.post('/brands', { name: f.brand.slice(5) })).name;
         const body = { ...f, category_id: f.category_id || null };
+        if (state.settings.store_products === 'manual') body.online_show = f.online ? 1 : 0;
+        else body.online_hidden = f.online ? 0 : 1;
+        delete body.online;
+        let saved;
         if (isNew) {
           body.serials = (f.serials || '').split(/\s+/).filter(Boolean);
           if (!body.has_serial) delete body.serials;
-          await api.post('/products', body);
+          saved = await api.post('/products', body);
           toast('تم إضافة المنتج', 'ok');
         } else {
-          await api.put('/products/' + p.id, body);
+          saved = await api.put('/products/' + p.id, body);
           toast('تم الحفظ', 'ok');
         }
+        if (picture && picture.startsWith('data:')) await api.post(`/products/${saved.id}/image`, { image: picture }).catch((e) => toast(`المنتج اتحفظ بس الصورة لأ: ${e.message}`, 'err'));
+        else if (dropPicture) await api.del(`/products/${saved.id}/image`).catch(() => {});
         close(true);
       }));
     },

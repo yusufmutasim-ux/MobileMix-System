@@ -12,6 +12,7 @@ const NAV = [
   { path: '/sales', title: 'الفواتير', icon: 'receipt', view: 'sales', perm: 'sales.create' },
   { path: '/repairs', title: 'الصيانة', icon: 'wrench', view: 'repairs', perm: 'repairs.view' },
   { path: '/customers', title: 'العملاء', icon: 'user', view: 'customers', perm: 'customers.view' },
+  { path: '/orders', title: 'طلبات الموقع', short: 'الطلبات', icon: 'globe', view: 'orders', perm: 'orders.manage' },
   { sep: 'المخزن' },
   { path: '/products', title: 'المنتجات', icon: 'box', view: 'products', perm: 'products.view' },
   { path: '/purchases', title: 'المشتريات والموردين', short: 'المشتريات', icon: 'truck', view: 'purchases', perm: 'purchases.manage' },
@@ -190,6 +191,7 @@ function shell() {
   api.get('/version').then((v) => { document.querySelectorAll('.app-version').forEach((x) => { x.textContent = `نسخة ${v.build}`; }); }).catch(() => {});
   initTopNav();
   initNet();
+  initOrderBadge();
   document.getElementById('search-btn').addEventListener('click', openSearch);
   initSearchKeys();
   document.querySelectorAll('[data-act="theme"]').forEach((b) => b.addEventListener('click', () => {
@@ -240,6 +242,24 @@ function initNet() {
   draw();
   // The till's product list, so selling keeps working if the internet drops later
   if (can('sales.create')) api.get('/pos/catalog').catch(() => {});
+}
+
+/** How many new website orders are waiting, next to the "orders" link. */
+function initOrderBadge() {
+  if (!can('orders.manage')) return;
+  const draw = async () => {
+    const { new: count } = await api.get('/orders/counts').catch(() => ({ new: 0 }));
+    document.querySelectorAll('a[href="#/orders"]').forEach((a) => {
+      let b = a.querySelector('.nav-badge');
+      if (!b) { b = document.createElement('b'); b.className = 'nav-badge num'; a.append(b); }
+      b.textContent = count > 99 ? '99+' : count;
+      b.hidden = !count;
+    });
+  };
+  draw();
+  document.addEventListener('mm:notification', (e) => { if (e.detail?.type === 'online_order') draw(); });
+  window.addEventListener('hashchange', () => { if (location.hash.startsWith('#/orders')) setTimeout(draw, 1500); });
+  setInterval(draw, 120000);
 }
 
 async function outboxModal() {

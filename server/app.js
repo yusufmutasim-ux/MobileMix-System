@@ -7,7 +7,7 @@ const hosting = require('./hosting');
 const { createNotifier } = require('./notify');
 
 // Bump with every release so it's easy to see which version a shop is running
-const BUILD = '2026.10.30-scan2';
+const BUILD = '2026.10.31-store2';
 
 function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSender } = {}) {
   const app = express();
@@ -58,10 +58,19 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
   require('./routes/search')(api, db);
   require('./routes/printing')(api, db);
   require('./routes/ai')(api, db);
+  require('./routes/store')(api, db, { dataDir });
   api.use((_req, res) => res.status(404).json({ error: 'غير موجود' }));
   app.use('/api', api);
 
   const root = path.join(__dirname, '..');
+  // Online store: product pictures, and the store on the shop's own domain (Settings → online store)
+  app.use('/uploads', express.static(path.join(dataDir, 'uploads'), { maxAge: '30d', fallthrough: false }));
+  app.get('/', (req, res, next) => {
+    const domain = String(db.prepare("SELECT value FROM settings WHERE key = 'store_domain'").get()?.value || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const host = String(req.hostname || '').toLowerCase();
+    if (domain && (host === domain || host === `www.${domain}`)) return res.redirect('/shop/');
+    next();
+  });
   app.use('/fonts/plex', express.static(path.join(root, 'node_modules/@fontsource/ibm-plex-sans-arabic/files'), { maxAge: '30d' }));
   app.use('/fonts/poppins', express.static(path.join(root, 'node_modules/@fontsource/poppins/files'), { maxAge: '30d' }));
   app.use('/vendor', express.static(path.join(root, 'node_modules/jsbarcode/dist'), { maxAge: '30d' }));

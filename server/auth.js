@@ -34,10 +34,10 @@ const PERMISSIONS = {
     'repairs.view', 'repairs.create', 'repairs.work', 'repairs.cash',
     'attendance.view', 'notifications.receive',
     'expenses.create', 'expenses.view', 'drawer.close', 'drawer.view',
-    'purchases.manage', 'customers.view', 'customers.pay',
+    'purchases.manage', 'customers.view', 'customers.pay', 'orders.manage',
   ],
   cashier: ['sales.create', 'products.view', 'labels.print', 'repairs.view', 'repairs.create', 'repairs.cash',
-    'expenses.create', 'drawer.close', 'customers.view', 'customers.pay'],
+    'expenses.create', 'drawer.close', 'customers.view', 'customers.pay', 'orders.manage'],
   technician: ['products.view', 'repairs.view', 'repairs.create', 'repairs.work'],
 };
 

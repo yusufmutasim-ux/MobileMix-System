@@ -372,6 +372,53 @@ CREATE TABLE IF NOT EXISTS sale_installments (
 );
 CREATE INDEX IF NOT EXISTS idx_installments_sale ON sale_installments(sale_id);
 
+-- ---------- the online store ----------
+CREATE TABLE IF NOT EXISTS online_orders (
+  id INTEGER PRIMARY KEY,
+  order_no TEXT UNIQUE,
+  token TEXT NOT NULL UNIQUE,              -- the customer's private link to follow the order
+  customer_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  governorate TEXT,
+  address TEXT,
+  notes TEXT,
+  delivery TEXT NOT NULL CHECK (delivery IN ('ship','local','pickup')),
+  delivery_fee REAL NOT NULL DEFAULT 0,
+  subtotal REAL NOT NULL,
+  total REAL NOT NULL,
+  payment TEXT NOT NULL CHECK (payment IN ('cod','transfer','card')),
+  pay_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (pay_status IN ('unpaid','review','paid','failed')),
+  transfer_proof TEXT,                     -- picture of the transfer the customer uploaded
+  paymob_order_id TEXT,
+  paymob_txn_id TEXT,
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','confirmed','shipped','delivered','cancelled')),
+  sale_id INTEGER REFERENCES sales(id) ON DELETE SET NULL,
+  handled_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  cancel_reason TEXT,
+  ip TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- Store look: slider pictures, the two side banners
+CREATE TABLE IF NOT EXISTS store_banners (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('slide','side')),
+  image TEXT NOT NULL,
+  link TEXT,
+  sort INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_online_orders_status ON online_orders(status, created_at);
+CREATE TABLE IF NOT EXISTS online_order_items (
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES online_orders(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  unit_price REAL NOT NULL,
+  line_total REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
   user_id INTEGER,
@@ -404,6 +451,27 @@ const DEFAULT_SETTINGS = {
   expense_categories: 'إيجار\nكهربا ومياه\nنت وتليفون\nمرتبات\nسلفة\nأكل ومشروبات\nمواصلات\nصيانة المحل\nأخرى',
   daily_summary: '1',
   daily_summary_time: '23:00',
+  // ---------- online store ----------
+  store_enabled: '0',
+  store_title: '',
+  store_about: '',
+  store_whatsapp: '',
+  store_products: 'auto',          // auto: everything with a price and stock / manual: only what's ticked
+  store_show_out: '1',             // show sold-out items (marked "نفد")
+  store_pay_cod: '1',
+  store_pay_transfer: '0',
+  store_transfer_info: '',
+  store_pay_card: '0',
+  store_ship: '1',
+  store_ship_fees: '{}',           // {"القاهرة": 60, ...}; a governorate without a fee isn't offered
+  store_local: '0',
+  store_local_area: '',
+  store_local_fee: '0',
+  store_pickup: '1',
+  store_min_order: '0',
+  store_domain: '',
+  store_strip: '',                 // offers line across the top of the store
+  store_strip_color: '#141414',
   installment_reminders: '1',
   late_grace: '10',        // minutes after the shift start before someone counts as late
   absence_alert: '1',      // tell the owner when someone hasn't checked in after their shift started
@@ -482,7 +550,10 @@ function addMissingColumns(db) {
     returns: ['cash_out REAL'],                       // cash handed back (old rows: the whole amount)
     // Sales made with no internet: the device's own id for the sale (so it's never saved twice) and when it really happened
     sales: ['client_ref TEXT', 'offline_at TEXT'],
-    products: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
+    categories: ['image TEXT'],                       // picture for the store's category circles
+    products: ['warranty_days INTEGER NOT NULL DEFAULT 0',
+      // Online store: picture, description, and whether it shows (hidden in auto mode / chosen in manual mode)
+      'image TEXT', 'description TEXT', 'online_hidden INTEGER NOT NULL DEFAULT 0', 'online_show INTEGER NOT NULL DEFAULT 0'],
     sale_items: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
     users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0',
       // Work schedule: from / to (HH:MM) and the week days they work (0 = Sunday … 6 = Saturday)

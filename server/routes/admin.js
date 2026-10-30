@@ -167,7 +167,9 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
   api.put('/settings', requirePerm('settings.manage'), (req, res) => {
     const set = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
-      if (req.body?.[key] !== undefined) set.run(key, String(req.body[key]).slice(0, 500));
+      // Longer free text for the shipping price list and the store's texts
+      const max = ['store_ship_fees', 'store_about', 'store_transfer_info', 'invoice_footer', 'repair_terms'].includes(key) ? 6000 : 500;
+      if (req.body?.[key] !== undefined) set.run(key, String(req.body[key]).slice(0, max));
     }
     audit(db, req.user.id, 'settings.update');
     res.json(getSettings(db));
@@ -176,7 +178,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
   // ---------- categories ----------
   api.get('/categories', requireAuth, (_req, res) => {
     res.json(db.prepare(`
-      SELECT c.id, c.name, COUNT(p.id) AS products
+      SELECT c.id, c.name, c.image, COUNT(p.id) AS products
       FROM categories c LEFT JOIN products p ON p.category_id = c.id AND p.active = 1
       GROUP BY c.id ORDER BY c.name`).all());
   });
@@ -280,7 +282,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
 
   // ---------- start over: wipe test data, keep staff and shop settings ----------
   const RESET_PARTS = {
-    sales: ['sale_payments', 'sale_installments', 'sale_items', 'returns', 'sales'],
+    sales: ['online_order_items', 'online_orders', 'sale_payments', 'sale_installments', 'sale_items', 'returns', 'sales'],
     money: ['expenses', 'cash_moves', 'drawer_closings'],
     purchases: ['supplier_payments', 'purchase_items', 'purchases', 'suppliers'],
     customers: ['customers'],

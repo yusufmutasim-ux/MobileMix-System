@@ -1,5 +1,6 @@
 import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow, modal } from '../core.js';
 import { LABEL_SIZES, printSettings } from '../print.js';
+import { storeSettings } from '../store-settings.js';
 import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition, locationPermission, locationHelp } from '../live.js';
 
 const AUDIT_NAMES = {
@@ -100,6 +101,7 @@ export async function render(el, { query } = {}) {
         </form>
       </div>` : ''}` },
 
+    { id: 'store', label: 'المتجر الأونلاين', icon: 'globe', desc: 'الموقع، الدفع والتوصيل', html: admin ? '<div id="store-card"><div class="card"><div class="empty">…</div></div></div>' : '' },
     { id: 'print', label: 'الطباعة', icon: 'print', desc: 'الطباعة من الموبايل على طابعة الكمبيوتر', html: '<div class="card" id="print-card"><div class="empty">…</div></div>' },
     { id: 'account', label: 'حسابي', icon: 'key', desc: 'كلمة السر والأجهزة المتصلة', html: `
       <div class="card">
@@ -299,6 +301,8 @@ export async function render(el, { query } = {}) {
   }
   loadZone().catch(toastErrLocal);
   loadSchedules().catch(toastErrLocal);
+  const sc = el.querySelector('#store-card');
+  if (sc) storeSettings(sc).catch(toastErrLocal);
   const pc = el.querySelector('#print-card');
   if (pc) printSettings(pc).catch(toastErrLocal);
 

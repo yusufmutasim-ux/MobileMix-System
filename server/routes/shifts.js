@@ -244,7 +244,7 @@ const hasOpenShift = (db, userId) => !!db.prepare('SELECT 1 FROM shifts WHERE us
  * require_shift = '2': staff see nothing until they check in. Everything except signing in,
  * checking in and a few harmless reads is refused by the server itself, not only hidden.
  */
-const OPEN_WHEN_LOCKED = [/^\/health$/, /^\/version$/, /^\/auth\//, /^\/shifts\/(me|check-in|zone\/test)$/, /^\/notifications/, /^\/print-jobs/, /^\/push\//];
+const OPEN_WHEN_LOCKED = [/^\/health$/, /^\/version$/, /^\/auth\//, /^\/shifts\/(me|check-in|zone\/test)$/, /^\/notifications/, /^\/print-jobs/, /^\/store\//, /^\/push\//];
 module.exports.shiftLock = (db) => (req, res, next) => {
   if (!req.user || req.user.role === 'admin' || shiftMode(db) !== '2') return next();
   if (OPEN_WHEN_LOCKED.some((re) => re.test(req.path)) || (req.method === 'GET' && req.path === '/settings')) return next();

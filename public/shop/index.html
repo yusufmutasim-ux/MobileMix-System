@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141414">
+  <title>المتجر</title>
+  <meta name="description" content="اطلب أونلاين — إكسسوارات موبايل، شواحن، سماعات">
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-180.png?v=2">
+  <link rel="stylesheet" href="/shop/shop.css">
+</head>
+<body>
+  <div class="strip" id="strip" hidden></div>
+  <header class="top">
+    <div class="top-in wrap">
+      <a class="brand" href="#/"><img class="logo" src="/brand/mark.svg" alt=""><span id="title">المتجر</span></a>
+      <form class="search" id="top-search" role="search">
+        <input type="search" name="q" placeholder="بتدوّر على إيه؟" enterkeyhint="search" autocomplete="off">
+        <button aria-label="بحث"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+      </form>
+      <div class="top-icons">
+        <a class="icon-btn" href="#/mine" aria-label="طلباتي" title="طلباتي">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></a>
+        <a class="icon-btn cart-btn" href="#/cart" aria-label="السلة" title="السلة">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/><circle cx="10" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>
+          <b id="cart-count" hidden>0</b></a>
+      </div>
+    </div>
+    <nav class="catbar-wrap wrap"><div class="catbar" id="catbar"></div></nav>
+  </header>
+  <main id="view" class="wrap"><div class="loading"><span></span><span></span><span></span></div></main>
+  <footer class="foot" id="foot"></footer>
+  <div class="toast" id="toast" hidden></div>
+  <script type="module" src="/shop/shop.js"></script>
+</body>
+</html>

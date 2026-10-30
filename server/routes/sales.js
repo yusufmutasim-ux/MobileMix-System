@@ -13,29 +13,20 @@ const PAYMENT_METHODS = ['cash', 'card', 'wallet', 'instapay', 'installment'];
 
 module.exports = function salesRoutes(api, db) {
   const sell = requirePerm('sales.create');
+  // Website orders turn into sales (and back) with the same rules as the till
+  api.sales = { insertSale: (...a) => insertSale(...a), returnItems: (...a) => returnItems(...a), loadSale: (...a) => loadSale(...a) };
 
   const movement = db.prepare(`INSERT INTO stock_movements (product_id, type, qty_change, qty_after, ref_id, note, user_id)
                                VALUES (?, ?, ?, ?, ?, ?, ?)`);
 
-  // ---------- create sale ----------
-  api.post('/sales', sell, (req, res) => {
-    const body = req.body || {};
+  /**
+   * Save a sale: prices, stock, IMEIs, installments, the customer. Used by the till and by
+   * website orders once they're confirmed. Returns the new sale's id.
+   */
+  function insertSale(user, body, { paymentMethod = 'cash', clientRef = null, offlineAt = null, settings = getSettings(db) } = {}) {
     if (!Array.isArray(body.items) || body.items.length === 0) throw bad('الفاتورة فاضية — ضيف منتجات');
     if (body.items.length > 200) throw bad('عدد الأصناف كبير جداً');
-    const paymentMethod = PAYMENT_METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
-    // Every checkout carries the device's own id for it: if the same sale arrives twice
-    // (the answer got lost, or it was waiting with no internet) it's saved once.
-    const clientRef = body.client_ref ? str(body.client_ref, 'رقم العملية', { max: 64 }) : null;
-    if (clientRef) {
-      const same = db.prepare('SELECT id FROM sales WHERE client_ref = ?').get(clientRef);
-      if (same) return res.json(loadSale(same.id, req.user));
-    }
-    // When it was sold, for a sale made with no internet (shown on the invoice; the money counts from when it arrives)
-    const offlineAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(body.offline_at || '')) ? body.offline_at : null;
-    const settings = getSettings(db);
-    requireOpenShift(db, req.user);
-
-    const saleId = tx(db, () => {
+    return tx(db, () => {
       const lines = [];
       const usedSerials = new Set();
       let listTotal = 0; // at the product's official price
@@ -80,7 +71,7 @@ module.exports = function salesRoutes(api, db) {
       if (discount > subtotal) throw bad('الخصم أكبر من إجمالي الفاتورة');
       const total = round2(subtotal - discount);
 
-      if (!can(req.user, 'sales.view_all')) {
+      if (!can(user, 'sales.view_all')) {
         const maxPct = Number(settings.cashier_max_discount) || 0;
         const givenAway = listTotal - total;
         if (givenAway > (listTotal * maxPct) / 100 + 0.01) {
@@ -98,7 +89,7 @@ module.exports = function salesRoutes(api, db) {
       const plan = due > 0.004 ? installmentPlan(body.installments, due, offlineAt ? offlineAt.slice(0, 10) : today()) : [];
       const r = db.prepare(`INSERT INTO sales (user_id, customer_name, customer_phone, subtotal, discount, total, paid, payment_method, notes, client_ref, offline_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        req.user.id,
+        user.id,
         customerName,
         customerPhone,
         subtotal, discount, total, paid, paymentMethod,
@@ -117,13 +108,34 @@ module.exports = function salesRoutes(api, db) {
         const after = current - l.qty;
         db.prepare("UPDATE products SET qty = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(after, l.p.id);
         if (l.serial) db.prepare("UPDATE serials SET status = 'sold', sale_id = ? WHERE serial = ?").run(saleId, l.serial);
-        movement.run(l.p.id, 'sale', -l.qty, after, saleId, invoiceNo, req.user.id);
+        movement.run(l.p.id, 'sale', -l.qty, after, saleId, invoiceNo, user.id);
       }
       const addInst = db.prepare('INSERT INTO sale_installments (sale_id, seq, due_date, amount) VALUES (?, ?, ?, ?)');
       plan.forEach((p, i) => addInst.run(saleId, i + 1, p.due_date, p.amount));
       if (customerPhone) rememberCustomer(db, customerName, customerPhone);
       return saleId;
     });
+  }
+
+  // ---------- create sale ----------
+  api.post('/sales', sell, (req, res) => {
+    const body = req.body || {};
+    if (!Array.isArray(body.items) || body.items.length === 0) throw bad('الفاتورة فاضية — ضيف منتجات');
+    if (body.items.length > 200) throw bad('عدد الأصناف كبير جداً');
+    const paymentMethod = PAYMENT_METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
+    // Every checkout carries the device's own id for it: if the same sale arrives twice
+    // (the answer got lost, or it was waiting with no internet) it's saved once.
+    const clientRef = body.client_ref ? str(body.client_ref, 'رقم العملية', { max: 64 }) : null;
+    if (clientRef) {
+      const same = db.prepare('SELECT id FROM sales WHERE client_ref = ?').get(clientRef);
+      if (same) return res.json(loadSale(same.id, req.user));
+    }
+    // When it was sold, for a sale made with no internet (shown on the invoice; the money counts from when it arrives)
+    const offlineAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(body.offline_at || '')) ? body.offline_at : null;
+    const settings = getSettings(db);
+    requireOpenShift(db, req.user);
+
+    const saleId = insertSale(req.user, body, { paymentMethod, clientRef, offlineAt, settings });
 
     const sale = loadSale(saleId, req.user);
     const names = sale.items.map((i) => i.name);
@@ -169,14 +181,11 @@ module.exports = function salesRoutes(api, db) {
 
   api.get('/sales/:id', sell, (req, res) => res.json(loadSale(req.params.id, req.user)));
 
-  // ---------- returns ----------
-  api.post('/sales/:id/return', requirePerm('sales.return'), (req, res) => {
-    const body = req.body || {};
-    if (!Array.isArray(body.items) || !body.items.length) throw bad('اختار الأصناف المرتجعة');
-    const reason = str(body.reason, 'سبب المرتجع', { optional: true, max: 200 });
-
+  /** Take items back into stock against a sale (the money side is worked out from what was paid). */
+  function returnItems(user, saleId, items, reason = null) {
+    const body = { items };
     tx(db, () => {
-      const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(req.params.id);
+      const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(saleId);
       if (!sale) throw notFound('الفاتورة غير موجودة');
       // Invoice-level discount is spread over the items proportionally
       const ratio = sale.subtotal > 0 ? sale.total / sale.subtotal : 0;
@@ -200,7 +209,7 @@ module.exports = function salesRoutes(api, db) {
       const cashOut = round2(Math.max(0, kept - (before.net - amount)) - Math.max(0, kept - before.net));
 
       const r = db.prepare('INSERT INTO returns (sale_id, user_id, amount, cost, reason, cash_out) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(sale.id, req.user.id, amount, round2(cost), reason, cashOut);
+        .run(sale.id, user.id, amount, round2(cost), reason, cashOut);
       const returnId = Number(r.lastInsertRowid);
 
       for (const { item, qty } of touched) {
@@ -208,14 +217,23 @@ module.exports = function salesRoutes(api, db) {
         const after = current + qty;
         db.prepare("UPDATE products SET qty = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(after, item.product_id);
         if (item.serial) db.prepare("UPDATE serials SET status = 'in_stock', sale_id = NULL WHERE serial = ?").run(item.serial);
-        movement.run(item.product_id, 'return', qty, after, returnId, `مرتجع ${sale.invoice_no}`, req.user.id);
+        movement.run(item.product_id, 'return', qty, after, returnId, `مرتجع ${sale.invoice_no}`, user.id);
       }
 
       const left = db.prepare('SELECT SUM(qty - returned_qty) AS n FROM sale_items WHERE sale_id = ?').get(sale.id).n;
       db.prepare('UPDATE sales SET returned_total = returned_total + ?, status = ? WHERE id = ?')
         .run(amount, left > 0 ? 'partial_return' : 'returned', sale.id);
-      audit(db, req.user.id, 'sale.return', { sale: sale.invoice_no, amount });
+      audit(db, user.id, 'sale.return', { sale: sale.invoice_no, amount });
     });
+  }
+
+  // ---------- returns ----------
+  api.post('/sales/:id/return', requirePerm('sales.return'), (req, res) => {
+    const body = req.body || {};
+    if (!Array.isArray(body.items) || !body.items.length) throw bad('اختار الأصناف المرتجعة');
+    const reason = str(body.reason, 'سبب المرتجع', { optional: true, max: 200 });
+
+    returnItems(req.user, req.params.id, body.items, reason);
 
     const sale = loadSale(req.params.id, req.user);
     const last = sale.returns[sale.returns.length - 1];

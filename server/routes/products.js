@@ -47,6 +47,10 @@ module.exports = function productRoutes(api, db) {
       min_qty: has('min_qty') ? num(body.min_qty, 'حد الطلب', { min: 0, int: true, optional: true }) ?? 0 : existing.min_qty ?? 0,
       notes: has('notes') ? str(body.notes, 'الملاحظات', { optional: true, max: 500 }) : existing.notes ?? null,
       warranty_days: has('warranty_days') ? num(body.warranty_days, 'مدة الضمان', { min: 0, int: true, optional: true }) ?? 0 : existing.warranty_days ?? 0,
+      // Online store
+      description: has('description') ? str(body.description, 'الوصف', { optional: true, max: 2000 }) : existing.description ?? null,
+      online_hidden: has('online_hidden') ? (body.online_hidden && body.online_hidden !== '0' ? 1 : 0) : existing.online_hidden ?? 0,
+      online_show: has('online_show') ? (body.online_show && body.online_show !== '0' ? 1 : 0) : existing.online_show ?? 0,
     };
     if (f.brand) {
       // Brands come from the list, written exactly as saved there
@@ -138,9 +142,11 @@ module.exports = function productRoutes(api, db) {
     const serials = cleanSerials(req.body.serials);
 
     const id = tx(db, () => {
-      const r = db.prepare(`INSERT INTO products (name, brand, category_id, barcode, cost_price, sell_price, min_qty, has_serial, notes, warranty_days)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(f.name, f.brand, f.category_id, f.barcode, f.cost_price, f.sell_price, f.min_qty, hasSerial, f.notes, f.warranty_days);
+      const r = db.prepare(`INSERT INTO products (name, brand, category_id, barcode, cost_price, sell_price, min_qty, has_serial, notes, warranty_days,
+          description, online_hidden, online_show)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(f.name, f.brand, f.category_id, f.barcode, f.cost_price, f.sell_price, f.min_qty, hasSerial, f.notes, f.warranty_days,
+          f.description, f.online_hidden, f.online_show);
       const id = Number(r.lastInsertRowid);
       if (!f.barcode) db.prepare('UPDATE products SET barcode = ? WHERE id = ?').run(autoBarcode(id), id);
       const product = getProduct(id);
@@ -159,8 +165,9 @@ module.exports = function productRoutes(api, db) {
     const barcode = f.barcode || autoBarcode(existing.id);
     const active = req.body.active !== undefined ? (req.body.active ? 1 : 0) : existing.active;
     db.prepare(`UPDATE products SET name=?, brand=?, category_id=?, barcode=?, cost_price=?, sell_price=?, min_qty=?, notes=?, active=?,
-                warranty_days=?, updated_at = datetime('now','localtime') WHERE id = ?`)
-      .run(f.name, f.brand, f.category_id, barcode, f.cost_price, f.sell_price, f.min_qty, f.notes, active, f.warranty_days, existing.id);
+                warranty_days=?, description=?, online_hidden=?, online_show=?, updated_at = datetime('now','localtime') WHERE id = ?`)
+      .run(f.name, f.brand, f.category_id, barcode, f.cost_price, f.sell_price, f.min_qty, f.notes, active, f.warranty_days,
+        f.description, f.online_hidden, f.online_show, existing.id);
     if (existing.sell_price !== f.sell_price) {
       audit(db, req.user.id, 'product.price', { id: existing.id, from: existing.sell_price, to: f.sell_price });
     }

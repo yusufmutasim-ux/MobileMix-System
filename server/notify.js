@@ -18,10 +18,11 @@ const TYPES = {
   installments_due: 'أقساط متأخرة (تذكير الصبح)',
   daily_summary: 'ملخص اليوم (آخر اليوم)',
   shift_missing: 'موظف شيفته بدأ ولسه مسجلش حضور',
+  online_order: 'طلب جديد من الموقع',
 };
 
 // Types added after people already saved their choices: on for them unless they turn it off
-const ADDED_LATER = ['shift_denied', 'expense', 'drawer_close', 'customer_payment', 'purchase', 'installments_due', 'daily_summary', 'shift_missing'];
+const ADDED_LATER = ['shift_denied', 'expense', 'drawer_close', 'customer_payment', 'purchase', 'installments_due', 'daily_summary', 'shift_missing', 'online_order'];
 
 /**
  * Sends each event to managers/admins three ways:
