@@ -76,9 +76,11 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
       title: st.store_title || st.shop_name || 'Mobile Mix',
       about: st.store_about || '', whatsapp: st.store_whatsapp || '', phone: st.shop_phone || '', address: st.shop_address || '',
       currency: st.currency || 'ج.م', min_order: Number(st.store_min_order) || 0, free_ship: Number(st.store_free_ship) || 0,
+      delivery_days: st.store_delivery_days || '', has_coupons: !!db.prepare('SELECT 1 FROM store_coupons WHERE active = 1 LIMIT 1').get(),
       payments: {
         cod: on(st.store_pay_cod),
-        transfer: on(st.store_pay_transfer) ? { info: st.store_transfer_info || '' } : null,
+        instapay: on(st.store_pay_transfer) ? { handle: st.store_instapay || '', link: st.store_instapay_link || '', info: st.store_transfer_info || '' } : null,
+        wallet: on(st.store_pay_wallet) ? { number: st.store_wallet_number || '', info: st.store_transfer_info || '' } : null,
         card,
       },
       delivery: {
@@ -174,9 +176,12 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
     } else throw bad('اختار طريقة الاستلام');
 
     // Payment
-    const payment = b.payment;
-    const allowed = { cod: on(st.store_pay_cod), transfer: on(st.store_pay_transfer), card: on(st.store_pay_card) && paymob.config(db).ready };
-    if (!allowed[payment]) throw bad('اختار طريقة الدفع');
+    // InstaPay and wallets are both transfers the customer proves with a picture
+    const via = b.payment === 'wallet' ? 'wallet' : b.payment === 'instapay' || b.payment === 'transfer' ? 'instapay' : null;
+    const payment = via ? 'transfer' : b.payment;
+    const allowed = { cod: on(st.store_pay_cod), instapay: on(st.store_pay_transfer), wallet: on(st.store_pay_wallet), card: on(st.store_pay_card) && paymob.config(db).ready };
+    if (!allowed[via || payment]) throw bad('اختار طريقة الدفع');
+    const couponCode = String(b.coupon || '').trim();
 
     rateLimit(req.ip);
     const orderId = tx(db, () => {
@@ -196,12 +201,21 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
       const subtotal = round2(lines.reduce((s, l) => s + l.total, 0));
       const freeAt = Number(st.store_free_ship) || 0;
       if (freeAt > 0 && subtotal >= freeAt) fee = 0; // free delivery above the shop's amount
+      let discount = 0, coupon = null;
+      if (couponCode) {
+        const c = couponFor(couponCode, subtotal);
+        discount = c.discount;
+        coupon = c.code;
+        db.prepare('UPDATE store_coupons SET used = used + 1 WHERE id = ?').run(c.id);
+      }
       const min = Number(st.store_min_order) || 0;
       if (subtotal < min) throw bad(`أقل طلب ${min} ${st.currency || 'ج.م'}`);
       const token = crypto.randomBytes(16).toString('hex');
-      const r = db.prepare(`INSERT INTO online_orders (token, customer_name, phone, governorate, address, notes, delivery, delivery_fee, subtotal, total, payment, ip)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(token, name, phone, governorate, address,
-        str(b.notes, 'الملاحظات', { optional: true, max: 300 }), delivery, fee, subtotal, round2(subtotal + fee), payment, req.ip || null);
+      const r = db.prepare(`INSERT INTO online_orders (token, customer_name, phone, governorate, address, notes, delivery, delivery_fee, subtotal, total, payment, ip,
+          transfer_via, coupon, discount)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(token, name, phone, governorate, address,
+        str(b.notes, 'الملاحظات', { optional: true, max: 300 }), delivery, fee, subtotal, round2(subtotal - discount + fee), payment, req.ip || null,
+        via, coupon, discount);
       const id = Number(r.lastInsertRowid);
       db.prepare('UPDATE online_orders SET order_no = ? WHERE id = ?').run(`W-${pad(id, 6)}`, id);
       const add = db.prepare('INSERT INTO online_order_items (order_id, product_id, name, qty, unit_price, line_total) VALUES (?, ?, ?, ?, ?, ?)');
@@ -225,6 +239,33 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
     res.status(201).json({ token: order.token, order_no: order.order_no });
   });
 
+  /** A discount code, checked for this order amount. Throws a friendly message when it can't be used. */
+  function couponFor(code, subtotal) {
+    const c = db.prepare('SELECT * FROM store_coupons WHERE code = ? COLLATE NOCASE').get(String(code).trim());
+    const cur = getSettings(db).currency || 'ج.م';
+    if (!c || !c.active) throw bad('كود الخصم ده مش صحيح');
+    if (c.expires && c.expires < require('../util').today()) throw bad('كود الخصم ده انتهى');
+    if (c.max_uses && c.used >= c.max_uses) throw bad('كود الخصم ده خلص');
+    if (subtotal < c.min_order) throw bad(`الكود ده للطلبات فوق ${c.min_order} ${cur}`);
+    const discount = round2(Math.min(subtotal, c.kind === 'percent' ? subtotal * c.value / 100 : c.value));
+    return { id: c.id, code: c.code, discount, label: c.kind === 'percent' ? `خصم ${c.value}%` : `خصم ${c.value} ${cur}` };
+  }
+
+  api.post('/store/coupons/check', (req, res) => {
+    openStore();
+    const c = couponFor(req.body?.code || '', Number(req.body?.subtotal) || 0);
+    res.json({ code: c.code, discount: c.discount, label: c.label });
+  });
+
+  /** Follow an order from another phone: order number + the phone it was made with. */
+  api.get('/store/track', (req, res) => {
+    const no = String(req.query.no || '').trim().toUpperCase().replace(/^(\d)/, 'W-$1');
+    const phone = String(req.query.phone || '').replace(/\D/g, '');
+    const o = db.prepare('SELECT token, phone FROM online_orders WHERE order_no = ?').get(no.startsWith('W-') ? no : `W-${no}`);
+    if (!o || phone.length < 10 || o.phone.slice(-10) !== phone.slice(-10)) throw notFound('مفيش طلب بالرقم ده والموبايل ده');
+    res.json({ token: o.token });
+  });
+
   function notifyNew(req, order, extra = '') {
     const cur = getSettings(db).currency || 'ج.م';
     req.app.locals.notifier.notify({
@@ -242,6 +283,9 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
       created_at: o.created_at, cancel_reason: o.status === 'cancelled' ? o.cancel_reason : null,
       items: db.prepare('SELECT name, qty, unit_price, line_total FROM online_order_items WHERE order_id = ?').all(o.id),
       transfer_info: o.payment === 'transfer' ? st.store_transfer_info || '' : '', has_proof: !!o.transfer_proof,
+      transfer_via: o.transfer_via || (o.payment === 'transfer' ? 'instapay' : null), discount: o.discount || 0, coupon: o.coupon,
+      instapay: o.payment === 'transfer' ? st.store_instapay || '' : '', instapay_link: o.payment === 'transfer' ? st.store_instapay_link || '' : '',
+      wallet_number: o.payment === 'transfer' ? st.store_wallet_number || '' : '', delivery_days: st.store_delivery_days || '',
       whatsapp: st.store_whatsapp || '', currency: st.currency || 'ج.م', title: st.store_title || st.shop_name || '',
     };
   };
@@ -348,9 +392,9 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
       if (items.some((i) => !i.product_id)) throw bad('في منتج في الطلب اتمسح من السيستم');
       const saleId = api.sales.insertSale(user, {
         items: items.map((i) => ({ product_id: i.product_id, qty: i.qty, unit_price: i.unit_price })),
-        discount: 0, paid: o.pay_status === 'paid' ? o.subtotal : 0,
+        discount: o.discount || 0, paid: o.pay_status === 'paid' ? round2(o.subtotal - (o.discount || 0)) : 0,
         customer_name: o.customer_name, customer_phone: o.phone, notes: `طلب أونلاين ${o.order_no}`,
-      }, { paymentMethod: SALE_METHOD[o.payment], settings: st });
+      }, { paymentMethod: o.transfer_via === 'wallet' ? 'wallet' : SALE_METHOD[o.payment], settings: st, skipDiscountLimit: true });
       db.prepare("UPDATE online_orders SET status = 'confirmed', sale_id = ?, handled_by = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(saleId, user.id, o.id);
     } else if (to === 'shipped') {
       db.prepare("UPDATE online_orders SET status = 'shipped', handled_by = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(user.id, o.id);
@@ -451,6 +495,35 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
     dropPicture(c.image);
     db.prepare('UPDATE categories SET image = NULL WHERE id = ?').run(c.id);
     res.json({ ok: true });
+  });
+
+  // ---------------- discount codes (staff) ----------------
+  const couponFields = (b) => {
+    const kind = b.kind === 'amount' ? 'amount' : 'percent';
+    const value = num(b.value, 'قيمة الخصم', { min: 0.01 });
+    if (kind === 'percent' && value > 90) throw bad('أقصى خصم 90%');
+    const expires = /^\d{4}-\d{2}-\d{2}$/.test(String(b.expires || '')) ? b.expires : null;
+    return { kind, value, min_order: num(b.min_order, 'أقل طلب', { min: 0, optional: true }) || 0,
+      max_uses: num(b.max_uses, 'عدد المرات', { min: 0, int: true, optional: true }) || 0, expires };
+  };
+  api.get('/store/coupons', look, (_req, res) => res.json(db.prepare('SELECT * FROM store_coupons ORDER BY id DESC').all()));
+  api.post('/store/coupons', look, (req, res) => {
+    const code = str(req.body?.code, 'الكود', { max: 30 }).toUpperCase().replace(/\s+/g, '');
+    if (!/^[A-Z0-9\u0600-\u06FF_-]{3,30}$/.test(code)) throw bad('الكود حروف وأرقام بس، من 3 لـ 30');
+    const f = couponFields(req.body || {});
+    db.prepare('INSERT INTO store_coupons (code, kind, value, min_order, max_uses, expires) VALUES (?, ?, ?, ?, ?, ?)').run(code, f.kind, f.value, f.min_order, f.max_uses, f.expires);
+    audit(db, req.user.id, 'store.coupon', { code });
+    res.status(201).json(db.prepare('SELECT * FROM store_coupons ORDER BY id DESC').all());
+  });
+  api.put('/store/coupons/:id', look, (req, res) => {
+    const c = db.prepare('SELECT * FROM store_coupons WHERE id = ?').get(Number(req.params.id));
+    if (!c) throw notFound('الكود مش موجود');
+    if (req.body?.active !== undefined) db.prepare('UPDATE store_coupons SET active = ? WHERE id = ?').run(req.body.active ? 1 : 0, c.id);
+    res.json(db.prepare('SELECT * FROM store_coupons ORDER BY id DESC').all());
+  });
+  api.delete('/store/coupons/:id', look, (req, res) => {
+    db.prepare('DELETE FROM store_coupons WHERE id = ?').run(Number(req.params.id));
+    res.json(db.prepare('SELECT * FROM store_coupons ORDER BY id DESC').all());
   });
 
   // ---------------- product pictures ----------------

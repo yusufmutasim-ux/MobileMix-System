@@ -399,6 +399,20 @@ CREATE TABLE IF NOT EXISTS online_orders (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
+-- Discount codes for the online store
+CREATE TABLE IF NOT EXISTS store_coupons (
+  id INTEGER PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  kind TEXT NOT NULL CHECK (kind IN ('percent','amount')),
+  value REAL NOT NULL,
+  min_order REAL NOT NULL DEFAULT 0,
+  max_uses INTEGER NOT NULL DEFAULT 0,     -- 0 = no limit
+  used INTEGER NOT NULL DEFAULT 0,
+  expires TEXT,                            -- YYYY-MM-DD, last day it works
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 -- Store look: slider pictures, the two side banners
 CREATE TABLE IF NOT EXISTS store_banners (
   id INTEGER PRIMARY KEY,
@@ -470,7 +484,12 @@ const DEFAULT_SETTINGS = {
   store_pickup: '1',
   store_min_order: '0',
   store_domain: '',
-  store_free_ship: '0',           // orders above this ship free (0 = off)
+  store_free_ship: '0',
+  store_instapay: '',              // InstaPay address (name@instapay) or number
+  store_instapay_link: '',         // InstaPay payment link (ipn.eg/...)
+  store_pay_wallet: '0',           // Vodafone Cash / other wallets
+  store_wallet_number: '',
+  store_delivery_days: '',         // e.g. "2-4 أيام"            // orders above this ship free (0 = off)
   store_strip: '',                 // offers line across the top of the store
   store_strip_color: '#141414',
   installment_reminders: '1',
@@ -551,7 +570,8 @@ function addMissingColumns(db) {
     returns: ['cash_out REAL'],                       // cash handed back (old rows: the whole amount)
     // Sales made with no internet: the device's own id for the sale (so it's never saved twice) and when it really happened
     sales: ['client_ref TEXT', 'offline_at TEXT'],
-    categories: ['image TEXT'],                       // picture for the store's category circles
+    categories: ['image TEXT'],
+    online_orders: ['transfer_via TEXT', 'coupon TEXT', 'discount REAL NOT NULL DEFAULT 0'],                       // picture for the store's category circles
     products: ['warranty_days INTEGER NOT NULL DEFAULT 0',
       // Online store: picture, description, and whether it shows (hidden in auto mode / chosen in manual mode)
       'image TEXT', 'description TEXT', 'online_hidden INTEGER NOT NULL DEFAULT 0', 'online_show INTEGER NOT NULL DEFAULT 0',

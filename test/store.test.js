@@ -219,3 +219,41 @@ test('store extras: offers with the old price, similar products, free delivery a
   assert.equal(o.delivery_fee, 0);
   assert.equal(o.total, 200);
 });
+
+test('discount codes, InstaPay / wallet choices, following an order from another phone', async () => {
+  await admin.put('/settings', { store_pay_transfer: '1', store_instapay: 'mobilemix@instapay', store_instapay_link: 'https://ipn.eg/S/mobilemix/instapay/abc', store_pay_wallet: '1', store_wallet_number: '01012345678', store_free_ship: '0' });
+  const info = (await shopper.get('/store/info')).data;
+  assert.equal(info.payments.instapay.handle, 'mobilemix@instapay');
+  assert.equal(info.payments.wallet.number, '01012345678');
+
+  assert.equal((await admin.post('/store/coupons', { code: 'x', kind: 'percent', value: 10 })).status, 400);
+  let list = (await admin.post('/store/coupons', { code: 'save10', kind: 'percent', value: 10, min_order: 100, max_uses: 1 })).data;
+  assert.equal(list[0].code, 'SAVE10');
+  assert.equal((await shopper.post('/store/coupons', { code: 'HACK', kind: 'amount', value: 999 })).status, 401);
+  assert.equal((await shopper.post('/store/coupons/check', { code: 'nope', subtotal: 500 })).status, 400);
+  assert.equal((await shopper.post('/store/coupons/check', { code: 'save10', subtotal: 50 })).status, 400); // under the minimum
+  const chk = (await shopper.post('/store/coupons/check', { code: 'save10', subtotal: 200 })).data;
+  assert.equal(chk.discount, 20);
+
+  const cable = (await shopper.get('/store/products')).data.find((p) => p.name === 'Cable');
+  const r = await shopper.post('/store/orders', { name: 'Kareem', phone: '01066666666', items: [{ id: cable.id, qty: 2 }], delivery: 'pickup', payment: 'wallet', coupon: 'SAVE10' });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  const o = (await shopper.get(`/store/orders/${r.data.token}`)).data;
+  assert.equal(o.discount, 20);
+  assert.equal(o.total, 180);
+  assert.equal(o.transfer_via, 'wallet');
+  assert.equal(o.wallet_number, '01012345678');
+  // Used up
+  assert.equal((await shopper.post('/store/orders', { name: 'K', phone: '01066666666', items: [{ id: cable.id, qty: 2 }], delivery: 'pickup', payment: 'cod', coupon: 'SAVE10' })).status, 400);
+
+  // The sale carries the discount
+  const id = (await admin.get('/orders?q=' + o.order_no)).data[0].id;
+  const conf = (await admin.post(`/orders/${id}/status`, { status: 'confirmed' })).data;
+  const sale = (await admin.get(`/sales/${conf.sale_id}`)).data;
+  assert.equal(sale.total, 180);
+  assert.equal(sale.payment_method, 'wallet');
+
+  // Another phone: order number + phone
+  assert.equal((await shopper.get(`/store/track?no=${o.order_no}&phone=01000000000`)).status, 404);
+  assert.equal((await shopper.get(`/store/track?no=${o.order_no.replace('W-', '')}&phone=+201066666666`)).data.token, r.data.token);
+});

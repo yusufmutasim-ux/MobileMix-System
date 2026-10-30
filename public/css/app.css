@@ -1626,3 +1626,8 @@ tr.clickable { cursor: pointer; }
 .cat-pic { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--t-gray-bg); border-radius: 14px; padding: 10px; text-align: center; font-size: 13px; }
 .ring-sm { width: 58px; height: 58px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--t-lime-bg); font-weight: 700; font-size: 22px; }
 .ring-sm img { width: 100%; height: 100%; object-fit: cover; }
+.coupon-list { display: grid; gap: 8px; margin-top: 12px; }
+.coupon-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center; background: var(--t-gray-bg); border-radius: 12px; padding: 8px 12px; }
+.coupon-row b { font-size: 15px; letter-spacing: .5px; }
+.coupon-row.off { opacity: .55; }
+@media (max-width: 560px) { .coupon-row { grid-template-columns: 1fr auto; } .coupon-row .btn-row { grid-column: 1 / -1; justify-content: flex-end; } }

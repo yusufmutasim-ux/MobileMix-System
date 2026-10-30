@@ -23,7 +23,7 @@ module.exports = function salesRoutes(api, db) {
    * Save a sale: prices, stock, IMEIs, installments, the customer. Used by the till and by
    * website orders once they're confirmed. Returns the new sale's id.
    */
-  function insertSale(user, body, { paymentMethod = 'cash', clientRef = null, offlineAt = null, settings = getSettings(db) } = {}) {
+  function insertSale(user, body, { paymentMethod = 'cash', clientRef = null, offlineAt = null, settings = getSettings(db), skipDiscountLimit = false } = {}) {
     if (!Array.isArray(body.items) || body.items.length === 0) throw bad('الفاتورة فاضية — ضيف منتجات');
     if (body.items.length > 200) throw bad('عدد الأصناف كبير جداً');
     return tx(db, () => {
@@ -71,7 +71,8 @@ module.exports = function salesRoutes(api, db) {
       if (discount > subtotal) throw bad('الخصم أكبر من إجمالي الفاتورة');
       const total = round2(subtotal - discount);
 
-      if (!can(user, 'sales.view_all')) {
+      // A website order's coupon was the shop's own offer, not the cashier's discount
+      if (!skipDiscountLimit && !can(user, 'sales.view_all')) {
         const maxPct = Number(settings.cashier_max_discount) || 0;
         const givenAway = listTotal - total;
         if (givenAway > (listTotal * maxPct) / 100 + 0.01) {

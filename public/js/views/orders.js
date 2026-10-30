@@ -36,7 +36,7 @@ export async function render(el, { query, actions }) {
       <td><b class="num">${esc(o.order_no)}</b><div class="muted small">${fmtDate(o.created_at)}</div></td>
       <td>${esc(o.customer_name)}<div class="muted small num" dir="ltr">${esc(o.phone)}</div></td>
       <td>${DELIVERY[o.delivery]}${o.governorate ? `<div class="muted small">${esc(o.governorate)}</div>` : ''}</td>
-      <td>${PAY[o.payment]}<div>${o.payment === 'cod' && o.pay_status === 'unpaid' ? '' : pill(PAY_STATE[o.pay_status])}</div></td>
+      <td>${o.payment === 'transfer' ? (o.transfer_via === 'wallet' ? 'محفظة' : 'InstaPay') : PAY[o.payment]}<div>${o.payment === 'cod' && o.pay_status === 'unpaid' ? '' : pill(PAY_STATE[o.pay_status])}</div></td>
       <td>${pill(ORDER_STATUS[o.status])}</td>
       <td class="end"><b>${money(o.total)}</b><div class="muted small">${o.units} قطعة</div></td></tr>`).join('')
       : emptyRow(6, status === 'new' ? 'مفيش طلبات جديدة' : 'مفيش طلبات');
@@ -87,7 +87,7 @@ export async function orderModal(id) {
             <div class="card" style="box-shadow:none;background:var(--t-gray-bg)">
               <b>${DELIVERY[o.delivery]}${o.governorate ? ` — ${esc(o.governorate)}` : ''}</b>
               ${o.address ? `<div>${esc(o.address)}</div>` : ''}
-              <div class="muted small">الدفع: ${PAY[o.payment]}</div>
+              <div class="muted small">الدفع: ${o.payment === 'transfer' ? (o.transfer_via === 'wallet' ? 'محفظة' : 'InstaPay') : PAY[o.payment]}</div>
               ${o.notes ? `<div class="small" style="margin-top:6px">📝 ${esc(o.notes)}</div>` : ''}
             </div>
           </div>
@@ -100,6 +100,7 @@ export async function orderModal(id) {
               <td class="num">${i.qty}</td><td>${money(i.unit_price)}</td><td class="end">${money(i.line_total)}</td></tr>`).join('')}</tbody>
             <tfoot>
               <tr><td colspan="3">المنتجات</td><td class="end">${money(o.subtotal)}</td></tr>
+              ${o.discount ? `<tr><td colspan="3">خصم${o.coupon ? ` (كود <b class="ltr">${esc(o.coupon)}</b>)` : ''}</td><td class="end" style="color:var(--danger)">- ${money(o.discount)}</td></tr>` : ''}
               <tr><td colspan="3">التوصيل</td><td class="end">${o.delivery_fee ? money(o.delivery_fee) : 'مجاناً'}</td></tr>
               <tr><td colspan="3"><b>الإجمالي</b></td><td class="end"><b>${money(o.total)}</b></td></tr>
             </tfoot></table></div>

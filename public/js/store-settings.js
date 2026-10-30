@@ -56,6 +56,7 @@ export async function storeSettings(card) {
         <label class="field"><span>المنتجات اللي تظهر</span><select class="input" data-k="store_products">
           <option value="auto" ${st.store_products !== 'manual' ? 'selected' : ''}>كل منتج ليه سعر (وتقدر تخفي أي منتج)</option>
           <option value="manual" ${st.store_products === 'manual' ? 'selected' : ''}>اللي أعلّم عليه بس</option></select></label>
+        <label class="field"><span>مدة التوصيل اللي تظهر للعميل</span><input class="input" data-k="store_delivery_days" value="${esc(st.store_delivery_days || '')}" placeholder="مثلاً: 2–4 أيام"></label>
         <label class="field"><span>شحن مجاني للطلبات فوق (0 = لأ)</span><input class="input num" type="number" min="0" data-k="store_free_ship" value="${esc(st.store_free_ship || '0')}"></label>
         <label class="field"><span>أقل قيمة للطلب</span><input class="input num" type="number" min="0" data-k="store_min_order" value="${esc(st.store_min_order || '0')}"></label>
         ${tick('store_show_out', 'اعرض المنتجات اللي خلصت', 'بتظهر مكتوب عليها "نفد"')}
@@ -87,8 +88,13 @@ export async function storeSettings(card) {
       <div class="card-head"><h2>${icon('wallet')} الدفع</h2></div>
       <div class="form-grid">
         ${tick('store_pay_cod', 'كاش عند الاستلام')}
-        ${tick('store_pay_transfer', 'تحويل InstaPay / فودافون كاش', 'العميل يحوّل ويرفع صورة التحويل، وإنت تأكدها من الطلب')}
-        <label class="field full"><span>بيانات التحويل اللي تظهر للعميل</span><textarea class="input" rows="3" data-k="store_transfer_info" placeholder="InstaPay: mobilemix@instapay&#10;فودافون كاش: 010xxxxxxxx">${esc(st.store_transfer_info || '')}</textarea></label>
+        ${tick('store_pay_transfer', 'InstaPay', 'العميل يحوّل على عنوانك ويرفع صورة التحويل، وإنت تأكدها من الطلب')}
+        <label class="field"><span>عنوان InstaPay أو الرقم</span><input class="input ltr" data-k="store_instapay" value="${esc(st.store_instapay || '')}" placeholder="mobilemix@instapay"></label>
+        <label class="field"><span>لينك الدفع من أبلكيشن InstaPay (اختياري)</span><input class="input ltr" data-k="store_instapay_link" value="${esc(st.store_instapay_link || '')}" placeholder="https://ipn.eg/S/..."></label>
+        <p class="muted small full" style="margin:-4px 0 0">اللينك بتاخده من أبلكيشن InstaPay ← "استلام فلوس" ← "مشاركة لينك الدفع"؛ العميل بيدوس عليه يفتح الأبلكيشن على حسابك على طول.</p>
+        ${tick('store_pay_wallet', 'محفظة (فودافون كاش / اتصالات كاش / أورنج كاش…)', 'نفس الفكرة: العميل يحوّل على رقمك ويرفع صورة التحويل')}
+        <label class="field"><span>رقم المحفظة</span><input class="input ltr" data-k="store_wallet_number" value="${esc(st.store_wallet_number || '')}" placeholder="010xxxxxxxx" inputmode="tel"></label>
+        <label class="field full"><span>ملاحظة تظهر مع التحويل (اختياري)</span><textarea class="input" rows="2" data-k="store_transfer_info" placeholder="مثلاً: اكتب رقم الطلب في ملاحظة التحويل">${esc(st.store_transfer_info || '')}</textarea></label>
         ${tick('store_pay_card', 'فيزا / ماستركارد (Paymob)', pm.ready ? 'المفاتيح متسجلة ✓' : 'محتاج حساب تاجر على Paymob — حط المفاتيح تحت')}
       </div>
       <details class="paymob-box" ${yes('store_pay_card') && !pm.ready ? 'open' : ''}>
@@ -137,9 +143,46 @@ export async function storeSettings(card) {
         <li>اكتب الدومين هنا واحفظ: اللي يفتحه هيروح للمتجر على طول، والسيستم نفسه يفضل على لينك Railway.</li>
       </ol>
     </div>
+    <div class="card" id="coupons-card">
+      <div class="card-head"><h2>${icon('tag')} أكواد الخصم</h2><span class="muted small">العميل يكتب الكود في صفحة الطلب</span></div>
+      <div class="form-grid" id="coupon-form">
+        <label class="field"><span>الكود</span><input class="input ltr" id="cp-code" placeholder="SAVE10" style="text-transform:uppercase"></label>
+        <label class="field"><span>الخصم</span><div style="display:flex;gap:6px"><input class="input num" type="number" min="0" id="cp-value" placeholder="10" style="flex:1">
+          <select class="input" id="cp-kind" style="width:auto"><option value="percent">%</option><option value="amount">${esc(st.currency || 'ج.م')}</option></select></div></label>
+        <label class="field"><span>لطلبات فوق (اختياري)</span><input class="input num" type="number" min="0" id="cp-min" placeholder="0"></label>
+        <label class="field"><span>عدد مرات الاستخدام (0 = مفتوح)</span><input class="input num" type="number" min="0" id="cp-max" placeholder="0"></label>
+        <label class="field"><span>شغال لحد (اختياري)</span><input class="input num" type="date" id="cp-exp"></label>
+        <div class="field" style="justify-content:flex-end"><button type="button" class="btn btn-outline" id="cp-add">${icon('plus')} إضافة كود</button></div>
+      </div>
+      <div class="coupon-list" id="coupon-list"></div>
+    </div>
     <div class="store-save"><button type="button" class="btn btn-primary" id="save-store">${icon('check')} حفظ إعدادات المتجر</button></div>`;
 
   const $ = (s) => card.querySelector(s);
+  // Discount codes save right away
+  const drawCoupons = (list) => {
+    $('#coupon-list').innerHTML = list.length ? list.map((c) => `<div class="coupon-row ${c.active ? '' : 'off'}" data-id="${c.id}">
+      <b class="ltr">${esc(c.code)}</b>
+      <span>${c.kind === 'percent' ? `${c.value}%` : `${c.value} ${esc(st.currency || 'ج.م')}`}${c.min_order ? ` • فوق ${c.min_order}` : ''}${c.expires ? ` • لحد ${esc(c.expires)}` : ''}</span>
+      <span class="muted small">اتستخدم ${c.used}${c.max_uses ? ` من ${c.max_uses}` : ''}</span>
+      <div class="btn-row"><button type="button" class="btn btn-ghost btn-sm" data-toggle>${c.active ? 'إيقاف' : 'تشغيل'}</button>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-del style="color:var(--danger)" title="امسح">${icon('trash')}</button></div></div>`).join('')
+      : '<p class="muted small" style="margin:8px 0 0">مفيش أكواد لسه.</p>';
+  };
+  api.get('/store/coupons').then(drawCoupons).catch(() => {});
+  $('#cp-add').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    const list = await api.post('/store/coupons', { code: $('#cp-code').value, value: $('#cp-value').value, kind: $('#cp-kind').value,
+      min_order: $('#cp-min').value, max_uses: $('#cp-max').value, expires: $('#cp-exp').value });
+    ['#cp-code', '#cp-value', '#cp-min', '#cp-max', '#cp-exp'].forEach((x) => { $(x).value = ''; });
+    toast('الكود اتضاف ✓', 'ok');
+    drawCoupons(list);
+  }));
+  $('#coupon-list').addEventListener('click', (e) => {
+    const row = e.target.closest('.coupon-row');
+    if (!row) return;
+    if (e.target.closest('[data-toggle]')) api.put(`/store/coupons/${row.dataset.id}`, { active: row.classList.contains('off') }).then(drawCoupons, (er) => toast(er.message, 'err'));
+    if (e.target.closest('[data-del]')) api.del(`/store/coupons/${row.dataset.id}`).then(drawCoupons, (er) => toast(er.message, 'err'));
+  });
   // Banners and category pictures save right away
   card.querySelectorAll('[data-add]').forEach((inp) => inp.addEventListener('change', async () => {
     const f = inp.files[0];
@@ -187,7 +230,7 @@ export async function storeSettings(card) {
     const list = {};
     card.querySelectorAll('[data-gov]').forEach((i) => { if (i.value !== '') list[i.dataset.gov] = Number(i.value); });
     body.store_ship_fees = JSON.stringify(list);
-    if (body.store_enabled === '1' && !['store_pay_cod', 'store_pay_transfer', 'store_pay_card'].some((k) => body[k] === '1')) throw new Error('اختار طريقة دفع واحدة على الأقل');
+    if (body.store_enabled === '1' && !['store_pay_cod', 'store_pay_transfer', 'store_pay_wallet', 'store_pay_card'].some((k) => body[k] === '1')) throw new Error('اختار طريقة دفع واحدة على الأقل');
     if (body.store_enabled === '1' && body.store_ship !== '1' && body.store_local !== '1' && body.store_pickup !== '1') throw new Error('اختار طريقة استلام واحدة على الأقل');
     if (body.store_ship === '1' && !Object.keys(list).length) throw new Error('حط سعر شحن لمحافظة واحدة على الأقل، أو اقفل الشحن');
     state.settings = await api.put('/settings', body);

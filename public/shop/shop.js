@@ -61,6 +61,12 @@ const I = {
   star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
   new: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  heart: '<path d="M12 20s-7-4.4-9.2-9A5 5 0 0 1 12 6a5 5 0 0 1 9.2 5c-2.2 4.6-9.2 9-9.2 9z"/>',
+  share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  wallet: '<path d="M4 7h15a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a2 2 0 0 1 2-2h11"/><circle cx="16" cy="13.5" r="1.2"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
 };
 const svg = (n, s = 20, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || I.box}</svg>`;
@@ -90,6 +96,33 @@ const waLink = (text) => {
   return n ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : '';
 };
 const skeleton = (n = 8) => `<div class="grid">${'<div class="card sk"><div class="card-pic"></div><i></i><i></i><i class="short"></i></div>'.repeat(n)}</div>`;
+
+// ---------- favourites, recently viewed ----------
+const FAV = 'mm_shop_fav';
+const SEEN = 'mm_shop_seen';
+const favs = () => read(FAV, []);
+const isFav = (id) => favs().includes(id);
+function toggleFav(id) {
+  const list = favs();
+  const on = !list.includes(id);
+  write(FAV, on ? [id, ...list].slice(0, 100) : list.filter((x) => x !== id));
+  $$(`[data-fav="${id}"]`).forEach((b) => b.classList.toggle('on', on));
+  drawFavCount();
+  toast(on ? 'اتضاف للمفضلة ♥' : 'اتشال من المفضلة', on);
+}
+function drawFavCount() {
+  const n = favs().length;
+  $$('.fav-count').forEach((b) => { b.textContent = n; b.hidden = !n; });
+}
+const seen = (id) => write(SEEN, [id, ...read(SEEN, []).filter((x) => x !== id)].slice(0, 12));
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-fav]');
+  if (b) { e.preventDefault(); toggleFav(Number(b.dataset.fav)); }
+  const c = e.target.closest('[data-copy]');
+  if (c) {
+    navigator.clipboard?.writeText(c.dataset.copy).then(() => toast('اتنسخ ✓', true), () => toast('مقدرناش ننسخ — انسخه بإيدك'));
+  }
+});
 
 // ---------- cart ----------
 const cart = () => read(CART, []);
@@ -190,7 +223,8 @@ function drawMini(el) {
 const card = (p) => `
   <article class="card ${p.in_stock ? '' : 'out'}">
     <a href="#/p/${p.id}" class="card-pic">${pic(p)}
-      <span class="badges">${p.off ? `<em class="b-off" dir="ltr">-${p.off}%</em>` : ''}${!p.in_stock ? '<em class="b-out">نفد</em>' : p.left ? `<em class="b-left">باقي ${p.left}</em>` : ''}</span></a>
+      <span class="badges">${p.off ? `<em class="b-off" dir="ltr">-${p.off}%</em>` : ''}${!p.in_stock ? '<em class="b-out">نفد</em>' : ''}</span></a>
+    <button type="button" class="fav ${isFav(p.id) ? 'on' : ''}" data-fav="${p.id}" aria-label="المفضلة">${svg('heart', 18)}</button>
     <div class="card-body">
       ${p.brand ? `<span class="card-brand">${esc(p.brand)}</span>` : ''}
       <a href="#/p/${p.id}" class="card-name" title="${esc(p.name)}">${esc(p.name)}</a>
@@ -238,6 +272,43 @@ function trustItems() {
 }
 
 // ---------- pages ----------
+/** "Seen before" row from this phone's history (only products still sold). */
+async function seenRow(skip = null) {
+  const ids = read(SEEN, []).filter((x) => x !== skip);
+  if (ids.length < 2) return '';
+  const all = await loadCatalog().catch(() => []);
+  const list = ids.map((id) => all.find((p) => p.id === id)).filter(Boolean);
+  return row('شفتهم قبل كده', list, '', 'clock');
+}
+
+async function favPage() {
+  view.innerHTML = `<nav class="crumbs"><a href="#/">الرئيسية</a><span>المفضلة</span></nav><h1 class="page-title">المفضلة</h1><div id="grid">${skeleton(4)}</div>`;
+  const all = await loadCatalog(true);
+  const list = favs().map((id) => all.find((p) => p.id === id)).filter(Boolean);
+  $('#grid').innerHTML = list.length ? `<div class="grid">${list.map(card).join('')}</div>`
+    : `<div class="empty big">${svg('heart', 48)}<span>لسه مفيش حاجة في المفضلة — دوس على القلب في أي منتج</span><a class="btn primary" href="#/">تسوّق</a></div>`;
+  wireCards($('#grid'));
+}
+
+/** Follow an order from any phone: order number + phone. */
+function trackPage() {
+  view.innerHTML = `<nav class="crumbs"><a href="#/">الرئيسية</a><span>تتبع طلبك</span></nav>
+    <div class="track-box panel"><div class="track-ic">${svg('truck', 34)}</div><h1 class="page-title">تتبع طلبك</h1><p class="muted">اكتب رقم الطلب ورقم الموبايل اللي طلبت بيه.</p>
+      <form id="trk" class="form-col">
+        <label class="fld"><span>رقم الطلب</span><input name="no" dir="ltr" placeholder="W-000123" required></label>
+        <label class="fld"><span>رقم الموبايل</span><input name="phone" dir="ltr" inputmode="tel" placeholder="01xxxxxxxxx" value="${esc(read('mm_shop_me', {}).phone || '')}" required></label>
+        <button class="btn primary wide">${svg('search', 18)} تتبع</button>
+      </form></div>`;
+  $('#trk').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api(`/store/track?no=${encodeURIComponent(e.target.no.value)}&phone=${encodeURIComponent(e.target.phone.value)}`);
+      write(MINE, [r.token, ...read(MINE, []).filter((t) => t !== r.token)].slice(0, 20));
+      location.hash = `#/order/${r.token}`;
+    } catch (err) { toast(err.message); }
+  });
+}
+
 async function home() {
   const slides = info.slides.length ? info.slides : null;
   view.innerHTML = `
@@ -269,6 +340,7 @@ async function home() {
     row('الأكثر مبيعاً', data.best, '', 'star'),
     sections[0] || '', help, ...sections.slice(1, 3), brands, ...sections.slice(3),
     row('وصل حديثاً', data.latest, '#/list?sort=new', 'new'),
+    await seenRow(),
   ].join('') || '<div class="empty big">لسه مفيش منتجات</div>';
   wireCards($('#rows'));
 }
@@ -342,7 +414,7 @@ async function product(id) {
   const p = await api(`/store/products/${id}`);
   document.title = `${p.name} — ${info.title}`;
   const perks = [
-    info.delivery.ship || info.delivery.local ? ['truck', info.free_ship ? `توصيل مجاني للطلبات فوق ${nf.format(info.free_ship)}` : 'توصيل لحد البيت'] : null,
+    info.delivery.ship || info.delivery.local ? ['truck', `${info.free_ship ? `توصيل مجاني للطلبات فوق ${nf.format(info.free_ship)}` : 'توصيل لحد البيت'}${info.delivery_days ? ` — بيوصل خلال ${esc(info.delivery_days)}` : ''}`] : null,
     info.payments.cod ? ['cash', 'ادفع لما الطلب يوصلك'] : null,
     ['shield', p.warranty_days ? `ضمان ${p.warranty_days} يوم من المحل` : 'منتج أصلي 100%'],
     info.delivery.pickup ? ['store', 'أو استلمه من المحل'] : null,
@@ -352,7 +424,9 @@ async function product(id) {
     <section class="product">
       <div class="gallery">${pic(p, 'big')}${p.off ? `<em class="b-off big-badge" dir="ltr">-${p.off}%</em>` : ''}</div>
       <div class="product-info">
-        ${p.brand ? `<a class="p-brand" href="#/list?brand=${encodeURIComponent(p.brand)}">${esc(p.brand)}</a>` : ''}
+        <div class="p-top">${p.brand ? `<a class="p-brand" href="#/list?brand=${encodeURIComponent(p.brand)}">${esc(p.brand)}</a>` : '<span></span>'}
+          <div class="p-acts"><button type="button" class="round fav-b ${isFav(p.id) ? 'on' : ''}" data-fav="${p.id}" aria-label="المفضلة">${svg('heart', 20)}</button>
+            <button type="button" class="round" id="share" aria-label="مشاركة">${svg('share', 20)}</button></div></div>
         <h1 dir="auto">${esc(p.name)}</h1>
         <div class="p-price"><b>${money(p.price)}</b>${p.old_price ? `<s>${money(p.old_price)}</s><em class="save">وفّر ${money(p.old_price - p.price)}</em>` : ''}</div>
         ${p.in_stock ? `<p class="stock ok">${svg('check', 16)} ${p.left ? `متاح — فاضل ${p.left} بس` : 'متاح'}</p>` : '<p class="stock bad">نفد — هيرجع قريب</p>'}
@@ -367,6 +441,7 @@ async function product(id) {
       </div>
     </section>
     ${row('ممكن يعجبك كمان', p.related || [], p.category_id ? `#/list?cat=${p.category_id}` : '', 'star')}
+    ${await seenRow(p.id)}
     ${p.in_stock ? `<div class="sticky-buy"><div><b>${money(p.price)}</b><small dir="auto">${esc(p.name)}</small></div><button class="btn primary" id="add2">أضف للسلة</button></div>` : ''}`;
   const qty = $('#qty');
   const n = () => Math.max(1, parseInt(qty?.value, 10) || 1);
@@ -374,6 +449,13 @@ async function product(id) {
   $('#add')?.addEventListener('click', () => addToCart(p.id, n(), { open: true }));
   $('#add2')?.addEventListener('click', () => addToCart(p.id, n(), { open: true }));
   $('#buy-now')?.addEventListener('click', () => { addToCart(p.id, n()); location.hash = '#/checkout'; });
+  $('#share').addEventListener('click', async () => {
+    const url = location.href;
+    const text = `${p.name} — ${nf.format(p.price)} ${info.currency || 'ج.م'}`;
+    if (navigator.share) { navigator.share({ title: p.name, text, url }).catch(() => {}); return; }
+    navigator.clipboard?.writeText(`${text}\n${url}`).then(() => toast('اللينك اتنسخ — ابعته لأي حد ✓', true), () => {});
+  });
+  seen(p.id);
   wireCards(view);
 }
 
@@ -391,13 +473,14 @@ async function checkout() {
   const free = info.free_ship && sub >= info.free_ship;
   const saved = read('mm_shop_me', {});
   const opts = [
-    d.ship && Object.keys(d.ship).length ? ['ship', 'truck', 'شحن لحد البيت', free ? 'مجاني ✓' : 'لكل المحافظات — السعر حسب محافظتك'] : null,
+    d.ship && Object.keys(d.ship).length ? ['ship', 'truck', 'شحن لحد البيت', `${free ? 'مجاني ✓' : 'السعر حسب محافظتك'}${info.delivery_days ? ` — خلال ${esc(info.delivery_days)}` : ''}`] : null,
     d.local ? ['local', 'truck', 'توصيل سريع', `${d.local.area ? `${esc(d.local.area)} — ` : ''}${free || !d.local.fee ? 'مجاناً' : money(d.local.fee)}`] : null,
     d.pickup ? ['pickup', 'store', 'استلام من المحل', d.pickup.address ? esc(d.pickup.address) : 'مجاناً'] : null,
   ].filter(Boolean);
   const pays = [
     p.cod ? ['cod', 'cash', 'كاش عند الاستلام', 'تدفع لما الطلب يوصلك'] : null,
-    p.transfer ? ['transfer', 'tag', 'تحويل InstaPay / محفظة', 'بيانات التحويل بتظهرلك بعد الطلب'] : null,
+    p.instapay ? ['instapay', 'bolt', 'InstaPay', 'حوّل في ثواني — بيانات التحويل بتظهرلك بعد الطلب'] : null,
+    p.wallet ? ['wallet', 'wallet', 'محفظة (فودافون كاش وغيرها)', 'حوّل على رقمنا وارفع صورة التحويل'] : null,
     p.card ? ['card', 'card', 'فيزا / ماستركارد', 'دفع آمن أونلاين'] : null,
   ].filter(Boolean);
   const choice = (name, [v, ic, t, s], i) => `<label class="choice"><input type="radio" name="${name}" value="${v}" ${i === 0 ? 'checked' : ''}>${svg(ic, 22)}<span><b>${t}</b><small>${s}</small></span></label>`;
@@ -425,9 +508,11 @@ async function checkout() {
         <div class="mini-lines">${lines.map((l) => `<div>${pic(l, 'mini-pic')}<span dir="auto">${esc(l.name)}<small>× ${l.qty}</small></span><b>${money(l.price * l.qty)}</b></div>`).join('')}</div>
         <div class="totals">
           <div><span>المنتجات</span><span>${money(sub)}</span></div>
+          <div id="disc-row" hidden><span>خصم <b class="ltr" id="disc-code"></b></span><span class="free" id="disc"></span></div>
           <div><span>التوصيل</span><span id="fee"></span></div>
           <div class="grand"><span>الإجمالي</span><b id="total"></b></div>
         </div>
+        ${info.has_coupons ? `<div class="coupon"><input id="coupon" placeholder="عندك كود خصم؟" dir="auto" autocomplete="off"><button type="button" class="btn ghost" id="apply">تطبيق</button></div>` : ''}
         <button class="btn primary wide big" id="send">تأكيد الطلب</button>
         <p class="hint">${svg('shield', 16)} بياناتك بتستخدم للتوصيل بس</p>
       </aside>
@@ -447,8 +532,21 @@ async function checkout() {
     $('#addr-box').hidden = del === 'pickup';
     const fee = feeNow();
     $('#fee').innerHTML = fee ? money(fee) : '<span class="free">مجاناً</span>';
-    $('#total').innerHTML = money(sub + fee);
+    $('#disc-row').hidden = !coupon;
+    if (coupon) { $('#disc').innerHTML = `- ${money(coupon.discount)}`; $('#disc-code').textContent = coupon.code; }
+    $('#total').innerHTML = money(sub - (coupon?.discount || 0) + fee);
   };
+  let coupon = null;
+  $('#apply')?.addEventListener('click', async () => {
+    const code = $('#coupon').value.trim();
+    if (!code) { coupon = null; draw(); return; }
+    try {
+      coupon = await api('/store/coupons/check', { method: 'POST', body: { code, subtotal: sub } });
+      toast(`اتطبق ${coupon.label} ✓`, true);
+    } catch (err) { coupon = null; toast(err.message); }
+    draw();
+  });
+  $('#coupon')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#apply').click(); } });
   f.addEventListener('change', draw);
   draw();
   if (!pays.length || !opts.length) $('#send').disabled = true;
@@ -466,7 +564,7 @@ async function checkout() {
     const body = {
       name: f.name.value, phone: f.phone.value, notes: f.notes.value,
       delivery: f.delivery.value, governorate: f.governorate.value, address: f.address.value, payment: f.payment.value,
-      items: cart().map((l) => ({ id: l.id, qty: l.qty })),
+      items: cart().map((l) => ({ id: l.id, qty: l.qty })), coupon: coupon?.code || '',
     };
     try {
       const r = await api('/store/orders', { method: 'POST', body });
@@ -497,8 +595,15 @@ async function orderPage(token, query) {
       <ol class="track">${steps.map(([, t], i) => `<li class="${i < cur ? 'done' : i === cur ? 'now' : ''}"><i>${i <= cur ? svg('check', 14) : i + 1}</i><span>${t}</span></li>`).join('')}</ol>`}
     ${o.payment === 'card' && o.pay_status !== 'paid' && o.status !== 'cancelled' ? `<div class="note bad">${o.pay_status === 'failed' ? 'الدفع بالفيزا متمّش.' : 'لسه مستنيين تأكيد الدفع.'} ${waLink('') ? 'كلمنا على الواتساب نكمّل الطلب.' : ''}</div>` : ''}
     ${o.payment === 'transfer' && o.status !== 'cancelled' && o.pay_status !== 'paid' ? `
-      <div class="note">
-        <b>حوّل ${money(o.total)}</b>${o.transfer_info ? `<pre dir="auto">${esc(o.transfer_info)}</pre>` : ''}
+      <div class="note pay-box">
+        <div class="pay-title">${svg(o.transfer_via === 'wallet' ? 'wallet' : 'bolt', 22)}<b>${o.transfer_via === 'wallet' ? 'ادفع بالمحفظة' : 'ادفع بـ InstaPay'}</b></div>
+        <div class="copy-line"><span>المبلغ</span><b dir="ltr">${nf.format(o.total)} ${esc(o.currency)}</b><button type="button" data-copy="${o.total}">${svg('copy', 16)} نسخ</button></div>
+        ${o.transfer_via === 'wallet'
+          ? (o.wallet_number ? `<div class="copy-line"><span>رقم المحفظة</span><b dir="ltr">${esc(o.wallet_number)}</b><button type="button" data-copy="${esc(o.wallet_number)}">${svg('copy', 16)} نسخ</button></div>` : '')
+          : `${o.instapay ? `<div class="copy-line"><span>حوّل على</span><b dir="ltr">${esc(o.instapay)}</b><button type="button" data-copy="${esc(o.instapay)}">${svg('copy', 16)} نسخ</button></div>` : ''}
+             ${o.instapay_link ? `<a class="btn lime wide" href="${esc(o.instapay_link)}" target="_blank" rel="noopener">${svg('bolt', 18)} افتح InstaPay وادفع</a>` : ''}`}
+        <p class="small-note">اكتب رقم الطلب <b dir="ltr">${esc(o.order_no)}</b> في ملاحظة التحويل.</p>
+        ${o.transfer_info ? `<pre dir="auto">${esc(o.transfer_info)}</pre>` : ''}
         ${o.pay_status === 'review' ? '<p class="ok-text">صورة التحويل وصلتنا ✓ هنراجعها ونأكدلك.</p>' : '<p>بعد ما تحوّل، ارفع صورة التحويل هنا:</p>'}
         <label class="btn ghost file">${o.has_proof ? 'غيّر صورة التحويل' : 'ارفع صورة التحويل'}<input type="file" accept="image/*" id="proof"></label>
       </div>` : ''}
@@ -507,6 +612,7 @@ async function orderPage(token, query) {
       <div class="cart-lines">${o.items.map((i) => `<div class="oline"><span dir="auto">${esc(i.name)}</span><small>${i.qty} × ${money(i.unit_price)}</small><b>${money(i.line_total)}</b></div>`).join('')}</div>
       <div class="totals">
         <div><span>المنتجات</span><span>${money(o.subtotal)}</span></div>
+        ${o.discount ? `<div><span>خصم${o.coupon ? ` <b class="ltr">${esc(o.coupon)}</b>` : ''}</span><span class="free">- ${money(o.discount)}</span></div>` : ''}
         <div><span>${pickup ? 'استلام من المحل' : `التوصيل${o.governorate ? ` — ${esc(o.governorate)}` : ''}`}</span><span>${o.delivery_fee ? money(o.delivery_fee) : '<span class="free">مجاناً</span>'}</span></div>
         <div class="grand"><span>الإجمالي</span><b>${money(o.total)}</b></div>
       </div>
@@ -530,10 +636,10 @@ async function orderPage(token, query) {
 async function mine() {
   const tokens = read(MINE, []);
   view.innerHTML = '<nav class="crumbs"><a href="#/">الرئيسية</a><span>طلباتي</span></nav><h1 class="page-title">طلباتي</h1><div class="mine" id="mine"><div class="loading"><span></span><span></span><span></span></div></div>';
-  if (!tokens.length) { $('#mine').innerHTML = `<div class="empty big">${svg('box', 48)}<span>لسه مطلبتش من الجهاز ده</span><a class="btn primary" href="#/">تسوّق دلوقتي</a></div>`; return; }
+  if (!tokens.length) { $('#mine').innerHTML = `<div class="empty big">${svg('box', 48)}<span>لسه مطلبتش من الجهاز ده</span><a class="btn primary" href="#/">تسوّق دلوقتي</a><a class="btn ghost" href="#/track">طلبت من موبايل تاني؟ تتبع طلبك</a></div>`; return; }
   const orders = (await Promise.all(tokens.map((t) => api(`/store/orders/${t}`).then((o) => ({ ...o, token: t })).catch(() => null)))).filter(Boolean);
   $('#mine').innerHTML = orders.map((o) => `<a class="mine-row" href="#/order/${o.token}"><div><b dir="ltr">${esc(o.order_no)}</b>
-    <small>${o.items.length} منتج • ${esc(o.created_at.slice(0, 10))}</small></div><div class="mine-end"><b>${money(o.total)}</b><span class="state ${o.status}">${esc(o.status_ar)}</span></div></a>`).join('');
+    <small>${o.items.length} منتج • ${esc(o.created_at.slice(0, 10))}</small></div><div class="mine-end"><b>${money(o.total)}</b><span class="state ${o.status}">${esc(o.status_ar)}</span></div></a>`).join('') + '<a class="btn ghost" href="#/track" style="margin-top:6px">طلب تاني من موبايل تاني؟ تتبعه برقم الطلب</a>';
 }
 
 async function shrink(file) {
@@ -592,7 +698,7 @@ async function route() {
   // Highlight where we are
   const curCat = query.get('cat');
   $$('#catbar a').forEach((x) => x.classList.toggle('on', curCat ? x.dataset.cat === curCat : (!parts.length && x.dataset.home === '1') || (query.get('deals') && x.dataset.deals === '1')));
-  const tab = !parts.length ? 'home' : parts[0] === 'cats' ? 'cats' : query.get('deals') ? 'deals' : parts[0] === 'mine' || parts[0] === 'order' ? 'mine' : '';
+  const tab = !parts.length ? 'home' : parts[0] === 'cats' ? 'cats' : query.get('deals') ? 'deals' : ['mine', 'order', 'track'].includes(parts[0]) ? 'mine' : '';
   $$('#bottom-nav [data-tab]').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   document.body.dataset.page = parts[0] || 'home';
   try {
@@ -604,6 +710,8 @@ async function route() {
     else if (parts[0] === 'list') await list(query);
     else if (parts[0] === 'cats') cats();
     else if (parts[0] === 'mine') await mine();
+    else if (parts[0] === 'fav') await favPage();
+    else if (parts[0] === 'track') trackPage();
     else await home();
   } catch (e) {
     view.innerHTML = `<div class="empty big">${esc(e.message)}<a class="btn primary" href="#/">الرئيسية</a></div>`;
@@ -619,17 +727,25 @@ async function route() {
   const wa = waLink('');
   if (wa) { const f = $('#wa-float'); f.href = wa; f.hidden = false; }
   initSearch();
+  drawFavCount();
+  $('#theme-btn').addEventListener('click', () => {
+    const now = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = now === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    write('mm_shop_theme', next);
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', next === 'dark' ? '#0b0b0b' : '#ffffff');
+  });
   $$('[data-open-cart]').forEach((b) => b.addEventListener('click', openCart));
   $('#drawer-x').addEventListener('click', closeCart);
   $('#drawer-back').addEventListener('click', closeCart);
   $('#drawer').addEventListener('click', (e) => { if (e.target.closest('[data-close-cart]')) closeCart(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCart(); });
-  const pays = [info.payments.cod && 'كاش عند الاستلام', info.payments.transfer && 'InstaPay / محافظ', info.payments.card && 'فيزا / ماستركارد'].filter(Boolean);
+  const pays = [info.payments.cod && 'كاش عند الاستلام', info.payments.instapay && 'InstaPay', info.payments.wallet && 'محافظ', info.payments.card && 'فيزا / ماستركارد'].filter(Boolean);
   $('#foot').innerHTML = `<div class="wrap foot-grid">
     <div class="foot-about"><div class="brand light"><img class="logo" src="/brand/mark.svg" alt=""><b>${esc(info.title)}</b></div>
       <p>${esc(info.about || 'إكسسوارات موبايل أصلية: شواحن، كابلات، سماعات وباور بانك — بضمان المحل.')}</p></div>
     <div><h4>الأقسام</h4>${info.categories.slice(0, 6).map((c) => `<a href="#/list?cat=${c.id}">${esc(c.name)}</a>`).join('')}<a href="#/list?deals=1">العروض</a></div>
-    <div><h4>خدمة العملاء</h4><a href="#/mine">طلباتي وتتبع الطلب</a>${wa ? `<a target="_blank" rel="noopener" href="${wa}">كلمنا واتساب</a>` : ''}<a href="#/cart">السلة</a></div>
+    <div><h4>خدمة العملاء</h4><a href="#/mine">طلباتي</a><a href="#/track">تتبع طلب</a><a href="#/fav">المفضلة</a>${wa ? `<a target="_blank" rel="noopener" href="${wa}">كلمنا واتساب</a>` : ''}<a href="#/cart">السلة</a></div>
     <div><h4>تواصل معانا</h4>${info.address ? `<span>${esc(info.address)}</span>` : ''}${info.phone ? `<a href="tel:${esc(info.phone)}" dir="ltr">${esc(info.phone)}</a>` : ''}
       ${info.whatsapp ? `<a target="_blank" rel="noopener" href="${wa}" dir="ltr">${esc(info.whatsapp)}</a>` : ''}</div>
   </div>
