@@ -38,6 +38,16 @@ const BATCHES = [
       { name: 'JOYROOM 20W Dual-Port (2C) Charger', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 2 },
     ],
   },
+  {
+    id: '2026-10-30-acefast',
+    brands: ['ACEFAST'],
+    products: [
+      { name: 'ACEFAST C6-11 3-in-1 Charging Cable with Apple Watch Charger', brand: 'ACEFAST', cat: 'شواحن وكابلات', qty: 2 },
+      { name: 'ACEFAST 5000mAh 20W Magnetic Wireless Power Bank', brand: 'ACEFAST', cat: 'إكسسوارات', qty: 1 },
+      { name: 'ACEFAST C26-02 2.4A USB-A Charging Cable', brand: 'ACEFAST', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'ACEFAST C22-04 3A USB-A to Type-C Cable', brand: 'ACEFAST', cat: 'شواحن وكابلات', qty: 2 },
+    ],
+  },
 ];
 
 function applyStockBatches(db, batches = BATCHES) {
