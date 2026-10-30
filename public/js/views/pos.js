@@ -27,12 +27,13 @@ export async function render(el) {
   }
   async function localLookup(code) {
     const c = await offlineList();
-    const byCode = c?.products.find((p) => p.barcode === code);
+    const norm = (v) => String(v || '').replace(/\D/g, '').replace(/^0+/, '');
+    const byCode = c?.products.find((p) => p.barcode === code) || (norm(code).length >= 6 ? c?.products.find((p) => norm(p.barcode) === norm(code)) : null);
     if (byCode) return { product: byCode, serial: null };
     for (const [id, list] of Object.entries(c?.serials || {})) {
       if (list.includes(code)) return { product: c.products.find((p) => p.id === Number(id)), serial: code };
     }
-    throw new Error('مفيش منتج بالكود ده (أو الجهاز اتباع)');
+    throw Object.assign(new Error(`مفيش منتج بالكود ${code} في القايمة المتخزنة (أو الجهاز اتباع)`), { local: true });
   }
 
   el.innerHTML = `
@@ -141,7 +142,8 @@ export async function render(el) {
     const code = scan.value.trim();
     if (!code) return;
     try {
-      const r = isOffline() ? await localLookup(code)
+      // Saved list doesn't have it (added after it was saved?): ask the server when there's a connection
+      const r = isOffline() ? await localLookup(code).catch((e) => (e.local && navigator.onLine ? api.get('/products/lookup?code=' + encodeURIComponent(code)) : Promise.reject(e)))
         : await api.get('/products/lookup?code=' + encodeURIComponent(code)).catch((e) => (e.offline ? localLookup(code) : Promise.reject(e)));
       await addProduct(r.product, r.serial);
       scan.value = '';

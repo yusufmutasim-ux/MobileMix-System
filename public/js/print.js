@@ -13,7 +13,8 @@ export const LABEL_SIZES = {
 export function barcodeSvg(value, { heightMm = 8, text = true, fontSize = 10 } = {}) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   try {
-    window.JsBarcode(svg, String(value), { format: 'CODE128', width: 2, height: 60, margin: 0, displayValue: false, background: 'transparent' });
+    // White space on both sides (quiet zone): without it phone cameras and many scanners can't read the code
+    window.JsBarcode(svg, String(value), { format: 'CODE128', width: 2, height: 60, margin: 0, marginLeft: 22, marginRight: 22, displayValue: false, background: '#fff' });
   } catch {
     return '';
   }

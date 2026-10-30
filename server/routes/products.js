@@ -81,9 +81,14 @@ module.exports = function productRoutes(api, db) {
 
   /** Scanner lookup: exact barcode, or an in-stock IMEI. */
   api.get('/products/lookup', view, (req, res) => {
-    const code = String(req.query.code || '').trim();
+    // Camera / scanner reads can carry invisible characters, or a leading 0 (EAN-13 vs UPC-A)
+    const code = String(req.query.code || '').replace(/[\u0000-\u001f\u007f\s]/g, '');
     if (!code) throw bad('اكتب الباركود');
-    let p = db.prepare(`${SELECT} WHERE p.barcode = ? AND p.active = 1`).get(code);
+    let p = db.prepare(`${SELECT} WHERE p.barcode = ? COLLATE NOCASE AND p.active = 1`).get(code);
+    const digits = code.replace(/\D/g, '');
+    if (!p && digits.length >= 6 && digits.length >= code.length - 2) {
+      p = db.prepare(`${SELECT} WHERE p.active = 1 AND LTRIM(digits(p.barcode), '0') = LTRIM(?, '0') AND digits(p.barcode) <> ''`).get(digits);
+    }
     let serial = null;
     if (!p) {
       const s = db.prepare("SELECT * FROM serials WHERE serial = ?").get(code);
@@ -93,7 +98,7 @@ module.exports = function productRoutes(api, db) {
         serial = s.serial;
       }
     }
-    if (!p) throw notFound('مفيش منتج بالكود ده');
+    if (!p) throw notFound(`مفيش منتج بالكود ${code} — لو ده ليبل مطبوع من السيستم، افتح المنتج وقارن الباركود بتاعه`);
     res.json({ product: strip(req)(p), serial });
   });
 

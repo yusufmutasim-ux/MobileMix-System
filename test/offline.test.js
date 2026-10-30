@@ -53,3 +53,14 @@ test('sales made with no internet: saved once, kept even past the stock count, I
   assert.equal(clash.status, 400);
   assert.equal((await call('GET', '/pos/catalog')).data.serials[phone.id], undefined);
 });
+
+test('scanning a label: invisible characters and a leading 0 still find the product, a miss says what was read', async () => {
+  const p = (await call('POST', '/products', { name: 'Label test', sell_price: 10, initial_qty: 1 })).data;
+  for (const code of [p.barcode, `0${p.barcode}`, `\u001d${p.barcode} `]) {
+    const r = await call('GET', '/products/lookup?code=' + encodeURIComponent(code));
+    assert.equal(r.data.product?.id, p.id, code);
+  }
+  const miss = await call('GET', '/products/lookup?code=12345678');
+  assert.equal(miss.status, 404);
+  assert.match(miss.data.error, /12345678/);
+});

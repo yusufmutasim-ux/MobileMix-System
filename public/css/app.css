@@ -1588,3 +1588,10 @@ body:has(.login)::before { background: transparent; }
 /* Photo picker kept in the page but invisible (iPhones ignore hidden file fields) */
 .photo-add { position: relative; overflow: hidden; cursor: pointer; }
 .visually-hidden-file { position: absolute; inset: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.cam-bottom { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 28px); display: flex; justify-content: center; }
+.cam-shot { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; padding: 14px 22px; border-radius: 999px;
+  background: #fff; color: #111; font-weight: 500; cursor: pointer; }
+.cam-shot svg { width: 20px; height: 20px; }
+.cam-msg:empty { display: none; }
+.cam-msg { position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 96px); text-align: center; color: #fff;
+  background: rgba(0, 0, 0, .6); padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.6; }
