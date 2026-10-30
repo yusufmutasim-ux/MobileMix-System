@@ -1585,3 +1585,6 @@ body:has(.login)::before { background: transparent; }
 .ai-lines > div { display: flex; flex-wrap: wrap; gap: 6px; }
 .ai-line { border: 0; border-radius: 999px; padding: 6px 12px; background: var(--t-gray-bg); color: inherit; font: inherit; font-size: 13px; cursor: pointer; direction: ltr; }
 .ai-line.used { opacity: .45; }
+/* Photo picker kept in the page but invisible (iPhones ignore hidden file fields) */
+.photo-add { position: relative; overflow: hidden; cursor: pointer; }
+.visually-hidden-file { position: absolute; inset: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }

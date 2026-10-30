@@ -16,7 +16,8 @@ export async function render(el, { query, actions }) {
     <button class="btn btn-outline btn-sm" id="csv">${icon('download')} تصدير</button>
     ${edit ? `<button class="btn btn-outline btn-sm" id="cats-btn">${icon('layers')} الأقسام</button>
               <button class="btn btn-outline btn-sm" id="brands-btn">${icon('tag')} البراندات</button>
-              <button class="btn btn-outline btn-sm" id="photo-add">${icon('camera')} من صورة</button>
+              <label class="btn btn-outline btn-sm photo-add" id="photo-add">${icon('camera')} من صورة
+                <input type="file" accept="image/*" multiple id="photo-input" class="visually-hidden-file"></label>
               <button class="btn btn-primary" id="add">${icon('plus')} منتج جديد</button>` : ''}`;
 
   el.innerHTML = `
@@ -96,7 +97,12 @@ export async function render(el, { query, actions }) {
     reload();
   });
   actions.querySelector('#add')?.addEventListener('click', async () => { if (await productForm(cats)) reload(); });
-  actions.querySelector('#photo-add')?.addEventListener('click', async () => { if (await addFromPhotos(cats)) reload(); });
+  // A real file field inside the page: iPhones drop the photo when the field isn't part of the page
+  actions.querySelector('#photo-input')?.addEventListener('change', async (e) => {
+    const files = [...e.target.files];
+    e.target.value = ''; // the same photo can be picked again
+    if (files.length && await addFromPhotos(cats, files)) reload();
+  });
   actions.querySelector('#cats-btn')?.addEventListener('click', async () => {
     await categoriesModal();
     cats = await api.get('/categories');
@@ -227,19 +233,12 @@ async function shrink(file) {
 }
 
 /** Pick or take photos; each box is read, then its product form opens filled in. */
-async function addFromPhotos(cats) {
+async function addFromPhotos(cats, files) {
   // Free reading on the device by default; Claude (better names) only if the shop added its own key
-  const st = await api.get('/ai/status').catch(() => ({ enabled: false }));
-  const brands = await api.get('/brands').catch(() => []);
-  const files = await new Promise((ok) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true;
-    input.addEventListener('change', () => ok([...input.files]));
-    input.addEventListener('cancel', () => ok([]));
-    input.click();
-  });
+  const [st, brands] = await Promise.all([
+    api.get('/ai/status').catch(() => ({ enabled: false })),
+    api.get('/brands').catch(() => []),
+  ]);
   let changed = false;
   for (const [i, file] of files.entries()) {
     let photo, guess, closeWait;
