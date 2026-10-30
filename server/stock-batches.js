@@ -94,6 +94,21 @@ const BATCHES = [
       { name: 'VIDVIE 65W Multifunctional 2-in-2 Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 2 },
     ],
   },
+  {
+    id: '2026-10-30-vidvie-2',
+    brands: ['VIDVIE'],
+    products: [
+      { name: 'VIDVIE HS662 Half In-Ear Wired Headset', brand: 'VIDVIE', cat: 'سماعات', qty: 6 },
+      { name: 'VIDVIE In-ear Headset (3.5mm)', brand: 'VIDVIE', cat: 'سماعات', qty: 5 },
+      { name: 'VIDVIE In-ear Headset (Type-C)', brand: 'VIDVIE', cat: 'سماعات', qty: 5 },
+      { name: 'VIDVIE Semi-In-Ear Wired Headset (Type-C)', brand: 'VIDVIE', cat: 'سماعات', qty: 4 },
+      { name: 'VIDVIE 3A USB to Type-C Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 6 },
+      { name: 'VIDVIE 3A USB to Micro (V8) Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 7 },
+      { name: 'VIDVIE 60W Type-C to Type-C Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 5 },
+      { name: 'VIDVIE 3A USB to Lightning Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 4 },
+      { name: 'VIDVIE 66W Type-C to Type-C Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 2 },
+    ],
+  },
 ];
 
 function applyStockBatches(db, batches = BATCHES) {
