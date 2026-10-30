@@ -5,6 +5,10 @@
  * already there is left alone, so nothing is ever doubled.
  * Prices start at 0: the owner sets them from the products page.
  */
+// Brand names compared without spaces, dashes, dots or case: "Ace Fast" = "ACEFAST" = "ace-fast"
+const BRAND_KEY = (col) => `LOWER(REPLACE(REPLACE(REPLACE(${col}, ' ', ''), '-', ''), '.', ''))`;
+const brandKey = (name) => String(name).replace(/[\s.-]/g, '').toLowerCase();
+
 const BATCHES = [
   {
     id: '2026-10-30-accessories',
@@ -127,7 +131,25 @@ const BATCHES = [
       { name: 'JBL Tune 520BT Wireless Headphones (Purple)', brand: 'JBL', cat: 'سماعات', qty: 1 },
     ],
   },
+  {
+    // The same brand had been added twice with different spelling: products move to one name
+    id: '2026-10-30-merge-acefast',
+    merge: ['ACEFAST'],
+    products: [],
+  },
 ];
+
+/** Put every brand spelled like `name` (any spaces / case) under exactly `name`, products included. */
+function mergeBrand(db, name) {
+  db.prepare('INSERT OR IGNORE INTO brands (name) VALUES (?)').run(name);
+  const keep = db.prepare('SELECT * FROM brands WHERE name = ? COLLATE NOCASE').get(name);
+  if (keep.name !== name) db.prepare('UPDATE brands SET name = ? WHERE id = ?').run(name, keep.id);
+  const others = db.prepare(`SELECT * FROM brands WHERE ${BRAND_KEY('name')} = ? AND id <> ?`).all(brandKey(name), keep.id);
+  const products = db.prepare(`SELECT id FROM products WHERE ${BRAND_KEY('brand')} = ? AND brand <> ?`).all(brandKey(name), name);
+  db.prepare(`UPDATE products SET brand = ?, updated_at = datetime('now','localtime') WHERE ${BRAND_KEY('brand')} = ? AND brand <> ?`).run(name, brandKey(name), name);
+  for (const o of others) db.prepare('DELETE FROM brands WHERE id = ?').run(o.id);
+  return { brands: others.length, products: products.length };
+}
 
 function applyStockBatches(db, batches = BATCHES) {
   const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
@@ -138,10 +160,14 @@ function applyStockBatches(db, batches = BATCHES) {
     db.exec('BEGIN IMMEDIATE');
     try {
       const addBrand = db.prepare('INSERT OR IGNORE INTO brands (name) VALUES (?)');
-      for (const name of b.brands || []) addBrand.run(name);
+      for (const name of b.brands || []) {
+        // Already there with other spacing: use that one
+        if (!db.prepare(`SELECT 1 FROM brands WHERE ${BRAND_KEY('name')} = ?`).get(brandKey(name))) addBrand.run(name);
+      }
+      for (const name of b.merge || []) mergeBrand(db, name);
       for (const p of b.products) {
         if (db.prepare('SELECT 1 FROM products WHERE name = ? COLLATE NOCASE').get(p.name)) continue;
-        const brand = p.brand ? db.prepare('SELECT name FROM brands WHERE name = ? COLLATE NOCASE').get(p.brand)?.name : null;
+        const brand = p.brand ? db.prepare(`SELECT name FROM brands WHERE ${BRAND_KEY('name')} = ?`).get(brandKey(p.brand))?.name : null;
         const cat = db.prepare('SELECT id FROM categories WHERE name = ?').get(p.cat)?.id ?? null;
         const id = Number(db.prepare('INSERT INTO products (name, brand, category_id, qty, cost_price, sell_price) VALUES (?, ?, ?, ?, 0, 0)')
           .run(p.name, brand, cat, p.qty).lastInsertRowid);
@@ -158,4 +184,4 @@ function applyStockBatches(db, batches = BATCHES) {
   }
 }
 
-module.exports = { applyStockBatches, BATCHES };
+module.exports = { applyStockBatches, mergeBrand, BATCHES, BRAND_KEY, brandKey };

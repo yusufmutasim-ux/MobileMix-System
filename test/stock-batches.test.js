@@ -18,3 +18,13 @@ test('entered goods: added once, brands first, existing products left alone', ()
   assert.match(plug.barcode, /^2000\d{8}$/);
   assert.deepEqual(db.prepare('SELECT name FROM brands ORDER BY name').all().map((b) => b.name), ['ACEFAST', 'Anker', 'Apple', 'Belkin', 'iLock', 'inkax', 'JBL', 'JOYROOM', 'Momax', 'mophie', 'PLOXAMA', 'SENDEM', 'soundcore', 'VIDVIE', 'XO']);
 });
+
+test('a brand added twice with other spacing is merged into one, products included', () => {
+  const db = open(':memory:');
+  db.prepare("INSERT INTO brands (name) VALUES ('Ace Fast')").run();
+  db.prepare("INSERT INTO products (name, brand, sell_price) VALUES ('old cable', 'Ace Fast', 50)").run();
+  applyStockBatches(db);
+  assert.deepEqual(db.prepare(`SELECT name FROM brands WHERE LOWER(REPLACE(name, ' ', '')) = 'acefast'`).all().map((b) => b.name), ['ACEFAST']);
+  assert.equal(db.prepare("SELECT brand FROM products WHERE name = 'old cable'").get().brand, 'ACEFAST');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM products WHERE brand = 'ACEFAST'").get().n, 6);
+});

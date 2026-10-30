@@ -20,6 +20,8 @@ function isLocalAddress(ip = '') {
 
 const ROLES = ['admin', 'manager', 'cashier', 'technician'];
 
+const { BRAND_KEY, brandKey } = require('../stock-batches');
+
 module.exports = function adminRoutes(api, db, { dataDir } = {}) {
   // ---------- auth ----------
   // Wrong-password lockout, per username and per address (the system can be reached from the internet).
@@ -204,8 +206,9 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
 
   api.post('/brands', requirePerm('products.edit'), (req, res) => {
     const name = str(req.body?.name, 'اسم البراند', { max: 60 });
-    const found = db.prepare('SELECT * FROM brands WHERE name = ? COLLATE NOCASE').get(name);
-    if (found) return res.json(found); // already there: just use it
+    // Already there (any spacing or case, "Ace Fast" = "ACEFAST"): just use it
+    const found = db.prepare(`SELECT * FROM brands WHERE ${BRAND_KEY('name')} = ?`).get(brandKey(name));
+    if (found) return res.json(found);
     const r = db.prepare('INSERT INTO brands (name) VALUES (?)').run(name);
     res.status(201).json(db.prepare('SELECT * FROM brands WHERE id = ?').get(r.lastInsertRowid));
   });
