@@ -515,3 +515,9 @@ html { scroll-behavior: smooth; }
 
 /* The add-to-cart bar sits right above the bottom bar on phones, never inside the page */
 @media (max-width: 760px) { body[data-page="p"] .foot { padding-bottom: 70px; } }
+
+/* Side-scrolling rows move sideways only: no up/down wobble inside them (iPhone) */
+.hscroll, .catbar, .chips, .circles { overflow-y: hidden; overscroll-behavior: contain; touch-action: pan-x pan-y; }
+.hscroll { padding-top: 4px; padding-bottom: 12px; }
+.hscroll .rv, .circles .rv { transform: none; }
+.hscroll .card.rv.in:hover, .hscroll .card:hover, .circles .circle:hover .ring { transform: none; }
