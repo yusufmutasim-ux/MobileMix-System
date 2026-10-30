@@ -16,5 +16,5 @@ test('entered goods: added once, brands first, existing products left alone', ()
   assert.equal(plug.qty, 15);
   assert.equal(plug.brand, 'iLock');
   assert.match(plug.barcode, /^2000\d{8}$/);
-  assert.deepEqual(db.prepare('SELECT name FROM brands ORDER BY name').all().map((b) => b.name), ['ACEFAST', 'iLock', 'JOYROOM', 'SENDEM']);
+  assert.deepEqual(db.prepare('SELECT name FROM brands ORDER BY name').all().map((b) => b.name), ['ACEFAST', 'Apple', 'Belkin', 'iLock', 'JBL', 'JOYROOM', 'SENDEM']);
 });

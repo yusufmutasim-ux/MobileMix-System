@@ -48,6 +48,22 @@ const BATCHES = [
       { name: 'ACEFAST C22-04 3A USB-A to Type-C Cable', brand: 'ACEFAST', cat: 'شواحن وكابلات', qty: 2 },
     ],
   },
+  {
+    id: '2026-10-30-apple-jbl',
+    brands: ['Apple', 'JBL', 'Belkin'],
+    products: [
+      { name: 'JBL GO 2 Portable Bluetooth Speaker (Blue)', brand: 'JBL', cat: 'سماعات', qty: 2 },
+      { name: 'JBL GO 3 Portable Bluetooth Speaker (Black)', brand: 'JBL', cat: 'سماعات', qty: 1 },
+      { name: 'Apple Lightning to Headphone Jack Adapter', brand: 'Apple', cat: 'إكسسوارات', qty: 2 },
+      { name: 'Apple USB-C to Headphone Jack Adapter', brand: 'Apple', cat: 'إكسسوارات', qty: 1 },
+      { name: 'Apple USB-C to Type-C and Lightning 60W Charge Cable', brand: 'Apple', cat: 'شواحن وكابلات', qty: 2 },
+      { name: 'Apple EarPods (Lightning Connector)', brand: 'Apple', cat: 'سماعات', qty: 2 },
+      { name: 'Apple 20W USB-C Power Adapter (EU 2-Pin)', brand: 'Apple', cat: 'شواحن وكابلات', qty: 5 },
+      { name: 'Apple 20W USB-C Power Adapter (UK 3-Pin)', brand: 'Apple', cat: 'شواحن وكابلات', qty: 2 },
+      { name: 'Belkin BoostCharge 45W USB-C Wall Charger for iPhone', brand: 'Belkin', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'Apple 20W USB-C Power Adapter (US Flat Pin)', brand: 'Apple', cat: 'شواحن وكابلات', qty: 5 },
+    ],
+  },
 ];
 
 function applyStockBatches(db, batches = BATCHES) {
