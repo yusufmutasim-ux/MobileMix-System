@@ -155,6 +155,7 @@ export async function render(el) {
 
   // ---------- cart ----------
   async function addProduct(p, serial = null) {
+    if (!(Number(p.sell_price) > 0)) toast(`"${p.name}" لسه ملوش سعر بيع — اكتب السعر في الفاتورة، وحدده من صفحة المنتجات`, 'err');
     if (p.has_serial) {
       if (!serial) serial = await pickSerial(p);
       if (!serial) return;
