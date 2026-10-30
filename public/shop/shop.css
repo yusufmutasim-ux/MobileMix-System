@@ -220,8 +220,8 @@ small { font-size: .8em; color: var(--muted); font-weight: 400; }
 
 /* ---------- product page ---------- */
 .product { display: grid; gap: 24px; margin-top: 10px; }
-@media (min-width: 860px) { .product { grid-template-columns: 1.05fr 1fr; align-items: start; gap: 40px; } .gallery { position: sticky; top: 140px; } }
-.gallery { position: relative; background: var(--card); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow); }
+@media (min-width: 860px) { .product { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 40px; } }
+.gallery { position: relative; background: var(--card); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow); max-width: 560px; width: 100%; justify-self: center; }
 .gallery .big { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 14px; }
 .gallery .big.noimg svg { width: 120px; height: 120px; }
 .big-badge { position: absolute; top: 24px; right: 24px; background: var(--red); color: #fff; font-size: 15px !important; padding: 5px 14px !important; }
@@ -463,3 +463,52 @@ main, .panel, .co-main, .co-side { min-width: 0; }
   .copy-line { grid-template-columns: minmax(0, 1fr) auto; }
   .copy-line span { grid-column: 1 / -1; }
 }
+
+/* ---------- motion (all of it switches off for people who ask their phone for less motion) ---------- */
+:root { --ease: cubic-bezier(.2, .8, .2, 1); }
+main.enter { animation: page-in .45s var(--ease) both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+.rv { opacity: 0; transform: translateY(18px) scale(.985); transition: opacity .55s var(--ease) var(--d, 0ms), transform .55s var(--ease) var(--d, 0ms), box-shadow .2s, background .2s; }
+.rv.in { opacity: 1; transform: none; }
+.card.rv.in:hover, .tile.rv.in:hover, .brand-tile.rv.in:hover { transform: translateY(-4px); transition-delay: 0ms; }
+.circle.rv.in:hover { transform: none; }
+img.fading { opacity: 0; transition: opacity .5s ease, transform .35s; }
+img.fading.ld { opacity: 1; }
+.btn, .add, .icon-btn, .round, .fav, .stepper button, .chips a, .catbar a, .copy-line button, .x, .sec-head .more { transition: transform .15s var(--ease), background-color .2s, color .2s, border-color .2s, box-shadow .2s, opacity .2s; }
+.btn:hover:not(:disabled) { box-shadow: 0 6px 18px rgba(0, 0, 0, .12); }
+.btn.primary:hover { transform: translateY(-1px); }
+.btn:active, .add:active, .icon-btn:active, .round:active, .stepper button:active, .chips a:active { transform: scale(.95); }
+.add:hover { transform: translateY(-1px); }
+.icon-btn:hover svg, .round:hover svg { transform: scale(1.1); }
+.icon-btn svg, .round svg { transition: transform .2s var(--ease); }
+.pop { animation: heart .45s var(--ease); }
+@keyframes heart { 30% { transform: scale(1.35); } 60% { transform: scale(.9); } }
+.bump { animation: bump .5s var(--ease); }
+@keyframes bump { 30% { transform: scale(1.5); } 60% { transform: scale(.9); } }
+.fly-dot { position: fixed; width: 28px; height: 28px; border-radius: 50%; background: var(--lime); box-shadow: 0 6px 18px rgba(0,0,0,.25); z-index: 60; pointer-events: none; }
+.fly-dot::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: #141414; }
+.suggest:not([hidden]) { animation: drop .2s var(--ease); transform-origin: top; }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+.drawer.open .cline { animation: slide-in .35s var(--ease) both; }
+.drawer.open .cline:nth-child(2) { animation-delay: .05s; } .drawer.open .cline:nth-child(3) { animation-delay: .1s; } .drawer.open .cline:nth-child(n+4) { animation-delay: .15s; }
+@keyframes slide-in { from { opacity: 0; transform: translateX(-16px); } }
+.qty-mini > * { animation: fade-up .25s var(--ease); }
+@keyframes fade-up { from { opacity: 0; transform: translateY(4px); } }
+.choice { transition: border-color .2s, background .2s, transform .15s; }
+.choice:active { transform: scale(.99); }
+.slide.default > div:first-child > * { animation: fade-up .7s var(--ease) both; }
+.slide.default > div:first-child > :nth-child(2) { animation-delay: .1s; } .slide.default > div:first-child > :nth-child(3) { animation-delay: .2s; } .slide.default > div:first-child > :nth-child(4) { animation-delay: .3s; }
+.default-art svg { animation: float 5s ease-in-out infinite; }
+.default-art svg:nth-child(2) { animation-delay: -1.5s; } .default-art svg:nth-child(3) { animation-delay: -3s; }
+@keyframes float { 50% { transform: translateY(-8px) rotate(-3deg); } }
+.wa-float { animation: wa-in .6s var(--ease) .8s both; }
+@keyframes wa-in { from { opacity: 0; transform: scale(.5) translateY(20px); } }
+.freeship .bar i { transition: width .6s var(--ease); }
+.track li.now i { animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--lime) 15%, transparent); } }
+.catbar a { position: relative; }
+.bottom-nav a, .bottom-nav button { transition: color .2s, transform .15s; }
+.bottom-nav a:active, .bottom-nav button:active { transform: scale(.9); }
+.bottom-nav .on svg { animation: heart .4s var(--ease); }
+html { scroll-behavior: smooth; }
+.hscroll, .catbar, .chips, .circles { scroll-behavior: smooth; overscroll-behavior-x: contain; }

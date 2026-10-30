@@ -97,6 +97,64 @@ const waLink = (text) => {
 };
 const skeleton = (n = 8) => `<div class="grid">${'<div class="card sk"><div class="card-pic"></div><i></i><i></i><i class="short"></i></div>'.repeat(n)}</div>`;
 
+// ---------- motion ----------
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** Cards, sections and pictures ease in as they come into view (new ones too, as pages fill in). */
+const io = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    e.target.classList.add('in');
+    io.unobserve(e.target);
+  }
+}, { rootMargin: '0px 0px -6% 0px', threshold: 0.06 }) : null;
+const REVEAL = '.card, .tile, .brand-tile, .trust > div, .circle, .sec-head, .help-box, .panel, .cline, .mine-row, .note, .perks, .desc, .side, .done-box';
+function motion(root = view) {
+  if (calm || !io) return;
+  // Items in the same row come in one after another
+  const fresh = [...root.querySelectorAll(REVEAL)].filter((el) => !el.dataset.rv);
+  const groups = new Map();
+  for (const el of fresh) {
+    el.dataset.rv = '1';
+    el.classList.add('rv');
+    const parent = el.parentElement;
+    const i = groups.get(parent) || 0;
+    groups.set(parent, i + 1);
+    el.style.setProperty('--d', `${Math.min(i, 8) * 55}ms`);
+    io.observe(el);
+  }
+  root.querySelectorAll('img:not([data-ld])').forEach((img) => {
+    img.dataset.ld = '1';
+    if (img.complete && img.naturalWidth) return img.classList.add('ld');
+    img.classList.add('fading');
+    img.addEventListener('load', () => img.classList.add('ld'), { once: true });
+    img.addEventListener('error', () => img.classList.add('ld'), { once: true });
+  });
+}
+if (!calm && 'MutationObserver' in window) {
+  let t = null;
+  new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { motion(view); motion($('#drawer-body')); }, 16); })
+    .observe(document.body, { childList: true, subtree: true });
+}
+/** A little picture flies from the button to the cart. */
+function fly(from) {
+  if (calm || !from) return;
+  const target = [...document.querySelectorAll('[data-open-cart]')].find((b) => b.offsetParent !== null);
+  if (!target) return;
+  const a = from.getBoundingClientRect(), b = target.getBoundingClientRect();
+  const dot = document.createElement('div');
+  dot.className = 'fly-dot';
+  dot.style.left = `${a.left + a.width / 2 - 14}px`;
+  dot.style.top = `${a.top + a.height / 2 - 14}px`;
+  document.body.append(dot);
+  const dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
+  dot.animate([
+    { transform: 'translate(0,0) scale(1)', opacity: 1 },
+    { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 80}px) scale(1.1)`, opacity: 1, offset: 0.5 },
+    { transform: `translate(${dx}px, ${dy}px) scale(.35)`, opacity: 0.4 },
+  ], { duration: 650, easing: 'cubic-bezier(.5,0,.3,1)' }).onfinish = () => dot.remove();
+}
+const pop = (el, cls = 'pop') => { if (!el || calm) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+
 // ---------- favourites, recently viewed ----------
 const FAV = 'mm_shop_fav';
 const SEEN = 'mm_shop_seen';
@@ -106,13 +164,13 @@ function toggleFav(id) {
   const list = favs();
   const on = !list.includes(id);
   write(FAV, on ? [id, ...list].slice(0, 100) : list.filter((x) => x !== id));
-  $$(`[data-fav="${id}"]`).forEach((b) => b.classList.toggle('on', on));
+  $$(`[data-fav="${id}"]`).forEach((b) => { b.classList.toggle('on', on); if (on) pop(b); });
   drawFavCount();
   toast(on ? 'اتضاف للمفضلة ♥' : 'اتشال من المفضلة', on);
 }
 function drawFavCount() {
   const n = favs().length;
-  $$('.fav-count').forEach((b) => { b.textContent = n; b.hidden = !n; });
+  $$('.fav-count').forEach((b) => { if (b.textContent !== String(n)) pop(b, 'bump'); b.textContent = n; b.hidden = !n; });
 }
 const seen = (id) => write(SEEN, [id, ...read(SEEN, []).filter((x) => x !== id)].slice(0, 12));
 document.addEventListener('click', (e) => {
@@ -129,7 +187,7 @@ const cart = () => read(CART, []);
 function setCart(c) {
   write(CART, c);
   const n = c.reduce((s, l) => s + l.qty, 0);
-  $$('.count').forEach((b) => { b.textContent = n; b.hidden = !n; });
+  $$('.count:not(.fav-count)').forEach((b) => { if (b.textContent !== String(n) && n) pop(b, 'bump'); b.textContent = n; b.hidden = !n; });
   $$('.card .qty-mini').forEach((el) => drawMini(el));
 }
 async function loadCatalog(force = false) {
@@ -238,7 +296,7 @@ function wireCards(root) {
     const mini = e.target.closest('.qty-mini');
     if (!mini) return;
     const id = Number(mini.dataset.id);
-    if (e.target.closest('.add')) addToCart(id);
+    if (e.target.closest('.add')) { fly(mini.closest('.card')?.querySelector('.card-pic') || mini); addToCart(id); }
     const d = e.target.closest('[data-d]');
     if (d) changeQty(id, Number(d.dataset.d));
   });
@@ -446,7 +504,7 @@ async function product(id) {
   const qty = $('#qty');
   const n = () => Math.max(1, parseInt(qty?.value, 10) || 1);
   view.querySelectorAll('.buy [data-d]').forEach((b) => b.addEventListener('click', () => { qty.value = Math.max(1, n() + Number(b.dataset.d)); }));
-  $('#add')?.addEventListener('click', () => addToCart(p.id, n(), { open: true }));
+  $('#add')?.addEventListener('click', () => { fly($('.gallery')); setTimeout(() => addToCart(p.id, n(), { open: true }), calm ? 0 : 420); });
   $('#add2')?.addEventListener('click', () => addToCart(p.id, n(), { open: true }));
   $('#buy-now')?.addEventListener('click', () => { addToCart(p.id, n()); location.hash = '#/checkout'; });
   $('#share').addEventListener('click', async () => {
@@ -692,7 +750,7 @@ async function route() {
   const query = new URLSearchParams(qs);
   const parts = path.split('/').filter(Boolean);
   document.title = info?.title || 'المتجر';
-  window.scrollTo(0, 0);
+  window.scrollTo({ top: 0, behavior: 'instant' });
   $('#toast').hidden = true;
   closeCart();
   // Highlight where we are
@@ -701,6 +759,7 @@ async function route() {
   const tab = !parts.length ? 'home' : parts[0] === 'cats' ? 'cats' : query.get('deals') ? 'deals' : ['mine', 'order', 'track'].includes(parts[0]) ? 'mine' : '';
   $$('#bottom-nav [data-tab]').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   document.body.dataset.page = parts[0] || 'home';
+  if (!calm) { view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter'); }
   try {
     if (!info.enabled && parts[0] !== 'order') { view.innerHTML = `<div class="empty big">${svg('store', 52)}<span>المتجر مقفول دلوقتي — ارجعلنا قريب</span></div>`; return; }
     if (parts[0] === 'p') await product(parts[1]);
