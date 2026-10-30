@@ -64,6 +64,36 @@ const BATCHES = [
       { name: 'Apple 20W USB-C Power Adapter (US Flat Pin)', brand: 'Apple', cat: 'شواحن وكابلات', qty: 5 },
     ],
   },
+  {
+    id: '2026-10-30-anker-momax',
+    brands: ['Anker', 'Momax', 'mophie', 'Belkin'],
+    products: [
+      { name: 'mophie essentials 20W USB-C PD Wall Adapter', brand: 'mophie', cat: 'شواحن وكابلات', qty: 5 },
+      { name: 'Belkin BoostCharge Compact 20W USB-C Wall Charger', brand: 'Belkin', cat: 'شواحن وكابلات', qty: 2 },
+      { name: 'Momax ONEPLUG 30W GaN USB-C Charger', brand: 'Momax', cat: 'شواحن وكابلات', qty: 4 },
+      { name: 'Momax 1-Charge 20W USB-C Charger', brand: 'Momax', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'Anker Zolo 10000mAh 22.5W Power Bank (Built-in USB-C Cable)', brand: 'Anker', cat: 'إكسسوارات', qty: 1 },
+      { name: 'Anker OTG Lightning Male to USB 3.0 Adapter', brand: 'Anker', cat: 'إكسسوارات', qty: 3 },
+      { name: 'Anker 60W USB-C to USB-C Braided Cable 3.3ft', brand: 'Anker', cat: 'شواحن وكابلات', qty: 3 },
+      { name: 'Anker USB-A to USB-C Braided Cable 6ft', brand: 'Anker', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'Anker 20W USB-C Charger', brand: 'Anker', cat: 'شواحن وكابلات', qty: 2 },
+      { name: 'Anker 100W USB-C to USB-C Braided Cable 3.3ft', brand: 'Anker', cat: 'شواحن وكابلات', qty: 2 },
+    ],
+  },
+  {
+    id: '2026-10-30-vidvie',
+    brands: ['VIDVIE'],
+    products: [
+      { name: 'VIDVIE HC1520 Mini Magnetic Phone Car Holder', brand: 'VIDVIE', cat: 'إكسسوارات', qty: 3 },
+      { name: 'VIDVIE AL1129 Lanyard Type-C OTG Adapter', brand: 'VIDVIE', cat: 'إكسسوارات', qty: 2 },
+      { name: 'VIDVIE Type-C to 3.5mm Aux Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 2 },
+      { name: 'VIDVIE 30W Transparent Type-C & USB Fast Car Charger', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 3 },
+      { name: 'VIDVIE 3-in-1 Braided Aux Cable (3.5mm/Lightning/Type-C)', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'VIDVIE Lightning to 3.5mm Aux Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 2 },
+      { name: 'VIDVIE Pure Music 3.5mm Stereo Aux Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 5 },
+      { name: 'VIDVIE 65W Multifunctional 2-in-2 Data Cable', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 2 },
+    ],
+  },
 ];
 
 function applyStockBatches(db, batches = BATCHES) {
