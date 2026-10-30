@@ -51,6 +51,7 @@ module.exports = function productRoutes(api, db) {
       description: has('description') ? str(body.description, 'الوصف', { optional: true, max: 2000 }) : existing.description ?? null,
       online_hidden: has('online_hidden') ? (body.online_hidden && body.online_hidden !== '0' ? 1 : 0) : existing.online_hidden ?? 0,
       online_show: has('online_show') ? (body.online_show && body.online_show !== '0' ? 1 : 0) : existing.online_show ?? 0,
+      compare_price: has('compare_price') ? num(body.compare_price, 'السعر قبل الخصم', { min: 0, optional: true }) || null : existing.compare_price ?? null,
     };
     if (f.brand) {
       // Brands come from the list, written exactly as saved there
@@ -143,10 +144,10 @@ module.exports = function productRoutes(api, db) {
 
     const id = tx(db, () => {
       const r = db.prepare(`INSERT INTO products (name, brand, category_id, barcode, cost_price, sell_price, min_qty, has_serial, notes, warranty_days,
-          description, online_hidden, online_show)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          description, online_hidden, online_show, compare_price)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(f.name, f.brand, f.category_id, f.barcode, f.cost_price, f.sell_price, f.min_qty, hasSerial, f.notes, f.warranty_days,
-          f.description, f.online_hidden, f.online_show);
+          f.description, f.online_hidden, f.online_show, f.compare_price);
       const id = Number(r.lastInsertRowid);
       if (!f.barcode) db.prepare('UPDATE products SET barcode = ? WHERE id = ?').run(autoBarcode(id), id);
       const product = getProduct(id);
@@ -165,9 +166,9 @@ module.exports = function productRoutes(api, db) {
     const barcode = f.barcode || autoBarcode(existing.id);
     const active = req.body.active !== undefined ? (req.body.active ? 1 : 0) : existing.active;
     db.prepare(`UPDATE products SET name=?, brand=?, category_id=?, barcode=?, cost_price=?, sell_price=?, min_qty=?, notes=?, active=?,
-                warranty_days=?, description=?, online_hidden=?, online_show=?, updated_at = datetime('now','localtime') WHERE id = ?`)
+                warranty_days=?, description=?, online_hidden=?, online_show=?, compare_price=?, updated_at = datetime('now','localtime') WHERE id = ?`)
       .run(f.name, f.brand, f.category_id, barcode, f.cost_price, f.sell_price, f.min_qty, f.notes, active, f.warranty_days,
-        f.description, f.online_hidden, f.online_show, existing.id);
+        f.description, f.online_hidden, f.online_show, f.compare_price, existing.id);
     if (existing.sell_price !== f.sell_price) {
       audit(db, req.user.id, 'product.price', { id: existing.id, from: existing.sell_price, to: f.sell_price });
     }

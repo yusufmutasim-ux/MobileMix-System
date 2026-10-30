@@ -56,6 +56,7 @@ export async function storeSettings(card) {
         <label class="field"><span>المنتجات اللي تظهر</span><select class="input" data-k="store_products">
           <option value="auto" ${st.store_products !== 'manual' ? 'selected' : ''}>كل منتج ليه سعر (وتقدر تخفي أي منتج)</option>
           <option value="manual" ${st.store_products === 'manual' ? 'selected' : ''}>اللي أعلّم عليه بس</option></select></label>
+        <label class="field"><span>شحن مجاني للطلبات فوق (0 = لأ)</span><input class="input num" type="number" min="0" data-k="store_free_ship" value="${esc(st.store_free_ship || '0')}"></label>
         <label class="field"><span>أقل قيمة للطلب</span><input class="input num" type="number" min="0" data-k="store_min_order" value="${esc(st.store_min_order || '0')}"></label>
         ${tick('store_show_out', 'اعرض المنتجات اللي خلصت', 'بتظهر مكتوب عليها "نفد"')}
         <p class="muted small full" style="margin:0">موبايلات الـ IMEI مش بتظهر في الموقع. صورة المنتج ووصفه من صفحة المنتج نفسه.</p>

@@ -198,3 +198,24 @@ test('store look: banners, category pictures and the front page', async () => {
   const cheap = (await shopper.get('/store/products?sort=price_asc')).data;
   assert.ok(cheap.every((p, i) => i === 0 || !p.in_stock || !cheap[i - 1].in_stock || cheap[i - 1].price <= p.price));
 });
+
+test('store extras: offers with the old price, similar products, free delivery above an amount', async () => {
+  const cable = (await admin.get('/products?q=Cable')).data.find((p) => p.name === 'Cable');
+  await admin.put(`/products/${cable.id}`, { compare_price: 125 });
+  const p = (await shopper.get(`/store/products/${cable.id}`)).data;
+  assert.equal(p.old_price, 125);
+  assert.equal(p.off, 20);
+  assert.ok(Array.isArray(p.related));
+  const home = (await shopper.get('/store/home')).data;
+  assert.ok(home.deals.some((d) => d.id === cable.id));
+  assert.ok(Array.isArray(home.best) && Array.isArray(home.brands));
+  assert.ok((await shopper.get('/store/products?deals=1')).data.every((d) => d.old_price));
+
+  await admin.put('/settings', { store_free_ship: '150' });
+  assert.equal((await shopper.get('/store/info')).data.free_ship, 150);
+  const r = await shopper.post('/store/orders', { name: 'Free', phone: '01055555555', items: [{ id: cable.id, qty: 2 }], delivery: 'ship', governorate: 'القاهرة', address: 'x', payment: 'cod' });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  const o = (await shopper.get(`/store/orders/${r.data.token}`)).data;
+  assert.equal(o.delivery_fee, 0);
+  assert.equal(o.total, 200);
+});

@@ -36,10 +36,14 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
   const visible = (st) => `p.active = 1 AND p.has_serial = 0 AND p.sell_price > 0
     AND ${st.store_products === 'manual' ? 'p.online_show = 1' : 'p.online_hidden = 0'}
     ${on(st.store_show_out) ? '' : 'AND p.qty > 0'}`;
-  const productOut = (p) => ({
-    id: p.id, name: p.name, brand: p.brand, category_id: p.category_id, category: p.category_name, price: p.sell_price,
-    in_stock: p.qty > 0, left: p.qty > 0 && p.qty <= 3 ? p.qty : null, image: p.image ? `/uploads/${p.image}` : null, description: p.description || '',
-  });
+  const productOut = (p) => {
+    const old = p.compare_price > p.sell_price ? p.compare_price : null;
+    return {
+      id: p.id, name: p.name, brand: p.brand, category_id: p.category_id, category: p.category_name, price: p.sell_price,
+      old_price: old, off: old ? Math.round((1 - p.sell_price / old) * 100) : 0, warranty_days: p.warranty_days || 0,
+      in_stock: p.qty > 0, left: p.qty > 0 && p.qty <= 3 ? p.qty : null, image: p.image ? `/uploads/${p.image}` : null, description: p.description || '',
+    };
+  };
   const SELECT = 'SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id';
 
   /** Save an uploaded picture (data URL) under uploads/<dir>; returns its path inside uploads. */
@@ -71,7 +75,7 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
       enabled: on(st.store_enabled),
       title: st.store_title || st.shop_name || 'Mobile Mix',
       about: st.store_about || '', whatsapp: st.store_whatsapp || '', phone: st.shop_phone || '', address: st.shop_address || '',
-      currency: st.currency || 'ج.م', min_order: Number(st.store_min_order) || 0,
+      currency: st.currency || 'ج.م', min_order: Number(st.store_min_order) || 0, free_ship: Number(st.store_free_ship) || 0,
       payments: {
         cod: on(st.store_pay_cod),
         transfer: on(st.store_pay_transfer) ? { info: st.store_transfer_info || '' } : null,
@@ -99,7 +103,16 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
       id: c.id, name: c.name,
       products: db.prepare(`${SELECT} WHERE ${visible(st)} AND p.category_id = ? ${order} LIMIT 12`).all(c.id).map(productOut),
     }));
-    res.json({ latest, sections });
+    // On offer: a price before discount that's higher than today's
+    const deals = db.prepare(`${SELECT} WHERE ${visible(st)} AND p.compare_price > p.sell_price AND p.qty > 0
+      ORDER BY (1 - p.sell_price / p.compare_price) DESC LIMIT 12`).all().map(productOut);
+    // Best sellers over the last two months (shop and online together)
+    const best = db.prepare(`${SELECT} JOIN (SELECT si.product_id, SUM(si.qty - si.returned_qty) AS sold FROM sale_items si JOIN sales s ON s.id = si.sale_id
+        WHERE s.created_at >= datetime('now','localtime','-60 days') GROUP BY si.product_id) t ON t.product_id = p.id
+      WHERE ${visible(st)} AND p.qty > 0 AND t.sold > 0 ORDER BY t.sold DESC LIMIT 12`).all().map(productOut);
+    const brands = db.prepare(`SELECT p.brand AS name, COUNT(*) AS n FROM products p WHERE ${visible(st)} AND p.brand IS NOT NULL AND p.brand <> ''
+      GROUP BY p.brand ORDER BY n DESC LIMIT 24`).all();
+    res.json({ latest, sections, deals, best, brands });
   });
 
   api.get('/store/products', (req, res) => {
@@ -110,8 +123,9 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
     const q = String(req.query.q || '').trim();
     if (q) { where.push('(p.name LIKE ? OR p.brand LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
     if (req.query.brand) { where.push('p.brand = ? COLLATE NOCASE'); params.push(String(req.query.brand)); }
+    if (req.query.deals === '1') where.push('p.compare_price > p.sell_price');
     const sort = { price_asc: 'p.sell_price ASC', price_desc: 'p.sell_price DESC', new: 'p.id DESC' }[req.query.sort] || '(p.image IS NOT NULL) DESC, p.updated_at DESC';
-    const rows = db.prepare(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY (p.qty > 0) DESC, ${sort} LIMIT 400`).all(...params);
+    const rows = db.prepare(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY (p.qty > 0) DESC, ${sort} LIMIT ${Math.min(Number(req.query.limit) || 400, 400)}`).all(...params);
     res.json(rows.map(productOut));
   });
 
@@ -119,7 +133,9 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
     const st = openStore();
     const p = db.prepare(`${SELECT} WHERE p.id = ? AND ${visible(st)}`).get(Number(req.params.id));
     if (!p) throw notFound('المنتج ده مش موجود');
-    res.json(productOut(p));
+    const related = db.prepare(`${SELECT} WHERE ${visible(st)} AND p.id <> ? AND (p.category_id IS ? OR p.brand = ?)
+      ORDER BY (p.category_id IS ?) DESC, (p.qty > 0) DESC, (p.image IS NOT NULL) DESC, p.id DESC LIMIT 10`).all(p.id, p.category_id, p.brand || '', p.category_id).map(productOut);
+    res.json({ ...productOut(p), related });
   });
 
   // A few orders per hour from one address, so nobody floods the shop with fake orders
@@ -178,6 +194,8 @@ module.exports = function storeRoutes(api, db, { dataDir }) {
         lines.push({ p, qty, total: round2(p.sell_price * qty) });
       }
       const subtotal = round2(lines.reduce((s, l) => s + l.total, 0));
+      const freeAt = Number(st.store_free_ship) || 0;
+      if (freeAt > 0 && subtotal >= freeAt) fee = 0; // free delivery above the shop's amount
       const min = Number(st.store_min_order) || 0;
       if (subtotal < min) throw bad(`أقل طلب ${min} ${st.currency || 'ج.م'}`);
       const token = crypto.randomBytes(16).toString('hex');

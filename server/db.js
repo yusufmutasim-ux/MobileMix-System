@@ -470,6 +470,7 @@ const DEFAULT_SETTINGS = {
   store_pickup: '1',
   store_min_order: '0',
   store_domain: '',
+  store_free_ship: '0',           // orders above this ship free (0 = off)
   store_strip: '',                 // offers line across the top of the store
   store_strip_color: '#141414',
   installment_reminders: '1',
@@ -553,7 +554,8 @@ function addMissingColumns(db) {
     categories: ['image TEXT'],                       // picture for the store's category circles
     products: ['warranty_days INTEGER NOT NULL DEFAULT 0',
       // Online store: picture, description, and whether it shows (hidden in auto mode / chosen in manual mode)
-      'image TEXT', 'description TEXT', 'online_hidden INTEGER NOT NULL DEFAULT 0', 'online_show INTEGER NOT NULL DEFAULT 0'],
+      'image TEXT', 'description TEXT', 'online_hidden INTEGER NOT NULL DEFAULT 0', 'online_show INTEGER NOT NULL DEFAULT 0',
+      'compare_price REAL'],                           // price before discount, shown crossed out in the store
     sale_items: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
     users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0',
       // Work schedule: from / to (HH:MM) and the week days they work (0 = Sunday … 6 = Saturday)

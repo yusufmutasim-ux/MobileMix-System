@@ -168,6 +168,7 @@ async function productForm(cats, p = null, guess = null) {
             <button type="button" class="btn btn-ghost btn-sm ${p?.image || guess?.photo ? '' : 'hidden'}" id="img-del">${icon('trash')} شيل الصورة</button>
           </div>
         </div>
+        <label class="field" style="margin-top:10px"><span>السعر قبل الخصم (اختياري)</span><input class="input num" type="number" min="0" step="any" name="compare_price" value="${p?.compare_price ?? ''}" placeholder="يظهر مشطوب ويتحط في العروض"></label>
         <label class="field full" style="margin-top:10px"><span>وصف يظهر في الموقع (اختياري)</span><textarea class="input" name="description" rows="2" dir="auto">${esc(p?.description || '')}</textarea></label>
         <label class="check full" style="margin-top:8px"><input type="checkbox" name="online" ${(state.settings.store_products === 'manual' ? p?.online_show : !p?.online_hidden) ? 'checked' : ''}> يظهر في المتجر الأونلاين ${state.settings.store_products === 'manual' ? '' : '<span class="muted small">(لو ليه سعر وفيه كمية)</span>'}</label>
       </div>
