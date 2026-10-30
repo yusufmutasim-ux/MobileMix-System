@@ -22,6 +22,22 @@ const BATCHES = [
       { name: 'SENDEM OG02 3.1A Single USB Travel Charger (Type-C)', brand: 'SENDEM', cat: 'شواحن وكابلات', qty: 2 },
     ],
   },
+  {
+    id: '2026-10-30-joyroom',
+    brands: ['JOYROOM', 'ACEFAST'],
+    products: [
+      { name: 'JOYROOM 10000mAh 22.5W Mini Digital Display Power Bank', brand: 'JOYROOM', cat: 'إكسسوارات', qty: 2 },
+      { name: 'JOYROOM Lightning Male to USB Female OTG Adapter', brand: 'JOYROOM', cat: 'إكسسوارات', qty: 8 },
+      { name: 'JOYROOM 60W Type-C to Type-C Cable (White)', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'JOYROOM 3-in-1 Charging Cable 3.5A 1.2m (Type-C/Lightning/Micro)', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'JOYROOM 60W Type-C to Type-C Braided Cable 1.2m (Blue)', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'JOYROOM 60W Type-C to Type-C Braided Cable 1.2m (Black)', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 1 },
+      { name: 'JOYROOM PD 20W Mini Fast Charger Kit (Type-C to Type-C)', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 3 },
+      { name: 'JOYROOM PD 20W Fast Charger Kit (Type-C to Lightning)', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 4 },
+      { name: 'ACEFAST Universal Capacitive Stylus Pen', brand: 'ACEFAST', cat: 'إكسسوارات', qty: 2 },
+      { name: 'JOYROOM 20W Dual-Port (2C) Charger', brand: 'JOYROOM', cat: 'شواحن وكابلات', qty: 2 },
+    ],
+  },
 ];
 
 function applyStockBatches(db, batches = BATCHES) {
