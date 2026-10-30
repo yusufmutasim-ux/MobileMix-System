@@ -2,7 +2,7 @@
 // API calls are never cached here (the app keeps the last answers itself, see js/offline.js).
 // App files are fetched fresh when possible and kept as a fallback, so the app still opens
 // with no internet: the till keeps selling and the sales upload when it's back.
-const VERSION = 'mm-v32';
+const VERSION = 'mm-v33';
 const SHELL = [
   '/', '/offline.html', '/css/app.css', '/brand/logo.svg', '/brand/logo-dark-text.svg', '/brand/mark.svg', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png',
   '/js/app.js', '/js/core.js', '/js/print.js',

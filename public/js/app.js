@@ -3,6 +3,7 @@ import { enterView, softly } from './motion.js';
 import { initShift, initNotifications } from './live.js';
 import { openSearch, initSearchKeys } from './search.js';
 import { addCameraButton } from './camera.js';
+import { startPrintStation } from './print.js';
 import { initOffline, isOffline, outbox, sync, dropQueued, retryQueued, cacheClear } from './offline.js';
 
 const NAV = [
@@ -104,6 +105,7 @@ async function route() {
     shell();
     initShift();
     initNotifications();
+    startPrintStation();
   }
 
   document.querySelectorAll('.nav a, .tabbar a, .topnav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + item.path));

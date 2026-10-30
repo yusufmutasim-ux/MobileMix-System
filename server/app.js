@@ -7,7 +7,7 @@ const hosting = require('./hosting');
 const { createNotifier } = require('./notify');
 
 // Bump with every release so it's easy to see which version a shop is running
-const BUILD = '2026.10.25-offline1';
+const BUILD = '2026.10.30-print1';
 
 function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSender } = {}) {
   const app = express();
@@ -56,6 +56,7 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
   require('./routes/customers')(api, db);
   require('./routes/payroll')(api, db);
   require('./routes/search')(api, db);
+  require('./routes/printing')(api, db);
   api.use((_req, res) => res.status(404).json({ error: 'غير موجود' }));
   app.use('/api', api);
 

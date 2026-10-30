@@ -1,5 +1,5 @@
 // Invoice and price-label printing. Everything is rendered into #print-root and printed with the browser.
-import { esc, n, state, fmtDate, PAY_NAMES } from './core.js';
+import { esc, n, state, fmtDate, PAY_NAMES, api, icon, modal, toast, toastErr } from './core.js';
 
 export const LABEL_SIZES = {
   '38x25': { w: 38, h: 25, name: '38 × 25 مم' },
@@ -99,7 +99,7 @@ export function invoiceHtml(sale, size = state.settings.invoice_size || '80mm') 
   </div>`;
 }
 
-export function printInvoice(sale, size) {
+function printInvoiceHere(sale, size) {
   size = size || state.settings.invoice_size || '80mm';
   const page = size === 'a4' ? '@page { size: A4; margin: 10mm; }' : '@page { size: 80mm auto; margin: 0; }';
   return doPrint(invoiceHtml(sale, size), page);
@@ -121,7 +121,7 @@ export function labelHtml(p, sizeKey) {
 }
 
 /** items: [{ product, copies }] */
-export function printLabels(items, sizeKey) {
+function printLabelsHere(items, sizeKey) {
   const sz = LABEL_SIZES[sizeKey] || LABEL_SIZES['38x25'];
   const labels = [];
   for (const { product, copies } of items) for (let i = 0; i < copies; i++) labels.push(labelHtml(product, sizeKey));
@@ -187,7 +187,7 @@ export function repairReceiptHtml(r, kind = 'intake', size = state.settings.invo
   </div>`;
 }
 
-export function printRepairReceipt(r, kind, size) {
+function printRepairReceiptHere(r, kind, size) {
   size = size || state.settings.invoice_size || '80mm';
   const page = size === 'a4' ? '@page { size: A4; margin: 10mm; }' : '@page { size: 80mm auto; margin: 0; }';
   return doPrint(repairReceiptHtml(r, kind, size), page);
@@ -206,8 +206,116 @@ export function repairStickerHtml(r, sizeKey = state.settings.label_size || '38x
   </div>`;
 }
 
-export function printRepairSticker(r, sizeKey) {
+function printRepairStickerHere(r, sizeKey) {
   sizeKey = LABEL_SIZES[sizeKey] && !LABEL_SIZES[sizeKey].sheet ? sizeKey : (LABEL_SIZES[state.settings.label_size]?.sheet ? '38x25' : state.settings.label_size || '38x25');
   const sz = LABEL_SIZES[sizeKey];
   return doPrint(repairStickerHtml(r, sizeKey), `@page { size: ${sz.w}mm ${sz.h}mm; margin: 0; }`);
+}
+
+// ---------------- Printing from a phone on the shop computer's printer ----------------
+// Each device chooses (Settings → الطباعة):
+//   local   — print from this device (its own printer)
+//   remote  — send to the printing computer
+//   station — this is the computer with the printer: it prints what the phones send
+const MODE_KEY = 'mm_print_mode';
+const HERE = { invoice: printInvoiceHere, labels: printLabelsHere, repair_receipt: printRepairReceiptHere, repair_sticker: printRepairStickerHere };
+const KIND_NAMES = { invoice: 'فاتورة', labels: 'ليبلات', repair_receipt: 'إيصال صيانة', repair_sticker: 'ستيكر صيانة' };
+
+export function printMode() {
+  try { const m = localStorage.getItem(MODE_KEY); if (m) return m; } catch { /* ignore */ }
+  return matchMedia('(pointer: coarse)').matches ? 'remote' : 'local'; // phones send to the computer by default
+}
+export function setPrintMode(m) {
+  try { localStorage.setItem(MODE_KEY, m); } catch { /* ignore */ }
+}
+
+async function send(kind, args) {
+  if (printMode() !== 'remote') return HERE[kind](...args);
+  try {
+    const st = await api.get('/print-jobs/status');
+    if (!st.online) {
+      const choice = await modal({
+        title: 'جهاز الطباعة مش فاتح',
+        body: `<p style="margin-top:0">الكمبيوتر اللي عليه الطابعة مش فاتح السيستم دلوقتي.</p>
+          <p class="muted small" style="margin:0">تقدر تبعتها وهي تتطبع لوحدها أول ما يتفتح (خلال نص ساعة)، أو تطبع من الجهاز ده.</p>`,
+        foot: `<button class="btn btn-outline" data-here>${icon('print')} اطبع من هنا</button><button class="btn btn-primary" data-queue>ابعتها للكمبيوتر</button>`,
+        onMount: (m, close) => {
+          m.querySelector('[data-here]').addEventListener('click', () => close('here'));
+          m.querySelector('[data-queue]').addEventListener('click', () => close('queue'));
+        },
+      });
+      if (choice === 'here') return HERE[kind](...args);
+      if (choice !== 'queue') return;
+    }
+    await api.post('/print-jobs', { kind, args });
+    toast(st.online ? `اتبعتت للطابعة على الكمبيوتر 🖨️` : 'هتتطبع أول ما جهاز الطباعة يتفتح', 'ok');
+  } catch (e) {
+    if (e.offline) return HERE[kind](...args); // no internet: only this device can print
+    toastErr(e);
+  }
+}
+
+export const printInvoice = (sale, size) => send('invoice', [sale, size ?? null]);
+export const printLabels = (items, sizeKey) => send('labels', [items, sizeKey ?? null]);
+export const printRepairReceipt = (r, kind, size) => send('repair_receipt', [r, kind ?? 'intake', size ?? null]);
+export const printRepairSticker = (r, sizeKey) => send('repair_sticker', [r, sizeKey ?? null]);
+
+/** On the printing computer: stay connected and print every job that arrives, one after another. */
+export function startPrintStation() {
+  if (printMode() !== 'station' || !window.EventSource) return;
+  let chain = Promise.resolve();
+  const es = new EventSource('/api/print-jobs/stream?name=' + encodeURIComponent(state.user?.full_name || ''));
+  es.addEventListener('job', (e) => {
+    const job = JSON.parse(e.data);
+    chain = chain.then(async () => {
+      const r = await api.post(`/print-jobs/${job.id}/take`);
+      if (!r.ok || !HERE[job.kind]) return;
+      toast(`🖨️ بيطبع ${KIND_NAMES[job.kind]}${job.from ? ` من ${job.from}` : ''}`, 'ok');
+      await HERE[job.kind](...job.args);
+      await new Promise((ok) => setTimeout(ok, 1500));
+    }).catch(() => {});
+  });
+  window.addEventListener('beforeunload', () => es.close());
+  document.body.classList.add('print-station');
+}
+
+/** Settings card: how this device prints. */
+export async function printSettings(card) {
+  const draw = async () => {
+    const mode = printMode();
+    let st = { online: false, names: [] };
+    try { st = await api.get('/print-jobs/status'); } catch { /* ignore */ }
+    const opt = (v, title, sub) => `<label class="print-opt ${mode === v ? 'on' : ''}"><input type="radio" name="pmode" value="${v}" ${mode === v ? 'checked' : ''}>
+      <span><b>${title}</b><small class="muted">${sub}</small></span></label>`;
+    const link = `${location.origin}/`;
+    card.innerHTML = `
+      <div class="card-head"><h2>${icon('print')} الطباعة على الجهاز ده</h2>
+        <span class="pill ${st.online ? 'pill-ok' : 'pill-gray'}">${st.online ? `جهاز الطباعة شغال${st.names.length ? ` — ${esc(st.names.join('، '))}` : ''}` : 'مفيش جهاز طباعة فاتح دلوقتي'}</span></div>
+      <div class="print-opts">
+        ${opt('remote', 'ابعت الطباعة للكمبيوتر', 'أي فاتورة أو ليبل تطبعه من هنا يطلع من الطابعة اللي على كمبيوتر المحل')}
+        ${opt('station', 'الجهاز ده هو جهاز الطباعة', 'الكمبيوتر اللي الطابعة متوصلة بيه: بيطبع لوحده اللي بيتبعت من الموبايلات')}
+        ${opt('local', 'اطبع من الجهاز ده', 'لو الطابعة متوصلة بالجهاز ده نفسه')}
+      </div>
+      ${mode === 'station' ? `<div class="print-help">
+        <b>عشان يطبع لوحده من غير ما يسألك كل مرة:</b>
+        <ol>
+          <li>خلي طابعة الكاشير هي الطابعة الافتراضية في ويندوز (Settings ← Printers ← Set as default).</li>
+          <li>اعمل اختصار (Shortcut) على الديسكتوب لكروم، ومن Properties حط في الـ Target بعد <span class="ltr">chrome.exe</span>:
+            <div class="copy-row"><code class="ltr" id="kiosk-cmd">--kiosk-printing --app=${esc(link)}</code><button class="btn btn-outline btn-sm" type="button" id="copy-kiosk">نسخ</button></div></li>
+          <li>اقفل كروم خالص وافتح السيستم من الاختصار ده، وسيب الصفحة مفتوحة طول اليوم.</li>
+        </ol>
+        <button class="btn btn-outline btn-sm" type="button" id="test-print">${icon('print')} اطبع ورقة تجربة</button>
+      </div>` : ''}`;
+    card.querySelectorAll('input[name=pmode]').forEach((r) => r.addEventListener('change', () => {
+      setPrintMode(r.value);
+      toast(r.value === 'station' ? 'الجهاز ده بقى جهاز الطباعة' : 'اتحفظ', 'ok');
+      if (r.value === 'station') { startPrintStation(); setTimeout(draw, 800); } else if (document.body.classList.contains('print-station')) location.reload();
+      else draw();
+    }));
+    card.querySelector('#copy-kiosk')?.addEventListener('click', () => {
+      navigator.clipboard?.writeText(card.querySelector('#kiosk-cmd').textContent).then(() => toast('اتنسخ', 'ok'), () => {});
+    });
+    card.querySelector('#test-print')?.addEventListener('click', () => printLabelsHere([{ product: { name: 'ورقة تجربة — الطباعة شغالة ✓', sell_price: 0, barcode: '123456' }, copies: 1 }], null));
+  };
+  await draw();
 }

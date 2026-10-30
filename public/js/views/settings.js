@@ -1,5 +1,5 @@
 import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow, modal } from '../core.js';
-import { LABEL_SIZES } from '../print.js';
+import { LABEL_SIZES, printSettings } from '../print.js';
 import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition, locationPermission, locationHelp } from '../live.js';
 
 const AUDIT_NAMES = {
@@ -100,6 +100,7 @@ export async function render(el, { query } = {}) {
         </form>
       </div>` : ''}` },
 
+    { id: 'print', label: 'الطباعة', icon: 'print', desc: 'الطباعة من الموبايل على طابعة الكمبيوتر', html: '<div class="card" id="print-card"><div class="empty">…</div></div>' },
     { id: 'account', label: 'حسابي', icon: 'key', desc: 'كلمة السر والأجهزة المتصلة', html: `
       <div class="card">
         <div class="card-head"><h2>${icon('key', '')} تغيير كلمة السر</h2></div>
@@ -298,6 +299,8 @@ export async function render(el, { query } = {}) {
   }
   loadZone().catch(toastErrLocal);
   loadSchedules().catch(toastErrLocal);
+  const pc = el.querySelector('#print-card');
+  if (pc) printSettings(pc).catch(toastErrLocal);
 
   // ---------- shift schedules: from – to and work days for each employee ----------
   async function loadSchedules() {

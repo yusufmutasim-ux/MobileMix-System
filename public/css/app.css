@@ -1554,3 +1554,15 @@ body:has(.login)::before { background: transparent; }
 .offline-note { display: flex; gap: 8px; align-items: flex-start; text-align: start; margin-top: 12px; padding: 10px 12px; border-radius: 14px;
   background: var(--t-blue-bg); color: var(--t-blue-fg); font-size: 13px; line-height: 1.6; }
 .offline-note svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+
+/* ---------- printing from a phone on the computer's printer ---------- */
+.print-opts { display: grid; gap: 8px; }
+.print-opt { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 18px; background: var(--t-gray-bg); cursor: pointer;
+  border: 2px solid transparent; transition: border-color .2s, background .2s; }
+.print-opt.on { border-color: var(--ink); background: transparent; }
+.print-opt input { margin-top: 4px; accent-color: var(--ink); }
+.print-opt span { display: grid; gap: 2px; }
+.print-help { margin-top: 14px; padding: 14px 16px; border-radius: 18px; background: var(--t-blue-bg); color: var(--t-blue-fg); font-size: 14px; line-height: 1.8; }
+.print-help ol { margin: 6px 0 12px; padding-inline-start: 20px; }
+.copy-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.copy-row code { direction: ltr; unicode-bidi: isolate; text-align: left; background: rgba(0,0,0,.06); padding: 6px 10px; border-radius: 10px; font-size: 12px; word-break: break-all; min-width: 0; flex: 1; }
