@@ -85,3 +85,47 @@ test('API: set a schedule, check-in is marked late, payroll counts it', async ()
   const pay = (await admin.get('/payroll')).data.rows.find((x) => x.id === u.id);
   assert.equal(pay.late_count, 1);
 });
+
+test('absences and lateness come off the salary automatically; excused days don\'t', () => {
+  const { absences } = require('../server/schedule');
+  const id = Number(db.prepare(`INSERT INTO users (username, full_name, password_hash, role, shift_start, shift_end, work_days, salary, schedule_since, created_at)
+    VALUES ('k1', 'كريم', 'x', 'cashier', '10:00', '18:00', '0123456', 3000, '2026-10-01', '2026-09-01 10:00:00')`).run().lastInsertRowid);
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  // Came on the 1st and 3rd only, between Oct 1 and Oct 5, looking from Oct 5 evening
+  db.prepare("INSERT INTO shifts (user_id, check_in_at) VALUES (?, '2026-10-01 10:05:00'), (?, '2026-10-03 10:40:00')").run(id, id);
+  db.prepare("UPDATE shifts SET late_minutes = 40 WHERE user_id = ? AND check_in_at LIKE '2026-10-03%'").run(id);
+  const now = new Date('2026-10-05T19:00:00');
+  assert.deepEqual(absences(db, u, '2026-10-01', '2026-10-31', now), ['2026-10-02', '2026-10-04', '2026-10-05']);
+  // Before the shift ends, today doesn't count yet
+  assert.deepEqual(absences(db, u, '2026-10-01', '2026-10-31', new Date('2026-10-05T12:00:00')), ['2026-10-02', '2026-10-04']);
+  db.prepare("INSERT INTO attendance_excuses (user_id, day) VALUES (?, '2026-10-04')").run(id);
+  assert.deepEqual(absences(db, u, '2026-10-01', '2026-10-31', now), ['2026-10-02', '2026-10-05']);
+  // Nothing before the shift was set
+  db.prepare("UPDATE users SET schedule_since = '2026-10-03' WHERE id = ?").run(id);
+  assert.deepEqual(absences(db, db.prepare('SELECT * FROM users WHERE id = ?').get(id), '2026-10-01', '2026-10-31', now), ['2026-10-05']);
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+});
+
+test('payroll: deduction = absent days × a day\'s pay + late days × a quarter; grace is 15 minutes', async () => {
+  assert.equal(db.prepare("SELECT value FROM settings WHERE key = 'late_grace'").get().value, '15');
+  assert.equal(lateMinutes(db, user('10:00', '18:00'), `${WED} 10:14:00`), 0);
+  assert.equal(lateMinutes(db, user('10:00', '18:00'), `${WED} 10:16:00`), 16);
+  const admin = client();
+  await admin.login('admin', 'admin123');
+  const month = new Date().toISOString().slice(0, 7);
+  const id = Number(db.prepare(`INSERT INTO users (username, full_name, password_hash, role, shift_start, shift_end, work_days, salary, schedule_since, created_at)
+    VALUES ('z1', 'زياد', 'x', 'cashier', '00:00', '00:01', '0123456', 3000, ?, ?)`).run(`${month}-01`, `${month}-01 00:00:00`).lastInsertRowid);
+  const row = (await admin.get(`/payroll?month=${month}`)).data.rows.find((r) => r.id === id);
+  assert.ok(row.absent_count >= 1);
+  assert.equal(row.deduction, Math.round(100 * row.absent_count * 100) / 100); // 3000/30 = 100 a day
+  assert.equal(row.due, 3000 - row.deduction);
+  // Excuse one day
+  await admin.post(`/payroll/${id}/excuse`, { day: row.absent_days[0] });
+  const after = (await admin.get(`/payroll?month=${month}`)).data.rows.find((r) => r.id === id);
+  assert.equal(after.absent_count, row.absent_count - 1);
+  // Switched off
+  await admin.put('/settings', { auto_deduct: '0' });
+  assert.equal((await admin.get(`/payroll?month=${month}`)).data.rows.find((r) => r.id === id).deduction, 0);
+  await admin.put('/settings', { auto_deduct: '1' });
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+});

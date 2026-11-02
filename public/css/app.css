@@ -1808,3 +1808,9 @@ tr.clickable { cursor: pointer; }
   .rep-print .table td::before { display: none !important; }
   .rep-print .grid.grid-4 { display: block !important; }
 }
+.att-list { display: grid; gap: 8px; }
+.att-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--t-red-bg); border-radius: 14px; padding: 10px 12px; }
+.att-row.ok { background: var(--t-gray-bg); opacity: .8; }
+.att-row span { display: flex; flex-direction: column; }
+.att-row small { color: var(--slate); font-size: 12px; }
+.att-link { text-decoration: none; }

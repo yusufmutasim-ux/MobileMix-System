@@ -116,6 +116,8 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     const days = [...new Set(String(b.work_days ?? '0123456').replace(/[^0-6]/g, ''))].sort().join('');
     if (start && !days) throw bad('اختار يوم شغل واحد على الأقل');
     db.prepare('UPDATE users SET shift_start = ?, shift_end = ?, work_days = ? WHERE id = ?').run(start || null, end || null, days || '0123456', u.id);
+    // Absences are counted from the day a shift is first set
+    if (start) db.prepare("UPDATE users SET schedule_since = date('now','localtime') WHERE id = ? AND schedule_since IS NULL").run(u.id);
     audit(db, req.user.id, 'user.schedule', { id: u.id, start, end, days });
     res.json(db.prepare('SELECT id, full_name, shift_start, shift_end, work_days FROM users WHERE id = ?').get(u.id));
   });

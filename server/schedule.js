@@ -56,4 +56,29 @@ function missingNow(db, now) {
   }).map((u) => ({ id: u.id, full_name: u.full_name, shift_start: u.shift_start, shift_end: u.shift_end, late: nowMin - toMin(u.shift_start) }));
 }
 
-module.exports = { TIME, scheduleOf, worksOn, lateMinutes, earlyMinutes, missingNow };
+/**
+ * Work days in [from, to] the person was due and didn't check in at all (excused days left out).
+ * Today only counts once their shift is over. Counting starts from when their shift was set.
+ */
+function absences(db, user, from, to, now = new Date()) {
+  const s = scheduleOf(user);
+  if (!s) return [];
+  const pad = (x) => String(x).padStart(2, '0');
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = iso(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const since = [from, user.schedule_since || today, String(user.created_at || '').slice(0, 10)].sort().pop();
+  const came = new Set(db.prepare('SELECT DISTINCT date(check_in_at) AS d FROM shifts WHERE user_id = ? AND date(check_in_at) BETWEEN ? AND ?').all(user.id, since, to).map((r) => r.d));
+  const excused = new Set(db.prepare('SELECT day FROM attendance_excuses WHERE user_id = ? AND day BETWEEN ? AND ?').all(user.id, since, to).map((r) => r.day));
+  const out = [];
+  for (let d = new Date(`${since}T12:00:00`); iso(d) <= to; d.setDate(d.getDate() + 1)) {
+    const day = iso(d);
+    if (day > today) break;
+    if (day === today && !(toMin(s.end) > toMin(s.start) && nowMin >= toMin(s.end))) continue; // shift not over yet
+    if (!worksOn(s, day) || came.has(day) || excused.has(day)) continue;
+    out.push(day);
+  }
+  return out;
+}
+
+module.exports = { TIME, scheduleOf, worksOn, lateMinutes, earlyMinutes, missingNow, absences };

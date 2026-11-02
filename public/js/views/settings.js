@@ -325,11 +325,15 @@ export async function render(el, { query } = {}) {
           <button class="btn btn-outline btn-sm" data-save>${icon('check')} حفظ</button>
         </div>`).join('') : '<div class="empty">ضيف موظفين الأول من صفحة الموظفين</div>'}</div>
       <div class="sched-rules">
-        <label class="field"><span>سماحية التأخير (بالدقايق)</span><input class="input num" type="number" min="0" max="120" id="grace" value="${esc(st.late_grace ?? '10')}"></label>
+        <label class="field"><span>سماحية التأخير (بالدقايق)</span><input class="input num" type="number" min="0" max="120" id="grace" value="${esc(st.late_grace ?? '15')}"></label>
+        <label class="field"><span>خصم تلقائي من المرتب</span><select class="input" id="auto-deduct">
+          <option value="1" ${st.auto_deduct !== '0' ? 'selected' : ''}>أيوه — للغياب والتأخير</option><option value="0" ${st.auto_deduct === '0' ? 'selected' : ''}>لأ</option></select></label>
+        <label class="field"><span>خصم يوم الغياب (بالأيام)</span><input class="input num" type="number" min="0" max="5" step="0.25" id="abs-days" value="${esc(st.absence_deduct_days ?? '1')}"></label>
+        <label class="field"><span>خصم التأخير (جزء من يوم)</span><input class="input num" type="number" min="0" max="2" step="0.05" id="late-days" value="${esc(st.late_deduct_days ?? '0.25')}"></label>
         <label class="field"><span>لو حد شيفته بدأ ومسجلش حضور</span><select class="input" id="absence">
           <option value="1" ${st.absence_alert !== '0' ? 'selected' : ''}>ابعتلي إشعار</option><option value="0" ${st.absence_alert === '0' ? 'selected' : ''}>من غير إشعار</option></select></label>
         <button class="btn btn-outline btn-sm" id="save-rules">${icon('check')} حفظ</button>
-        <p class="muted small" style="margin:0;flex-basis:100%">سيب الميعاد فاضي للموظف اللي مالوش شيفت ثابت. الشيفت اللي بيعدّي نص الليل (زي 6 م لحد 2 ص) شغال عادي.</p>
+        <p class="muted small" style="margin:0;flex-basis:100%">الغياب = يوم شغل الموظف ما سجلش فيه حضور خالص؛ التأخير = حضر بعد السماحية. يوم المرتب = المرتب ÷ 30، وتقدر تعفي أي يوم من صفحة المرتبات. سيب الميعاد فاضي للموظف اللي مالوش شيفت ثابت. الشيفت اللي بيعدّي نص الليل (زي 6 م لحد 2 ص) شغال عادي.</p>
       </div>`;
     card.querySelectorAll('.sched-days').forEach((g) => g.addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -345,7 +349,8 @@ export async function render(el, { query } = {}) {
       toast('اتحفظ الشيفت', 'ok');
     })));
     card.querySelector('#save-rules').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-      state.settings = await api.put('/settings', { late_grace: card.querySelector('#grace').value, absence_alert: card.querySelector('#absence').value });
+      state.settings = await api.put('/settings', { late_grace: card.querySelector('#grace').value, absence_alert: card.querySelector('#absence').value,
+        auto_deduct: card.querySelector('#auto-deduct').value, absence_deduct_days: card.querySelector('#abs-days').value, late_deduct_days: card.querySelector('#late-days').value });
       toast('تم الحفظ', 'ok');
     }));
   }

@@ -1,6 +1,7 @@
 'use strict';
 const { requirePerm } = require('../auth');
-const { bad, notFound, num, str, round2, audit, today } = require('../util');
+const { bad, notFound, num, str, round2, audit, today, getSettings } = require('../util');
+const { absences } = require('../schedule');
 
 const monthOf = (v) => (/^\d{4}-\d{2}$/.test(String(v || '')) ? String(v) : today().slice(0, 7));
 
@@ -12,7 +13,11 @@ module.exports = function payrollRoutes(api, db) {
   const perm = requirePerm('payroll');
 
   function sheet(month) {
-    const users = db.prepare("SELECT id, full_name, role, active, salary, commission_pct, daily_allowance FROM users WHERE role <> 'admin' OR salary > 0 ORDER BY active DESC, full_name").all();
+    const st = getSettings(db);
+    const auto = st.auto_deduct !== '0';
+    const absDays = Math.max(0, Number(st.absence_deduct_days) || 0), lateDays = Math.max(0, Number(st.late_deduct_days) || 0);
+    const last = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+    const users = db.prepare("SELECT id, full_name, role, active, salary, commission_pct, daily_allowance, shift_start, shift_end, work_days, schedule_since, created_at FROM users WHERE role <> 'admin' OR salary > 0 ORDER BY active DESC, full_name").all();
     const like = `${month}%`;
     return users.map((u) => {
       const att = db.prepare(`SELECT COUNT(DISTINCT date(check_in_at)) AS days,
@@ -28,10 +33,17 @@ module.exports = function payrollRoutes(api, db) {
       const advances = sum('سلفة');
       const paid = sum('مرتبات');
       const allowances = sum('يومية'); // on top of the salary: shown, not taken off it
-      const due = round2((u.salary || 0) + commission - advances - paid);
-      const late = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(late_minutes), 0) AS m FROM shifts
-        WHERE user_id = ? AND check_in_at LIKE ? AND late_minutes > 0`).get(u.id, like);
-      return { ...u, days: att.days, hours: round2(att.minutes / 60), late_count: late.n, late_minutes: late.m, sales, commission, advances, paid, allowances, due };
+      const late = db.prepare(`SELECT COUNT(DISTINCT date(check_in_at)) AS n, COALESCE(SUM(late_minutes), 0) AS m FROM shifts
+        WHERE user_id = ? AND check_in_at LIKE ? AND late_minutes > 0
+          AND date(check_in_at) NOT IN (SELECT day FROM attendance_excuses WHERE user_id = ?)`).get(u.id, like, u.id);
+      const absent = absences(db, u, `${month}-01`, `${month}-${String(last).padStart(2, '0')}`);
+      // Automatic deductions: a day's pay = monthly salary / 30
+      const rate = (u.salary || 0) / 30;
+      const deduction = auto ? round2(rate * (absent.length * absDays + late.n * lateDays)) : 0;
+      const due = round2((u.salary || 0) + commission - advances - paid - deduction);
+      delete u.shift_start; delete u.shift_end; delete u.work_days; delete u.schedule_since; delete u.created_at;
+      return { ...u, days: att.days, hours: round2(att.minutes / 60), late_count: late.n, late_minutes: late.m, absent_count: absent.length, absent_days: absent,
+        deduction, sales, commission, advances, paid, allowances, due };
     });
   }
 
@@ -39,7 +51,29 @@ module.exports = function payrollRoutes(api, db) {
     const month = monthOf(req.query.month);
     const rows = sheet(month);
     const t = (k) => round2(rows.reduce((a, r) => a + (r[k] || 0), 0));
-    res.json({ month, rows, totals: { salary: t('salary'), commission: t('commission'), advances: t('advances'), paid: t('paid'), allowances: t('allowances'), due: t('due') } });
+    res.json({ month, rows, totals: { salary: t('salary'), commission: t('commission'), advances: t('advances'), paid: t('paid'), allowances: t('allowances'), deduction: t('deduction'), due: t('due') } });
+  });
+
+  /** A month's attendance for one person: absent and late days, each can be excused. */
+  api.get('/payroll/:userId/attendance', perm, (req, res) => {
+    const month = monthOf(req.query.month);
+    const row = sheet(month).find((r) => r.id === Number(req.params.userId));
+    if (!row) throw notFound('الموظف غير موجود');
+    const late = db.prepare(`SELECT date(check_in_at) AS day, MAX(late_minutes) AS minutes FROM shifts WHERE user_id = ? AND check_in_at LIKE ? AND late_minutes > 0 GROUP BY day ORDER BY day`)
+      .all(row.id, `${month}%`);
+    const excused = db.prepare('SELECT day, note FROM attendance_excuses WHERE user_id = ? AND day LIKE ? ORDER BY day').all(row.id, `${month}%`);
+    res.json({ month, row, late, excused });
+  });
+
+  api.post('/payroll/:userId/excuse', perm, (req, res) => {
+    const u = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.userId);
+    if (!u) throw notFound('الموظف غير موجود');
+    const day = String(req.body?.day || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw bad('اليوم غلط');
+    if (req.body?.excused === false) db.prepare('DELETE FROM attendance_excuses WHERE user_id = ? AND day = ?').run(u.id, day);
+    else db.prepare('INSERT OR REPLACE INTO attendance_excuses (user_id, day, note, by_user) VALUES (?, ?, ?, ?)').run(u.id, day, str(req.body?.note, 'السبب', { optional: true, max: 120 }), req.user.id);
+    audit(db, req.user.id, 'payroll.excuse', { user: u.id, day, excused: req.body?.excused !== false });
+    res.json({ ok: true });
   });
 
   api.put('/payroll/:userId', perm, (req, res) => {

@@ -399,6 +399,16 @@ CREATE TABLE IF NOT EXISTS online_orders (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
+-- Days the owner excused (no deduction for being absent or late that day)
+CREATE TABLE IF NOT EXISTS attendance_excuses (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  note TEXT,
+  by_user INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  PRIMARY KEY (user_id, day)
+);
+
 -- Discount codes for the online store
 CREATE TABLE IF NOT EXISTS store_coupons (
   id INTEGER PRIMARY KEY,
@@ -494,8 +504,11 @@ const DEFAULT_SETTINGS = {
   store_strip: '',                 // offers line across the top of the store
   store_strip_color: '#141414',
   installment_reminders: '1',
-  late_grace: '10',        // minutes after the shift start before someone counts as late
-  absence_alert: '1',      // tell the owner when someone hasn't checked in after their shift started
+  late_grace: '15',        // minutes after the shift start before someone counts as late
+  absence_alert: '1',
+  auto_deduct: '1',                 // take absences / lateness off the salary automatically
+  absence_deduct_days: '1',         // days of pay per absent day
+  late_deduct_days: '0.25',         // days of pay per late day (past the grace)      // tell the owner when someone hasn't checked in after their shift started
 };
 
 function open(file) {
@@ -528,6 +541,7 @@ function open(file) {
   applyAdminPassword(db);
   backfillCustomers(db);
   backfillBrands(db);
+  attendanceRulesOnce(db);
   return db;
 }
 
@@ -535,6 +549,14 @@ function open(file) {
  * ADMIN_PASSWORD (e.g. a Railway variable) sets the admin's password on every start — also when the
  * variable was added after the first deploy — until the admin changes the password inside the system.
  */
+/** Once: 15-minute grace instead of the old 10, and absences count from today for shifts already set. */
+function attendanceRulesOnce(db) {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = 'attendance_rules_v1'").get()) return;
+  db.prepare("UPDATE settings SET value = '15' WHERE key = 'late_grace' AND value = '10'").run();
+  db.prepare("UPDATE users SET schedule_since = date('now','localtime') WHERE shift_start IS NOT NULL AND schedule_since IS NULL").run();
+  db.prepare("INSERT INTO settings (key, value) VALUES ('attendance_rules_v1', datetime('now','localtime'))").run();
+}
+
 function applyAdminPassword(db) {
   // Emergency reset: ADMIN_RESET_PASSWORD always wins (remove the variable after logging in)
   const reset = (process.env.ADMIN_RESET_PASSWORD || '').trim();
@@ -582,7 +604,8 @@ function addMissingColumns(db) {
       // Work schedule: from / to (HH:MM) and the week days they work (0 = Sunday … 6 = Saturday)
       'shift_start TEXT', 'shift_end TEXT', "work_days TEXT NOT NULL DEFAULT '0123456'",
       // Daily allowance (يومية) on top of the salary; empty = the shop's usual amount
-      'daily_allowance REAL'],
+      'daily_allowance REAL',
+      'schedule_since TEXT'],                   // absences count from this day (when the shift was set)
   };
   for (const [table, cols] of Object.entries(wanted)) {
     const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
