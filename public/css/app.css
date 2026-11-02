@@ -1768,3 +1768,43 @@ tr.clickable { cursor: pointer; }
 .days-card summary h2 { margin: 0; font-size: 17px; display: inline-flex; align-items: center; gap: 6px; }
 .days-card[open] summary { margin-bottom: 12px; }
 .visa-box .day-list b { font-size: 15px; } .visa-box .day-list span { font-size: 13px; opacity: .9; }
+
+/* ---------- reports as PDF (A4) ---------- */
+.rep-print { direction: rtl; font-family: var(--font); color: #000; width: 100%; }
+.rep-print .rp-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #000; padding-bottom: 4mm; margin-bottom: 5mm; }
+.rep-print .rp-head > div { display: flex; flex-direction: column; gap: 1mm; }
+.rep-print .rp-head b { font-size: 18pt; font-family: 'Poppins', var(--font); }
+.rep-print .rp-title { text-align: left; }
+.rep-print .rp-title b { font-size: 15pt; }
+.rep-print .rp-head span { font-size: 9.5pt; color: #444; }
+.rep-print .rp-foot { margin-top: 6mm; padding-top: 2mm; border-top: 1px solid #bbb; font-size: 8.5pt; color: #555; text-align: center; }
+@media print {
+  .rep-print .card { box-shadow: none !important; border: 1px solid #ccc; background: #fff !important; break-inside: avoid; margin-top: 4mm !important; padding: 4mm !important; }
+  .rep-print .grid { display: block !important; }
+  .rep-print .grid > * { margin-bottom: 4mm; }
+  .rep-print .kpi { border: 1px solid #ccc; background: #fff !important; box-shadow: none !important; display: inline-block; width: 31%; margin: 0 0 3mm 1.5%; vertical-align: top; min-height: 0; padding: 3mm; }
+  .rep-print .kpi::after, .rep-print .kpi::before { display: none !important; }
+  .rep-print .visa-box { background: #fff !important; color: #000 !important; border: 2px solid #1a1f71; }
+  .rep-print .visa-box *, .rep-print .visa-box small { color: #000 !important; opacity: 1 !important; }
+  .rep-print .visa-box b { color: #1a1f71 !important; }
+  .rep-print .pay-bar, .rep-print .hbar { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rep-print .pay-row i, .rep-print .pay-bar em { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rep-print .table th, .rep-print .table td { padding: 1.8mm 2mm; font-size: 9.5pt; }
+  .rep-print .table tr:nth-child(even) td { background: #f6f6f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rep-print .table-wrap { overflow: visible !important; }
+  .rep-print details > summary::marker, .rep-print details > summary::-webkit-details-marker { display: none; content: ''; }
+  .rep-print .stat-strip { display: flex !important; }
+  .rep-print .stat-strip > * { flex: 1; }
+  .rep-print .rep-big b { font-size: 20pt; }
+  .rep-print .bars { height: 120px !important; }
+  .rep-print .bar { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+@media print {
+  .rep-print .rep-period { display: none; }
+  .rep-print table.table { display: table !important; width: 100%; }
+  .rep-print .table thead { display: table-header-group !important; }
+  .rep-print .table tr { display: table-row !important; background: none; padding: 0; margin: 0; border-radius: 0; }
+  .rep-print .table td, .rep-print .table th { display: table-cell !important; width: auto; }
+  .rep-print .table td::before { display: none !important; }
+  .rep-print .grid.grid-4 { display: block !important; }
+}

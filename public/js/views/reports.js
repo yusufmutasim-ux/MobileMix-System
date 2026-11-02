@@ -1,4 +1,4 @@
-import { api, state, icon, esc, money, n, fmtDate, toastErr, emptyRow, downloadCsv, PAY_NAMES } from '../core.js';
+import { api, state, icon, esc, money, n, fmtDate, toastErr, emptyRow, PAY_NAMES, todayStr } from '../core.js';
 import { RANGES, RANGE_NAMES } from './sales.js';
 import { REPAIR_STATUS } from '../print.js';
 
@@ -10,7 +10,7 @@ export async function render(el, { query, actions }) {
   let last = null; // data for CSV export
   const users = await api.get('/users/names');
 
-  actions.innerHTML = `<button class="btn btn-outline btn-sm" id="csv">${icon('download')} تصدير Excel</button>`;
+  actions.innerHTML = `<button class="btn btn-primary btn-sm" id="pdf">${icon('download')} تحميل PDF</button>`;
 
   el.innerHTML = `
     <div class="toolbar">
@@ -86,27 +86,31 @@ export async function render(el, { query, actions }) {
   $('#user').addEventListener('change', reload);
   $('#mtype').addEventListener('change', reload);
 
-  actions.querySelector('#csv').addEventListener('click', () => {
+  // PDF: the report on A4 pages, with the shop's name and the period (the phone / computer saves it as PDF)
+  const TAB_NAMES = { finance: 'ملخص الحسابات', sales: 'تقرير المبيعات', inventory: 'تقرير المخزن', repairs: 'تقرير الصيانة', movements: 'حركة المخزن' };
+  actions.querySelector('#pdf').addEventListener('click', async () => {
     if (!last) return;
-    if (tab === 'finance') {
-      downloadCsv(`finance-${from}-${to}.csv`, ['اليوم', 'الربح (مبيعات + صيانة)', 'المصاريف', 'الصافي', 'فيزا', 'InstaPay', 'محفظة'],
-        last.by_day.map((d) => {
-          const day = (m) => last.method_days.find((x) => x.day === d.day && x.method === m)?.total || 0;
-          return [d.day, d.profit, d.expenses, d.net, day('card'), day('instapay'), day('wallet')];
-        }));
-    } else if (tab === 'sales') {
-      downloadCsv(`sales-report-${from}-${to}.csv`, ['اليوم', 'عدد الفواتير', 'المبيعات', 'الربح'],
-        last.by_day.map((d) => [d.day, d.invoices, d.total, d.profit]));
-    } else if (tab === 'repairs') {
-      downloadCsv(`repairs-report-${from}-${to}.csv`, ['الفني', 'اتسلم', 'اتصلح', 'الإيراد', 'الربح'],
-        last.by_technician.map((t) => [t.full_name, t.delivered, t.repaired, t.revenue, t.profit]));
-    } else if (tab === 'inventory') {
-      downloadCsv('inventory-report.csv', ['القسم', 'الأصناف', 'القطع', 'القيمة بسعر الشراء', 'القيمة بسعر البيع'],
-        last.by_category.map((c) => [c.category, c.products, c.qty, c.cost_value, c.sell_value]));
-    } else {
-      downloadCsv(`movements-${from}-${to}.csv`, ['التاريخ', 'المنتج', 'النوع', 'الكمية', 'بعدها', 'ملاحظة', 'الموظف'],
-        last.map((m) => [m.created_at, m.product_name, MOVE_NAMES[m.type], m.qty_change, m.qty_after, m.note, m.user_name]));
-    }
+    const body = $('#out').cloneNode(true);
+    body.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
+    body.querySelectorAll('a').forEach((x) => x.removeAttribute('href'));
+    body.querySelectorAll('table.cardify').forEach((t) => t.classList.remove('cardify'));
+    const fmt = (x) => new Date(`${x}T12:00:00`).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
+    const period = tab === 'inventory' ? `حتى ${fmt(todayStr())}` : from === to ? fmt(from) : `من ${fmt(from)} إلى ${fmt(to)}`;
+    const root = document.getElementById('print-root');
+    root.innerHTML = `<div class="rep-print">
+      <div class="rp-head"><div><b>${esc(state.settings.shop_name || 'Mobile Mix')}</b>${state.settings.shop_address ? `<span>${esc(state.settings.shop_address)}</span>` : ''}</div>
+        <div class="rp-title"><b>${TAB_NAMES[tab]}</b><span>${esc(period)}</span></div></div>
+      ${body.innerHTML}
+      <div class="rp-foot">اتطبع ${new Date().toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' })} — ${esc(state.user.full_name)}</div></div>`;
+    let st = document.getElementById('page-style');
+    if (!st) { st = document.createElement('style'); st.id = 'page-style'; document.head.append(st); }
+    st.textContent = '@page { size: A4; margin: 12mm; }';
+    const old = document.title;
+    document.title = `${TAB_NAMES[tab]} ${from}${from !== to ? ` - ${to}` : ''}`; // the PDF's file name
+    try { await document.fonts.ready; } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, 80));
+    window.print();
+    setTimeout(() => { root.innerHTML = ''; document.title = old; }, 800);
   });
 
   await load();

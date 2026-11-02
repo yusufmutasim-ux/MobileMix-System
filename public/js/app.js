@@ -369,6 +369,7 @@ function tabs() {
  */
 function cardify(root = document) {
   for (const table of root.querySelectorAll('table.table')) {
+    if (table.closest('#print-root')) continue; // printed / PDF reports keep real tables
     const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
     if (heads.length < 4) continue;
     table.classList.add('cardify');
