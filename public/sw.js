@@ -2,7 +2,7 @@
 // API calls are never cached here (the app keeps the last answers itself, see js/offline.js).
 // App files are fetched fresh when possible and kept as a fallback, so the app still opens
 // with no internet: the till keeps selling and the sales upload when it's back.
-const VERSION = 'mm-v53';
+const VERSION = 'mm-v54';
 const SHELL = [
   '/', '/offline.html', '/css/app.css', '/brand/logo.svg', '/brand/logo-dark-text.svg', '/brand/mark.svg', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png',
   '/js/app.js', '/js/core.js', '/js/print.js',
@@ -27,6 +27,8 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
   // The public store has its own pages; leave them to the network
   if (url.pathname.startsWith('/shop')) return;
+  // Icons: let the phone fetch them straight from the server (iPhone reads them when adding to the home screen)
+  if (/^\/(icons\/|apple-touch-icon|favicon)/.test(url.pathname)) return;
 
   if (e.request.mode === 'navigate') {
     // No internet (or the host is down): open the saved app, it knows how to work offline
