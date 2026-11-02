@@ -107,6 +107,22 @@ module.exports = function productRoutes(api, db) {
     res.json({ product: strip(req)(p), serial });
   });
 
+  /** Things sold by name before they were added as products (grouped by name). */
+  api.get('/products/unlisted', view, (_req, res) => {
+    res.json(db.prepare(`SELECT MIN(si.name) AS name, SUM(si.qty - si.returned_qty) AS qty, COUNT(DISTINCT si.sale_id) AS sales,
+        MAX(si.unit_price) AS price, MAX(s.created_at) AS last_sold
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE si.product_id IS NULL
+      GROUP BY LOWER(TRIM(si.name)) ORDER BY last_sold DESC`).all());
+  });
+  /** Once it's added: its earlier sales count under the product (reports, best sellers). Stock isn't touched. */
+  api.post('/products/unlisted/link', edit, (req, res) => {
+    const p = getProduct(num(req.body?.product_id, 'المنتج', { int: true }));
+    const name = str(req.body?.name, 'الاسم', { max: 120 });
+    const r = db.prepare('UPDATE sale_items SET product_id = ? WHERE product_id IS NULL AND LOWER(TRIM(name)) = LOWER(TRIM(?))').run(p.id, name);
+    audit(db, req.user.id, 'product.link_unlisted', { name, product: p.name, items: r.changes });
+    res.json({ linked: r.changes });
+  });
+
   /** Everything the till needs to keep selling with no internet: products, their in-stock IMEIs, categories. */
   api.get('/pos/catalog', view, requirePerm('sales.create'), (req, res) => {
     const products = db.prepare(`${SELECT} WHERE p.active = 1 ORDER BY p.name`).all().map(strip(req));

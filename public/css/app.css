@@ -1631,3 +1631,11 @@ tr.clickable { cursor: pointer; }
 .coupon-row b { font-size: 15px; letter-spacing: .5px; }
 .coupon-row.off { opacity: .55; }
 @media (max-width: 560px) { .coupon-row { grid-template-columns: 1fr auto; } .coupon-row .btn-row { grid-column: 1 / -1; justify-content: flex-end; } }
+.unlisted-card { margin-bottom: 16px; border: 1.5px dashed var(--t-yellow-fg); }
+.unlisted-list { display: grid; gap: 8px; }
+.unlisted-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; background: var(--t-gray-bg); border-radius: 14px; padding: 10px 12px; }
+@media (max-width: 640px) { .unlisted-row { grid-template-columns: minmax(0, 1fr) auto; } .unlisted-row .btn { grid-column: span 1; } }
+.pick-list { display: grid; gap: 6px; margin-top: 10px; max-height: 50vh; overflow: auto; }
+.pick-list button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; border: 0; background: var(--t-gray-bg); border-radius: 12px; padding: 10px 12px; cursor: pointer; color: inherit; font: inherit; }
+.pick-list button:hover { outline: 2px solid var(--ink); }
+.scan-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

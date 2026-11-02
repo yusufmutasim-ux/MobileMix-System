@@ -35,6 +35,7 @@ export async function render(el, { query, actions }) {
       </table></div>
       <p class="muted small" id="count" style="margin:12px 0 0"></p>
     </div>`;
+  el.insertAdjacentHTML('afterbegin', '<div id="unlisted"></div>');
 
   const $ = (s) => el.querySelector(s);
   const fillCats = () => {
@@ -50,6 +51,39 @@ export async function render(el, { query, actions }) {
     $('#brand').value = v;
   };
   await fillBrands();
+
+  /** Things sold by name at the till that still need adding as products. */
+  async function drawUnlisted() {
+    const list = edit ? await api.get('/products/unlisted').catch(() => []) : [];
+    $('#unlisted').innerHTML = list.length ? `<div class="card unlisted-card">
+      <div class="card-head"><h2>${icon('alert')} اتباع ومش متسجل <span class="pill pill-warn num">${list.length}</span></h2>
+        <span class="muted small">منتجات اتباعت بالاسم من نقطة البيع — سجّلها عشان تدخل المخزن والتقارير</span></div>
+      <div class="unlisted-list">${list.map((u, i) => `<div class="unlisted-row" data-i="${i}">
+        <div><b dir="auto">${esc(u.name)}</b><div class="muted small">اتباع ${u.qty} قطعة في ${u.sales} فاتورة • آخر مرة ${fmtDate(u.last_sold)}</div></div>
+        <span>${money(u.price)}</span>
+        <button class="btn btn-primary btn-sm" data-add>${icon('plus')} سجّله كمنتج</button>
+        <button class="btn btn-ghost btn-sm" data-link title="المنتج متسجل بالفعل باسم تاني">ربطه بمنتج موجود</button></div>`).join('')}</div></div>` : '';
+    $('#unlisted').querySelectorAll('.unlisted-row').forEach((row) => {
+      const u = list[Number(row.dataset.i)];
+      row.querySelector('[data-add]').addEventListener('click', async () => {
+        const saved = await productForm(cats, null, { name: u.name, price: u.price, unlisted: true, confidence: 'high' });
+        if (saved?.id) {
+          const r = await api.post('/products/unlisted/link', { name: u.name, product_id: saved.id }).catch(toastErr);
+          if (r) toast(`اتسجل — ${r.linked} صنف في الفواتير القديمة بقى محسوب عليه`, 'ok');
+          drawUnlisted();
+          reload();
+        }
+      });
+      row.querySelector('[data-link]').addEventListener('click', async () => {
+        const target = await pickProduct(u.name);
+        if (!target) return;
+        const r = await api.post('/products/unlisted/link', { name: u.name, product_id: target.id }).catch(toastErr);
+        if (r) toast(`اتربط بـ ${target.name} — ${r.linked} صنف في الفواتير`, 'ok');
+        drawUnlisted();
+      });
+    });
+  }
+  drawUnlisted();
 
   async function load() {
     const p = new URLSearchParams();
@@ -129,7 +163,8 @@ async function productForm(cats, p = null, guess = null) {
   return modal({
     title: isNew ? (guess ? 'منتج جديد من صورة' : 'منتج جديد') : `تعديل — ${esc(p.name)}`,
     body: `<form class="form-grid" autocomplete="off">
-      ${guess ? `<div class="full ai-guess ${guess.confidence}">
+      ${guess?.unlisted ? `<div class="full ai-guess high"><div><b>المنتج ده اتباع قبل كده من غير ما يتسجل</b>
+          <div class="small muted">كمّل بياناته (القسم، البراند، الكمية اللي فاضلة عندك) واحفظ — فواتيره القديمة هتتحسب عليه.</div></div></div>` : guess ? `<div class="full ai-guess ${guess.confidence}">
         ${guess.photo ? `<img src="${guess.photo}" alt="">` : ''}
         <div><b>${guess.confidence === 'high' ? '✓ اتعرف من الصورة' : guess.confidence === 'medium' ? 'اتعرف من الصورة — راجع الاسم' : '⚠️ الصورة مش واضحة — راجع كل حاجة'}</b>
           ${guess.notes ? `<div class="small">${esc(guess.notes)}</div>` : ''}
@@ -149,7 +184,7 @@ async function productForm(cats, p = null, guess = null) {
       <label class="field"><span>القسم</span><select class="input" name="category_id"><option value="">—</option>
         ${cats.map((c) => `<option value="${c.id}" ${catId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       ${can('products.view_cost') ? `<label class="field"><span>سعر الشراء</span><input class="input num" type="number" step="any" min="0" name="cost_price" value="${p?.cost_price ?? ''}"></label>` : ''}
-      <label class="field"><span>سعر البيع *</span><input class="input num" type="number" step="any" min="0" name="sell_price" value="${p?.sell_price ?? ''}" required></label>
+      <label class="field"><span>سعر البيع *</span><input class="input num" type="number" step="any" min="0" name="sell_price" value="${p?.sell_price ?? guess?.price ?? ''}" required></label>
       <label class="field"><span>الباركود</span><input class="input ltr" name="barcode" value="${esc(p?.barcode || '')}" placeholder="سيبه فاضي ويتعمل تلقائي"></label>
       <label class="field"><span>حد الطلب (تنبيه النواقص)</span><input class="input num" type="number" min="0" name="min_qty" value="${p?.min_qty ?? 1}"></label>
       <label class="field"><span>الضمان (بالأيام — 0 = من غير)</span><input class="input num" type="number" min="0" name="warranty_days" value="${p?.warranty_days ?? 0}" list="warranty-presets">
@@ -248,7 +283,7 @@ async function productForm(cats, p = null, guess = null) {
         }
         if (picture && picture.startsWith('data:')) await api.post(`/products/${saved.id}/image`, { image: picture }).catch((e) => toast(`المنتج اتحفظ بس الصورة لأ: ${e.message}`, 'err'));
         else if (dropPicture) await api.del(`/products/${saved.id}/image`).catch(() => {});
-        close(true);
+        close(saved || true);
       }));
     },
   });
@@ -325,6 +360,24 @@ async function addFromPhotos(cats, files) {
     if (await productForm(cats, null, guess)) changed = true;
   }
   return changed;
+}
+
+/** Choose an existing product (search by name / barcode). */
+function pickProduct(hint = '') {
+  return modal({
+    title: 'اختار المنتج',
+    body: `<input class="input" id="pk-q" placeholder="اسم المنتج أو الباركود" value="${esc(hint)}" autofocus dir="auto"><div id="pk-list" class="pick-list"></div>`,
+    onMount: (m, close) => {
+      const q = m.querySelector('#pk-q');
+      const run = debounce(async () => {
+        const rows = await api.get('/products?limit=12&q=' + encodeURIComponent(q.value.trim())).catch(() => []);
+        m.querySelector('#pk-list').innerHTML = rows.map((r) => `<button type="button" data-id="${r.id}"><b dir="auto">${esc(r.name)}</b><span class="muted small">${money(r.sell_price)} • ${r.qty} قطعة</span></button>`).join('') || '<p class="muted small">مفيش نتائج</p>';
+        m.querySelectorAll('#pk-list [data-id]').forEach((b) => b.addEventListener('click', () => close(rows.find((r) => r.id === Number(b.dataset.id)))));
+      }, 250);
+      q.addEventListener('input', run);
+      run();
+    },
+  });
 }
 
 function stockForm(p) {

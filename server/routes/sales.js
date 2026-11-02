@@ -33,6 +33,16 @@ module.exports = function salesRoutes(api, db) {
 
       for (const [i, raw] of body.items.entries()) {
         const label = `الصنف رقم ${i + 1}`;
+        // Something not in the system yet: sold by name and price, added as a product later
+        if (raw.custom) {
+          const name = str(raw.name, `اسم ${label}`, { max: 120 });
+          const qty = num(raw.qty, `كمية ${name}`, { min: 1, int: true });
+          const unitPrice = num(raw.unit_price, `سعر ${name}`, { min: 0 });
+          const cost = can(user, 'products.view_cost') ? num(raw.cost, `سعر شراء ${name}`, { min: 0, optional: true }) || 0 : 0;
+          listTotal += unitPrice * qty;
+          lines.push({ p: null, name, qty, serial: null, unitPrice: round2(unitPrice), unitCost: cost, lineTotal: round2(unitPrice * qty) });
+          continue;
+        }
         const p = db.prepare('SELECT * FROM products WHERE id = ? AND active = 1').get(num(raw.product_id, label, { int: true }));
         if (!p) throw bad(`${label}: المنتج غير موجود`);
         const unitPrice = raw.unit_price === undefined || raw.unit_price === null || raw.unit_price === ''
@@ -57,12 +67,12 @@ module.exports = function salesRoutes(api, db) {
 
       // Same product may appear on several lines — check total stock per product
       const need = new Map();
-      for (const l of lines) need.set(l.p.id, (need.get(l.p.id) || 0) + l.qty);
+      for (const l of lines) if (l.p) need.set(l.p.id, (need.get(l.p.id) || 0) + l.qty);
       // A sale made with no internet already happened (the goods left the shop), so it isn't refused
       // for stock: the count goes under zero and shows up for a stock check instead.
       if (!offlineAt) {
         for (const l of lines) {
-          if (need.get(l.p.id) > l.p.qty) throw bad(`الكمية المتاحة من "${l.p.name}" هي ${l.p.qty} بس`);
+          if (l.p && need.get(l.p.id) > l.p.qty) throw bad(`الكمية المتاحة من "${l.p.name}" هي ${l.p.qty} بس`);
         }
       }
 
@@ -104,6 +114,7 @@ module.exports = function salesRoutes(api, db) {
       const addItem = db.prepare(`INSERT INTO sale_items (sale_id, product_id, name, serial, qty, unit_price, unit_cost, line_total, warranty_days)
                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       for (const l of lines) {
+        if (!l.p) { addItem.run(saleId, null, l.name, null, l.qty, l.unitPrice, l.unitCost, l.lineTotal, 0); continue; }
         addItem.run(saleId, l.p.id, l.p.name, l.serial, l.qty, l.unitPrice, l.unitCost, l.lineTotal, l.p.warranty_days || 0);
         const { qty: current } = db.prepare('SELECT qty FROM products WHERE id = ?').get(l.p.id);
         const after = current - l.qty;
@@ -214,6 +225,7 @@ module.exports = function salesRoutes(api, db) {
       const returnId = Number(r.lastInsertRowid);
 
       for (const { item, qty } of touched) {
+        if (!item.product_id) continue; // sold by name: no stock to put back
         const { qty: current } = db.prepare('SELECT qty FROM products WHERE id = ?').get(item.product_id);
         const after = current + qty;
         db.prepare("UPDATE products SET qty = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(after, item.product_id);

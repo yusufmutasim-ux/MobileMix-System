@@ -55,14 +55,14 @@ module.exports = function reportRoutes(api, db) {
     const topProducts = db.prepare(`
       SELECT si.product_id, si.name, SUM(si.qty) AS qty, SUM(${NET}) AS revenue, SUM(${NET} - si.unit_cost * si.qty) AS profit
       FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE ${inRange}
-      GROUP BY si.product_id ORDER BY revenue DESC LIMIT 20`).all(...base());
+      GROUP BY COALESCE(si.product_id, 'n:' || LOWER(TRIM(si.name))) ORDER BY revenue DESC LIMIT 20`).all(...base());
 
     const byCategory = db.prepare(`
-      SELECT COALESCE(c.name, 'بدون قسم') AS category, SUM(si.qty) AS qty, SUM(${NET}) AS revenue,
+      SELECT CASE WHEN si.product_id IS NULL THEN 'منتجات لسه مش متسجلة' ELSE COALESCE(c.name, 'بدون قسم') END AS category, SUM(si.qty) AS qty, SUM(${NET}) AS revenue,
              SUM(${NET} - si.unit_cost * si.qty) AS profit
       FROM sale_items si JOIN sales s ON s.id = si.sale_id
-      JOIN products p ON p.id = si.product_id LEFT JOIN categories c ON c.id = p.category_id
-      WHERE ${inRange} GROUP BY c.id ORDER BY revenue DESC`).all(...base());
+      LEFT JOIN products p ON p.id = si.product_id LEFT JOIN categories c ON c.id = p.category_id
+      WHERE ${inRange} GROUP BY (si.product_id IS NULL), c.id ORDER BY revenue DESC`).all(...base());
 
     const r2 = (rows, keys) => rows.map((r) => { keys.forEach((k) => { r[k] = round2(r[k] || 0); }); return r; });
     res.json({

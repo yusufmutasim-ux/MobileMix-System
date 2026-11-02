@@ -42,7 +42,8 @@ export async function render(el) {
     <div>
       <div class="card" style="padding:16px">
         <div class="search">${icon('barcode')}<input class="input input-lg" id="scan" placeholder="امسح الباركود / IMEI أو اكتب اسم المنتج…" autocomplete="off"></div>
-        <div class="scan-hint">${icon('search', '')} Enter لإضافة المنتج — <span class="num">F9</span> لإتمام البيع</div>
+        <div class="scan-hint">${icon('search', '')} Enter لإضافة المنتج — <span class="num">F9</span> لإتمام البيع
+          <button type="button" class="btn btn-outline btn-sm" id="custom-add" style="margin-inline-start:auto">${icon('plus')} منتج مش متسجل</button></div>
         <div class="seg" style="margin-top:12px" id="cats">
           <button class="on" data-c="">الكل</button>
           ${cats.map((c) => `<button data-c="${c.id}">${esc(c.name)}</button>`).join('')}
@@ -205,7 +206,7 @@ export async function render(el) {
     save(cart);
     $('#lines').innerHTML = cart.length ? cart.map((l, i) => `
       <div class="line" data-i="${i}">
-        <div><div class="name">${esc(l.name)}</div>${l.serial ? `<div class="meta num">IMEI: ${esc(l.serial)}</div>` : ''}</div>
+        <div><div class="name">${esc(l.name)}</div>${l.serial ? `<div class="meta num">IMEI: ${esc(l.serial)}</div>` : ''}${l.custom ? '<div class="meta"><span class="pill pill-warn">مش متسجل</span></div>' : ''}</div>
         <div style="font-weight:500">${money(l.unit_price * l.qty)}</div>
         <div class="controls">
           ${l.has_serial ? '<span class="muted small">جهاز واحد</span>' : `
@@ -299,13 +300,44 @@ export async function render(el) {
   }, 350));
   $('#clear').addEventListener('click', () => { cart = []; $('#discount').value = 0; $('#paid').value = ''; draw(); focusScan(); });
 
+  // ---------- something not in the system yet: sell it by name, add it as a product later ----------
+  $('#custom-add').addEventListener('click', async () => {
+    const line = await modal({
+      title: 'بيع منتج مش متسجل',
+      body: `<p class="muted small" style="margin-top:0">اكتب اسمه وسعره وبيعه عادي. هتلاقيه بعد كده في صفحة المنتجات تحت "اتباع ومش متسجل" عشان تضيفه بدوسة.</p>
+        <div class="form-grid">
+          <label class="field full"><span>اسم المنتج *</span><input class="input" id="cu-name" dir="auto" autofocus placeholder="مثلاً: اسكرينة iPhone 15 Pro"></label>
+          <label class="field"><span>سعر البيع *</span><input class="input num" type="number" min="0" step="any" id="cu-price"></label>
+          <label class="field"><span>الكمية</span><input class="input num" type="number" min="1" id="cu-qty" value="1"></label>
+          ${can('products.view_cost') ? '<label class="field"><span>سعر الشراء (اختياري — عشان الربح)</span><input class="input num" type="number" min="0" step="any" id="cu-cost"></label>' : ''}
+        </div>`,
+      foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('plus')} ضيف للفاتورة</button>`,
+      onMount: (m, close) => {
+        const ok = () => {
+          const name = m.querySelector('#cu-name').value.trim();
+          const price = Number(m.querySelector('#cu-price').value);
+          if (!name) return toast('اكتب اسم المنتج', 'err');
+          if (m.querySelector('#cu-price').value === '' || !(price >= 0)) return toast('اكتب السعر', 'err');
+          close({ name, price, qty: Math.max(1, parseInt(m.querySelector('#cu-qty').value, 10) || 1), cost: Number(m.querySelector('#cu-cost')?.value) || 0 });
+        };
+        m.querySelector('[data-ok]').addEventListener('click', ok);
+        m.querySelectorAll('input').forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ok(); } }));
+      },
+    });
+    if (!line) return;
+    cart.push({ custom: true, product_id: null, name: line.name, unit_price: line.price, list_price: line.price, qty: line.qty, cost: line.cost, has_serial: false, stock: 9999 });
+    draw();
+    focusScan();
+  });
+
   // ---------- checkout ----------
   async function checkout() {
     if (!cart.length) return;
     const t = totals();
     const body = {
       client_ref: newRef(),
-      items: cart.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_price: l.unit_price, serial: l.serial })),
+      items: cart.map((l) => (l.custom ? { custom: true, name: l.name, qty: l.qty, unit_price: l.unit_price, cost: l.cost }
+        : { product_id: l.product_id, qty: l.qty, unit_price: l.unit_price, serial: l.serial })),
       discount: t.disc,
       paid: $('#paid').value === '' ? undefined : Number($('#paid').value),
       payment_method: pay,

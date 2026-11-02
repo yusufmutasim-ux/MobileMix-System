@@ -89,7 +89,7 @@ CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at);
 CREATE TABLE IF NOT EXISTS sale_items (
   id INTEGER PRIMARY KEY,
   sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-  product_id INTEGER NOT NULL REFERENCES products(id),
+  product_id INTEGER REFERENCES products(id),     -- empty: sold by name before it was added to the system
   name TEXT NOT NULL,
   serial TEXT,
   qty INTEGER NOT NULL,
@@ -595,6 +595,9 @@ function upgrade(db) {
   if (users && !users.includes("'technician'")) rebuild.push(['users', "'cashier')", "'cashier','technician')"]);
   const moves = tableSql('stock_movements');
   if (moves && !moves.includes("'repair'")) rebuild.push(['stock_movements', "'stocktake')", "'stocktake','repair')"]);
+  // Items can be sold by name before they're added as products
+  const items = tableSql('sale_items');
+  if (items && items.includes('product_id INTEGER NOT NULL')) rebuild.push(['sale_items', 'product_id INTEGER NOT NULL', 'product_id INTEGER']);
   if (!rebuild.length) return;
 
   db.exec('PRAGMA foreign_keys = OFF');
