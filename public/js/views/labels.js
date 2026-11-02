@@ -32,11 +32,13 @@ export async function render(el, { query, actions }) {
           <select class="input" id="cat" style="flex:1;min-width:160px"><option value="">— ضيف قسم كامل —</option>${cats.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
           <button class="btn btn-outline" id="add-cat">${icon('plus')} إضافة القسم</button>
         </div>
-        <label class="check" style="margin-top:12px"><input type="checkbox" id="by-stock"> عدد النسخ = الكمية في المخزن</label>
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="by-stock" ${localStorage.getItem('mm_label_by_stock') === '0' ? '' : 'checked'}> عدد الليبلات = الكمية اللي في المخزن</label>
+        <p class="muted small" style="margin:6px 0 0">القسم الكامل بيتضاف دايماً بعدد كل منتج في المخزن (والمنتجات اللي خلصت بتتساب).</p>
       </div>
       <div class="card">
         <div class="card-head"><h2>قائمة الطباعة</h2>
           <select class="input" id="size" style="width:auto">${Object.entries(LABEL_SIZES).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}</select>
+          <button class="btn btn-outline btn-sm" id="to-stock" title="خلي عدد كل ليبل = الكمية في المخزن">${icon('box')} العدد = المخزن</button>
           <button class="btn btn-ghost btn-sm" id="clear">${icon('trash')}</button></div>
         <div id="queue"></div>
         <p class="muted small" id="total" style="margin-bottom:0"></p>
@@ -50,10 +52,13 @@ export async function render(el, { query, actions }) {
   const $ = (s) => el.querySelector(s);
   $('#size').value = size;
 
-  function add(p) {
-    const copies = $('#by-stock').checked ? Math.max(1, p.qty) : 1;
+  const stockCopies = (p) => Math.max(1, Math.min(500, Number(p.qty) || 1));
+  function add(p, { fromStock = $('#by-stock').checked } = {}) {
     const ex = queue.find((q) => q.product.id === p.id);
-    if (ex) ex.copies += 1; else queue.push({ product: p, copies });
+    if (fromStock) {
+      if (ex) ex.copies = stockCopies(p); else queue.push({ product: p, copies: stockCopies(p) });
+    } else if (ex) ex.copies += 1;
+    else queue.push({ product: p, copies: 1 });
     draw();
   }
 
@@ -91,11 +96,21 @@ export async function render(el, { query, actions }) {
       $('#q').value = ''; $('#results').innerHTML = '';
     } catch { /* not a barcode — the list is shown */ }
   });
+  // A whole section: every product in stock, with as many labels as pieces
   $('#add-cat').addEventListener('click', async () => {
-    if (!$('#cat').value) return;
+    if (!$('#cat').value) return toast('اختار القسم الأول', 'err');
     const rows = await api.get('/products?category_id=' + $('#cat').value).catch(toastErr);
-    (rows || []).forEach(add);
-    toast(`اتضاف ${rows?.length || 0} منتج`);
+    if (!rows) return;
+    const inStock = rows.filter((p) => p.qty > 0);
+    inStock.forEach((p) => add(p, { fromStock: true }));
+    const labels = inStock.reduce((n, p) => n + stockCopies(p), 0);
+    toast(`اتضاف ${inStock.length} منتج — ${labels} ليبل${rows.length > inStock.length ? ` (${rows.length - inStock.length} منتج خلصان اتساب)` : ''}`, 'ok');
+  });
+  $('#by-stock').addEventListener('change', () => { try { localStorage.setItem('mm_label_by_stock', $('#by-stock').checked ? '1' : '0'); } catch { /* ignore */ } });
+  $('#to-stock').addEventListener('click', () => {
+    queue.forEach((q) => { q.copies = stockCopies(q.product); });
+    draw();
+    toast('العدد بقى زي المخزن', 'ok');
   });
   $('#queue').addEventListener('click', (e) => {
     if (!e.target.closest('[data-del]')) return;
