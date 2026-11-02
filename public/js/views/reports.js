@@ -14,7 +14,7 @@ export async function render(el, { query, actions }) {
 
   el.innerHTML = `
     <div class="toolbar">
-      <div class="seg" id="tabs">${Object.entries({ finance: 'الأرباح والمصاريف', sales: 'المبيعات', inventory: 'المخزن', repairs: 'الصيانة', movements: 'حركة المخزن' })
+      <div class="seg" id="tabs">${Object.entries({ finance: 'الملخص', sales: 'المبيعات', inventory: 'المخزن', repairs: 'الصيانة', movements: 'حركة المخزن' })
         .map(([k, v]) => `<button data-t="${k}" class="${k === tab ? 'on' : ''}">${v}</button>`).join('')}</div>
       <span style="flex:1"></span>
       <div class="seg" id="range">${Object.entries(RANGE_NAMES).map(([k, v]) => `<button data-r="${k}" class="${k === 'month' ? 'on' : ''}">${v}</button>`).join('')}</div>
@@ -33,7 +33,7 @@ export async function render(el, { query, actions }) {
     if (tab === 'finance') {
       $('#mtype').classList.add('hidden');
       last = await api.get(`/reports/finance?from=${from}&to=${to}`);
-      $('#out').innerHTML = financeReport(last);
+      $('#out').innerHTML = financeReport(last, from, to);
       return;
     }
     if (tab === 'repairs') {
@@ -89,8 +89,11 @@ export async function render(el, { query, actions }) {
   actions.querySelector('#csv').addEventListener('click', () => {
     if (!last) return;
     if (tab === 'finance') {
-      downloadCsv(`finance-${from}-${to}.csv`, ['اليوم', 'الربح (مبيعات + صيانة)', 'المصاريف', 'الصافي'],
-        last.by_day.map((d) => [d.day, d.profit, d.expenses, d.net]));
+      downloadCsv(`finance-${from}-${to}.csv`, ['اليوم', 'الربح (مبيعات + صيانة)', 'المصاريف', 'الصافي', 'فيزا', 'InstaPay', 'محفظة'],
+        last.by_day.map((d) => {
+          const day = (m) => last.method_days.find((x) => x.day === d.day && x.method === m)?.total || 0;
+          return [d.day, d.profit, d.expenses, d.net, day('card'), day('instapay'), day('wallet')];
+        }));
     } else if (tab === 'sales') {
       downloadCsv(`sales-report-${from}-${to}.csv`, ['اليوم', 'عدد الفواتير', 'المبيعات', 'الربح'],
         last.by_day.map((d) => [d.day, d.invoices, d.total, d.profit]));
@@ -226,30 +229,73 @@ function repairsReport(d) {
     </div>`;
 }
 
-/** What the shop really made: profit from sales and repairs minus all expenses. */
-function financeReport(d) {
+/** The summary: what came in and how (to match the card machine), and an income statement. */
+const METHOD_COLORS = { cash: '#8aa324', card: '#2b3a9e', instapay: '#7b2ff7', wallet: '#e5383b', installment: '#d4a20c' };
+function financeReport(d, from, to) {
   const t = d.totals;
-  const maxExp = Math.max(...d.expenses.map((e) => e.total), 1);
+  const cur = esc(state.settings.currency || 'ج.م');
+  const fmtDay = (x) => new Date(`${x}T12:00:00`).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', day: 'numeric', month: 'short' });
+  const period = from === to ? fmtDay(from) : `${fmtDay(from)} — ${fmtDay(to)}`;
+  const inTotal = d.payments.reduce((a, p) => a + p.total, 0);
+  const card = d.payments.find((p) => p.method === 'card') || { total: 0, count: 0 };
+  const cardDays = d.method_days.filter((x) => x.method === 'card');
+  const others = d.method_days.filter((x) => x.method !== 'card');
+  const row = (label, value, cls = '', sub = '') => `<div class="st-row ${cls}"><span>${label}${sub ? `<small>${sub}</small>` : ''}</span><b>${value}</b></div>`;
+  const m = (v) => `${n(v)} <small>${cur}</small>`;
+  const neg = (v) => `(${n(v)}) <small>${cur}</small>`;
   return `
-    <div class="grid grid-4" style="margin-bottom:20px">
-      ${kpi(t.net_profit >= 0 ? 'bg-mint' : 'bg-peony', `${icon('trend')} صافي الربح الحقيقي`, money(t.net_profit), 'بعد خصم كل المصاريف')}
-      ${kpi('', `${icon('cart')} ربح المبيعات`, money(t.sales_profit), `من مبيعات ${n(t.sales_revenue)}`)}
-      ${kpi('', `${icon('wrench')} ربح الصيانة`, money(t.repairs_profit), `من ${n(t.repairs_revenue)}`)}
-      ${kpi('bg-lavender', `${icon('expense')} المصاريف`, money(t.expenses))}
+    <div class="card rep-head">
+      <div class="rep-period">${icon('calendar')} ${esc(period)}</div>
+      <div class="rep-big">
+        <div><span>المبيعات</span><b>${m(t.sales_revenue + t.repairs_revenue)}</b><small>بعد المرتجعات، شامل الصيانة</small></div>
+        <div class="${t.net_profit < 0 ? 'bad' : 'good'}"><span>صافي الربح</span><b>${m(t.net_profit)}</b><small>بعد كل المصاريف</small></div>
+        <div><span>المصاريف</span><b>${m(t.expenses)}</b><small>${d.expenses.length} نوع</small></div>
+      </div>
     </div>
-    <div class="grid grid-4" style="margin-bottom:20px">
-      ${kpi('', `${icon('user')} فلوس عند العملاء`, money(t.receivable), `${t.receivable_count} فاتورة${t.late_installments > 0 ? ` • متأخر ${n(t.late_installments)}` : ''}`)}
-      ${kpi('', `${icon('truck')} علينا للموردين`, money(t.payable), `${t.payable_count} مورد`)}
-      ${kpi('', `${icon('box')} مشتريات بضاعة`, money(t.purchases), `${t.purchases_count} فاتورة شراء`)}
-      ${kpi('', `${icon('wallet')} اتحصّل من العملاء`, money(t.collected))}
+
+    <div class="grid grid-2 rep-grid">
+      <div class="card">
+        <div class="card-head"><h2>${icon('wallet')} الفلوس دخلت إزاي</h2><span class="muted small">مبيعات + تحصيل + صيانة</span></div>
+        <div class="visa-box">
+          <div><span>${icon('card')} الفيزا — طابقها مع الماكينة</span><b>${m(card.total)}</b><small>${card.count} عملية</small></div>
+          ${cardDays.length > 1 ? `<details><summary>يوم بيوم (${cardDays.length} يوم)</summary>
+            <div class="day-list">${cardDays.map((x) => `<div><span>${esc(fmtDay(x.day))}</span><small>${x.count} عملية</small><b>${n(x.total)}</b></div>`).join('')}</div></details>` : ''}
+        </div>
+        <div class="pay-rows">${d.payments.length ? d.payments.map((p) => `
+          <div class="pay-row">
+            <i style="background:${METHOD_COLORS[p.method] || '#999'}"></i>
+            <span>${PAY_NAMES[p.method] || esc(p.method)}<small>${p.count} عملية</small></span>
+            <div class="pay-bar"><em style="width:${inTotal ? Math.max(2, (p.total / inTotal) * 100) : 0}%;background:${METHOD_COLORS[p.method] || '#999'}"></em></div>
+            <b>${n(p.total)}</b>
+          </div>`).join('') : '<div class="empty">مفيش فلوس دخلت في الفترة دي</div>'}
+          ${d.payments.length ? `<div class="pay-row total"><i></i><span>الإجمالي</span><div></div><b>${n(inTotal)} <small>${cur}</small></b></div>` : ''}
+        </div>
+        ${t.refunds ? `<p class="muted small" style="margin:10px 0 0">اترجع للعملاء كاش في المرتجعات: ${n(t.refunds)} ${cur}</p>` : ''}
+        ${others.length ? `<details class="more-days"><summary>InstaPay والمحافظ يوم بيوم</summary>
+          <div class="day-list">${others.map((x) => `<div><span>${esc(fmtDay(x.day))} — ${PAY_NAMES[x.method] || esc(x.method)}</span><small>${x.count} عملية</small><b>${n(x.total)}</b></div>`).join('')}</div></details>` : ''}
+      </div>
+
+      <div class="card statement">
+        <div class="card-head"><h2>${icon('receipt')} قائمة الدخل</h2></div>
+        ${row('المبيعات', m(t.sales_revenue), '', 'بعد المرتجعات')}
+        ${row('تكلفة البضاعة المباعة', neg(t.sales_cost), 'minus')}
+        ${row('مجمل ربح المبيعات', m(t.sales_profit), 'sub-total')}
+        ${t.repairs_revenue || t.repairs_profit ? row('ربح الصيانة', m(t.repairs_profit), 'plus', `من إيراد ${n(t.repairs_revenue)}`) : ''}
+        ${row('المصاريف', neg(t.expenses), 'minus')}
+        ${d.expenses.length ? `<div class="st-sub">${d.expenses.map((e) => `<div><span>${esc(e.category)}</span><b>${n(e.total)}</b></div>`).join('')}</div>` : ''}
+        ${row('صافي الربح', m(t.net_profit), `grand ${t.net_profit < 0 ? 'bad' : ''}`)}
+      </div>
     </div>
-    <div class="grid grid-2">
-      <div class="card"><div class="card-head"><h2>المصاريف حسب النوع</h2><a class="btn btn-ghost btn-sm" href="#/expenses">التفاصيل</a></div>
-        <div class="table-wrap"><table class="table"><thead><tr><th>النوع</th><th>العدد</th><th></th><th class="end">المبلغ</th></tr></thead>
-        <tbody>${d.expenses.length ? d.expenses.map((e) => `<tr><td>${esc(e.category)}</td><td class="num">${e.count}</td><td style="width:90px">${bar(e.total, maxExp)}</td><td class="end">${money(e.total)}</td></tr>`).join('') : emptyRow(4, 'مفيش مصاريف')}</tbody></table></div></div>
-      <div class="card"><div class="card-head"><h2>يوم بيوم</h2></div>
-        <div class="table-wrap"><table class="table"><thead><tr><th>اليوم</th><th>الربح</th><th>المصاريف</th><th class="end">الصافي</th></tr></thead>
-        <tbody>${d.by_day.length ? d.by_day.slice().reverse().map((x) => `<tr><td class="num">${esc(x.day)}</td><td>${money(x.profit)}</td><td>${money(x.expenses)}</td>
-          <td class="end"><b style="${x.net < 0 ? 'color:var(--danger)' : ''}">${money(x.net)}</b></td></tr>`).join('') : emptyRow(4)}</tbody></table></div></div>
-    </div>`;
+
+    <div class="card stat-strip">
+      <a href="#/customers?filter=owing"><span>${icon('user')} عند العملاء</span><b>${n(t.receivable)}</b><small>${t.receivable_count} فاتورة${t.late_installments > 0 ? ` • متأخر ${n(t.late_installments)}` : ''}</small></a>
+      <a href="#/purchases"><span>${icon('truck')} علينا للموردين</span><b>${n(t.payable)}</b><small>${t.payable_count} مورد</small></a>
+      <a href="#/purchases"><span>${icon('box')} اشترينا بضاعة</span><b>${n(t.purchases)}</b><small>${t.purchases_count} فاتورة</small></a>
+      <div><span>${icon('wallet')} اتحصّل آجل</span><b>${n(t.collected)}</b><small>من العملاء</small></div>
+    </div>
+
+    ${d.by_day.length > 1 ? `<details class="card days-card"><summary><h2>${icon('chart')} يوم بيوم</h2><span class="muted small">${d.by_day.length} يوم</span></summary>
+      <div class="table-wrap"><table class="table"><thead><tr><th>اليوم</th><th>الربح</th><th>المصاريف</th><th class="end">الصافي</th></tr></thead>
+      <tbody>${d.by_day.slice().reverse().map((x) => `<tr><td>${esc(fmtDay(x.day))}</td><td>${money(x.profit)}</td><td>${money(x.expenses)}</td>
+        <td class="end"><b style="${x.net < 0 ? 'color:var(--danger)' : ''}">${money(x.net)}</b></td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
 }

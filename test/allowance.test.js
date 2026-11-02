@@ -67,3 +67,19 @@ test('daily allowance: given from the drawer, on top of the salary', async () =>
   await admin.put(`/payroll/${b.id}`, { salary: 5500 });
   assert.equal((await admin.get('/allowances/today')).data.list.find((u) => u.id === b.id).amount, 150);
 });
+
+test('report: money in by payment method, card day by day', async () => {
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  const p = (await admin.post('/products', { name: 'Speaker', sell_price: 1000, initial_qty: 10 })).data;
+  await admin.post('/sales', { items: [{ product_id: p.id, qty: 2 }], payment_method: 'card' });
+  await admin.post('/sales', { items: [{ product_id: p.id, qty: 1 }], payment_method: 'cash', paid: 1500 }); // change given back
+  await admin.post('/sales', { items: [{ product_id: p.id, qty: 1 }], payment_method: 'instapay' });
+  const r = (await admin.get('/reports/finance')).data;
+  const m = Object.fromEntries(r.payments.map((x) => [x.method, x.total]));
+  assert.equal(m.card, 2000);
+  assert.equal(m.cash, 1000); // what stayed, not what was handed over
+  assert.equal(m.instapay, 1000);
+  assert.equal(r.method_days.find((x) => x.method === 'card').total, 2000);
+  assert.equal(r.totals.sales_revenue - r.totals.sales_cost, r.totals.sales_profit);
+});

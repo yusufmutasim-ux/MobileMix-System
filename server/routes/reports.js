@@ -204,12 +204,23 @@ module.exports = function reportRoutes(api, db) {
     const payable = db.prepare(`SELECT COALESCE(SUM(b), 0) AS t, COUNT(*) AS n FROM (
       SELECT (COALESCE((SELECT SUM(total) FROM purchases WHERE supplier_id = s.id), 0)
             - COALESCE((SELECT SUM(amount) FROM supplier_payments WHERE supplier_id = s.id), 0)) AS b FROM suppliers s) WHERE b > 0.004`).get();
+    // Money that came in, by how it was paid (to check against the card machine, InstaPay, wallets)
+    const IN = `SELECT CASE WHEN payment_method = 'installment' THEN 'cash' ELSE payment_method END AS method, date(created_at) AS day, MIN(paid, total) AS amount
+        FROM sales WHERE date(created_at) BETWEEN ? AND ? AND MIN(paid, total) > 0
+      UNION ALL SELECT method, date(created_at), amount FROM sale_payments WHERE date(created_at) BETWEEN ? AND ?
+      UNION ALL SELECT method, date(created_at), amount FROM repair_payments WHERE date(created_at) BETWEEN ? AND ?`;
+    const rng = [from, to, from, to, from, to];
+    const payments = db.prepare(`SELECT method, COUNT(*) AS count, SUM(amount) AS total FROM (${IN}) GROUP BY method ORDER BY total DESC`).all(...rng)
+      .map((r) => ({ ...r, total: round2(r.total) }));
+    const methodDays = db.prepare(`SELECT method, day, COUNT(*) AS count, SUM(amount) AS total FROM (${IN}) WHERE method <> 'cash' GROUP BY method, day ORDER BY day DESC`).all(...rng)
+      .map((r) => ({ ...r, total: round2(r.total) }));
+    const refunds = round2(db.prepare('SELECT COALESCE(SUM(COALESCE(cash_out, amount)), 0) AS t FROM returns WHERE date(created_at) BETWEEN ? AND ?').get(from, to).t);
     const sp = salesProfit.p - (rets.amount - rets.cost);
     const exp = expenses.reduce((a, e) => a + e.total, 0);
     res.json({
       from, to,
       totals: {
-        sales_revenue: round2(salesProfit.revenue - rets.amount), sales_profit: round2(sp),
+        sales_revenue: round2(salesProfit.revenue - rets.amount), sales_profit: round2(sp), sales_cost: round2(salesProfit.revenue - rets.amount - sp), refunds,
         repairs_revenue: round2(rep.revenue), repairs_profit: round2(rep.p),
         expenses: round2(exp), net_profit: round2(sp + rep.p - exp),
         purchases: round2(purchases.t), purchases_count: purchases.n, collected: round2(collected),
@@ -218,6 +229,7 @@ module.exports = function reportRoutes(api, db) {
         late_installments: round2(lateInstallments(db).reduce((a, i) => a + i.left, 0)),
       },
       expenses: expenses.map((e) => ({ ...e, total: round2(e.total) })),
+      payments, method_days: methodDays,
       by_day: byDay,
     });
   });
