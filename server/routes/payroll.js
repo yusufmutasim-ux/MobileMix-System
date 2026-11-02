@@ -17,7 +17,7 @@ module.exports = function payrollRoutes(api, db) {
     const auto = st.auto_deduct !== '0';
     const absDays = Math.max(0, Number(st.absence_deduct_days) || 0), lateDays = Math.max(0, Number(st.late_deduct_days) || 0);
     const last = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
-    const users = db.prepare("SELECT id, full_name, role, active, salary, commission_pct, daily_allowance, shift_start, shift_end, work_days, schedule_since, created_at FROM users WHERE role <> 'admin' OR salary > 0 ORDER BY active DESC, full_name").all();
+    const users = db.prepare("SELECT id, full_name, role, active, salary, commission_pct, daily_allowance, shift_start, shift_end, work_days, schedule_since, created_at, deleted_at FROM users WHERE role <> 'admin' OR salary > 0 ORDER BY active DESC, full_name").all();
     const like = `${month}%`;
     return users.map((u) => {
       const att = db.prepare(`SELECT COUNT(DISTINCT date(check_in_at)) AS days,
@@ -44,7 +44,7 @@ module.exports = function payrollRoutes(api, db) {
       delete u.shift_start; delete u.shift_end; delete u.work_days; delete u.schedule_since; delete u.created_at;
       return { ...u, days: att.days, hours: round2(att.minutes / 60), late_count: late.n, late_minutes: late.m, absent_count: absent.length, absent_days: absent,
         deduction, sales, commission, advances, paid, allowances, due };
-    });
+    }).filter((r) => !r.deleted_at || r.days || r.sales || r.advances || r.paid || r.allowances); // removed employees: only months they had activity
   }
 
   api.get('/payroll', perm, (req, res) => {
@@ -96,7 +96,7 @@ module.exports = function payrollRoutes(api, db) {
   const usual = () => Number(db.prepare("SELECT value FROM settings WHERE key = 'daily_allowance'").get()?.value) || 0;
   function todayList() {
     const day = today();
-    return db.prepare("SELECT id, full_name, role, daily_allowance FROM users WHERE active = 1 AND role <> 'admin' ORDER BY full_name").all().map((u) => {
+    return db.prepare("SELECT id, full_name, role, daily_allowance FROM users WHERE active = 1 AND deleted_at IS NULL AND role <> 'admin' ORDER BY full_name").all().map((u) => {
       const given = db.prepare("SELECT id, amount FROM expenses WHERE employee_id = ? AND category = 'يومية' AND date(created_at) = ? ORDER BY id DESC").all(u.id, day);
       const came = db.prepare('SELECT MIN(check_in_at) AS t FROM shifts WHERE user_id = ? AND date(check_in_at) = ?').get(u.id, day).t;
       return { id: u.id, full_name: u.full_name, role: u.role, amount: u.daily_allowance ?? usual(),

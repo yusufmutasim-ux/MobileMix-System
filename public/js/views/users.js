@@ -1,4 +1,4 @@
-import { api, state, icon, esc, fmtDate, modal, toast, busy, formData, ROLE_NAMES } from '../core.js';
+import { api, state, icon, esc, fmtDate, modal, toast, busy, formData, confirmBox, ROLE_NAMES } from '../core.js';
 
 const ROLE_INFO = {
   admin: 'كل الصلاحيات: الموظفين، الإعدادات، النسخ الاحتياطي',
@@ -53,12 +53,22 @@ function userForm(u = null) {
       ${!isNew ? `<label class="check full"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> الحساب نشط</label>` : ''}
       <p class="muted small full" id="role-info" style="margin:0"></p>
     </form>`,
-    foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
+    foot: `${!isNew && u.id !== state.user.id ? `<button class="btn btn-ghost" data-del style="color:var(--danger, #d33);margin-inline-end:auto">${icon('trash')} امسح الموظف</button>` : ''}
+      <button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
     onMount: (m, close) => {
       const role = m.querySelector('[name=role]');
       const info = () => { m.querySelector('#role-info').textContent = ROLE_INFO[role.value]; };
       role.addEventListener('change', info);
       info();
+      m.querySelector('[data-del]')?.addEventListener('click', async (e) => {
+        const ok = await confirmBox(`تمسح <b>${esc(u.full_name)}</b> من السيستم؟<br><span class="muted small">مش هيقدر يدخل تاني ومش هيظهر في القوايم. فواتيره وحضوره القديم هيفضلوا في التقارير باسمه.</span>`, { ok: 'امسح', danger: true });
+        if (!ok) return;
+        await busy(e.currentTarget, async () => {
+          await api.del('/users/' + u.id);
+          toast('اتمسح الموظف', 'ok');
+          close(true);
+        });
+      });
       m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
         const f = formData(m.querySelector('form'));
         if (isNew) await api.post('/users', f);

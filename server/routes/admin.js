@@ -102,7 +102,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
   const manageUsers = requirePerm('users.manage');
 
   api.get('/users', manageUsers, (_req, res) => {
-    res.json(db.prepare('SELECT id, username, full_name, role, active, created_at, shift_start, shift_end, work_days FROM users ORDER BY active DESC, id').all());
+    res.json(db.prepare('SELECT id, username, full_name, role, active, created_at, shift_start, shift_end, work_days FROM users WHERE deleted_at IS NULL ORDER BY active DESC, id').all());
   });
 
   /** Each employee's shift: from – to, and the week days they work. Empty times = no fixed shift. */
@@ -161,6 +161,36 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     if (!active || req.body.password) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
     audit(db, req.user.id, 'user.update', { id: user.id, role, active, password_reset: !!req.body.password });
     res.json({ ok: true });
+  });
+
+  /**
+   * Remove an employee. Someone with no history is erased; anyone who sold, worked shifts, etc. is
+   * taken off every list and can't log in, but old invoices and reports still show their name.
+   * Their username is freed so it can be given to someone new.
+   */
+  api.delete('/users/:id', manageUsers, (req, res) => {
+    const user = db.prepare('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL').get(req.params.id);
+    if (!user) throw notFound('الموظف غير موجود');
+    if (user.id === req.user.id) throw bad('مينفعش تمسح حسابك إنت');
+    if (user.role === 'admin') {
+      const { n } = db.prepare("SELECT COUNT(*) n FROM users WHERE role='admin' AND active=1 AND deleted_at IS NULL AND id <> ?").get(user.id);
+      if (n === 0) throw bad('لازم يفضل مدير واحد على الأقل');
+    }
+    let erased = false;
+    db.exec('SAVEPOINT del_user');
+    try {
+      db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+      db.exec('RELEASE del_user');
+      erased = true;
+    } catch (e) {
+      db.exec('ROLLBACK TO del_user; RELEASE del_user');
+      if (!/FOREIGN KEY/i.test(e.message)) throw e;
+      db.prepare(`UPDATE users SET active = 0, deleted_at = datetime('now','localtime'), username = ?,
+          password_hash = '', shift_start = NULL, shift_end = NULL WHERE id = ?`).run(`${user.username}~${user.id}`, user.id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+    }
+    audit(db, req.user.id, 'user.delete', { id: user.id, username: user.username, name: user.full_name, erased });
+    res.json({ ok: true, erased });
   });
 
   // ---------- settings ----------

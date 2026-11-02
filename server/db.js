@@ -601,6 +601,7 @@ function addMissingColumns(db) {
       'compare_price REAL'],                           // price before discount, shown crossed out in the store
     sale_items: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
     users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0',
+      'deleted_at TEXT',                              // removed from the system; old sales keep the name
       // Work schedule: from / to (HH:MM) and the week days they work (0 = Sunday … 6 = Saturday)
       'shift_start TEXT', 'shift_end TEXT', "work_days TEXT NOT NULL DEFAULT '0123456'",
       // Daily allowance (يومية) on top of the salary; empty = the shop's usual amount
