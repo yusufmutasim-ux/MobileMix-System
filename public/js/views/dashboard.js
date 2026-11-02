@@ -123,6 +123,19 @@ export async function render(el, { actions }) {
     }
   });
   allowances(el.querySelector('#allowances'));
+  // On a computer that isn't using the installed app yet: offer it once in a while
+  const offer = () => {
+    if (el.querySelector('.install-banner') || matchMedia('(display-mode: standalone)').matches || matchMedia('(pointer: coarse)').matches) return;
+    try { if (Number(localStorage.getItem('mm_install_later') || 0) > Date.now()) return; } catch { /* ignore */ }
+    el.insertAdjacentHTML('afterbegin', `<div class="card install-banner"><span>${icon('download')}</span><div><b>ثبّت Mobile Mix كأبلكيشن على الكمبيوتر</b>
+      <small class="muted">يفتح من أيقونة على سطح المكتب في نافذة لوحده، وأسرع، ويشتغل من غير نت</small></div>
+      <button class="btn btn-primary btn-sm" data-i="go">ثبّت</button><button class="btn btn-ghost btn-sm" data-i="later">بعدين</button></div>`);
+    const bn = el.querySelector('.install-banner');
+    bn.querySelector('[data-i=go]').addEventListener('click', () => import('../app.js').then((m) => m.installApp()));
+    bn.querySelector('[data-i=later]').addEventListener('click', () => { try { localStorage.setItem('mm_install_later', String(Date.now() + 7 * 864e5)); } catch { /* ignore */ } bn.remove(); });
+  };
+  document.addEventListener('mm:installable', offer, { once: true });
+  if (window.matchMedia && !matchMedia('(display-mode: standalone)').matches) setTimeout(() => { if (document.querySelector('[data-act="install"]:not(.hidden)')) offer(); }, 300);
   return () => document.removeEventListener('mm:shift', onShift);
 }
 

@@ -1814,3 +1814,6 @@ tr.clickable { cursor: pointer; }
 .att-row span { display: flex; flex-direction: column; }
 .att-row small { color: var(--slate); font-size: 12px; }
 .att-link { text-decoration: none; }
+.install-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border: 1.5px dashed var(--t-lime-fg); flex-wrap: wrap; }
+.install-banner > span { width: 40px; height: 40px; border-radius: 12px; background: var(--t-lime-bg); color: var(--t-lime-fg); display: grid; place-items: center; }
+.install-banner > div { flex: 1; min-width: 200px; display: flex; flex-direction: column; }

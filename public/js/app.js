@@ -31,6 +31,40 @@ const NAV = [
 
 let cleanup = null;
 
+// ---------- install as an app (Windows / Mac / Android: Chrome & Edge) ----------
+let installPrompt = null;
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  document.querySelectorAll('[data-act="install"]').forEach((b) => b.classList.remove('hidden'));
+  document.dispatchEvent(new CustomEvent('mm:installable'));
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  document.querySelectorAll('[data-act="install"], .install-banner').forEach((b) => b.remove());
+  toast('اتثبت ✓ هتلاقيه على سطح المكتب وفي قايمة Start', 'ok');
+});
+export async function installApp() {
+  if (installPrompt) {
+    installPrompt.prompt();
+    const r = await installPrompt.userChoice.catch(() => null);
+    if (r?.outcome === 'accepted') installPrompt = null;
+    return;
+  }
+  // The browser didn't offer it (Safari, Firefox, or already installed): explain how
+  const ios = /iphone|ipad/i.test(navigator.userAgent);
+  modal({
+    title: 'ثبّت السيستم كأبلكيشن',
+    body: isInstalled() ? '<p style="margin-top:0">السيستم متثبت بالفعل على الجهاز ده ✓</p>' : ios
+      ? '<ol class="setup-steps"><li>افتح السيستم من <b>Safari</b>.</li><li>دوس زرار المشاركة <b>⬆</b> تحت.</li><li>اختار <b>Add to Home Screen</b> ثم <b>Add</b>.</li></ol>'
+      : `<ol class="setup-steps"><li>افتح السيستم من <b>Google Chrome</b> أو <b>Microsoft Edge</b>.</li>
+          <li>في شريط العنوان فوق هتلاقي أيقونة <b>تثبيت</b> (شاشة عليها سهم ⊕) — دوس عليها، أو من قايمة <b>⋮</b> اختار <b>Install Mobile Mix</b> / <b>Apps ← Install this site as an app</b>.</li>
+          <li>دوس <b>Install</b> — هيتحط على سطح المكتب وفي قايمة Start، ويفتح في نافذة لوحده زي أي برنامج.</li></ol>`,
+    foot: '<button class="btn btn-primary" data-close>تمام</button>',
+  });
+}
+
 async function boot() {
   try {
     const me = await api.get('/auth/me');
@@ -191,6 +225,10 @@ function shell() {
   api.get('/version').then((v) => { document.querySelectorAll('.app-version').forEach((x) => { x.textContent = `نسخة ${v.build}`; }); }).catch(() => {});
   initTopNav();
   initNet();
+  document.querySelectorAll('[data-act="install"]').forEach((b) => {
+    if (installPrompt) b.classList.remove('hidden');
+    b.addEventListener('click', installApp);
+  });
   initOrderBadge();
   document.getElementById('search-btn').addEventListener('click', openSearch);
   initSearchKeys();
@@ -325,6 +363,7 @@ function topNav(visible, u) {
       <div class="dd-menu">
         <div class="dd-head"><b>${esc(u.full_name)}</b><span class="muted small">${ROLE_NAMES[u.role]}</span></div>
         <button type="button" data-act="theme">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}<span class="theme-label">${currentTheme() === 'dark' ? 'الوضع الفاتح' : 'الوضع الغامق'}</span></button>
+        <button type="button" data-act="install" class="hidden">${icon('download')}<span>ثبّت كأبلكيشن على الجهاز</span></button>
         <button type="button" data-act="logout">${icon('logout')}<span>تسجيل خروج</span></button>
         <div class="small muted num app-version dd-foot"></div>
       </div>
