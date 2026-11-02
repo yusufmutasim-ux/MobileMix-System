@@ -1639,3 +1639,17 @@ tr.clickable { cursor: pointer; }
 .pick-list button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; border: 0; background: var(--t-gray-bg); border-radius: 12px; padding: 10px 12px; cursor: pointer; color: inherit; font: inherit; }
 .pick-list button:hover { outline: 2px solid var(--ink); }
 .scan-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.allow-list { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.allow-row { display: flex; align-items: center; gap: 10px; background: var(--t-gray-bg); border-radius: 16px; padding: 10px 12px; transition: background .25s; }
+.allow-row.done { background: var(--t-lime-bg); }
+.allow-who { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.allow-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.allow-given { display: inline-flex; align-items: center; gap: 4px; color: var(--t-lime-fg); font-weight: 500; font-size: 14px; white-space: nowrap; }
+.allow-given svg { width: 16px; height: 16px; }
+.visa-kpi { background: linear-gradient(135deg, #1a1f71, #2b3a9e); color: #fff !important; }
+.visa-kpi .label, .visa-kpi .sub, .visa-kpi small { color: rgba(255,255,255,.8) !important; }
+.kpi.visa-kpi, a.kpi.visa-kpi { background: linear-gradient(135deg, #1a1f71, #2b3a9e) !important; color: #fff !important; }
+.kpi.visa-kpi .value, .kpi.visa-kpi .value * { color: #fff !important; }
+.kpi.visa-kpi .label, .kpi.visa-kpi .sub, .kpi.visa-kpi small { color: rgba(255,255,255,.82) !important; }
+.kpi.visa-kpi .label svg { color: #fff; }
+.kpi.visa-kpi::after { display: none; }

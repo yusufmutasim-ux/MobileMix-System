@@ -7,8 +7,14 @@ export async function render(el, { actions }) {
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'صباح الخير' : 'مساء الخير';
 
+  const methods = d.today.by_method || {};
+  const byMethod = Object.entries(methods).sort((a, b) => b[1].total - a[1].total);
+  const card = methods.card || { total: 0, count: 0 };
   const kpis = can('sales.create') ? [
-    `<div class="kpi bg-mint"><div class="label">${icon('wallet')} مبيعات النهارده</div><div class="value">${n(d.today.total)} <small>${esc(state.settings.currency)}</small></div></div>`,
+    `<div class="kpi bg-mint"><div class="label">${icon('wallet')} مبيعات النهارده</div><div class="value">${n(d.today.total)} <small>${esc(state.settings.currency)}</small></div>
+      ${byMethod.length > 1 ? `<div class="sub">${byMethod.map(([m, v]) => `${PAY_NAMES[m] || m}: <b>${n(v.total)}</b>`).join(' • ')}</div>` : ''}</div>`,
+    `<a href="#/sales?method=card" class="kpi visa-kpi" style="color:inherit"><div class="label">${icon('card')} مبيعات الفيزا</div>
+      <div class="value">${n(card.total)} <small>${esc(state.settings.currency)}</small></div><div class="sub">${card.count ? `${card.count} فاتورة — مش في الدرج، في البنك` : 'مفيش النهارده'}</div></a>`,
     `<div class="kpi bg-sky"><div class="label">${icon('receipt')} عدد الفواتير</div><div class="value">${d.today.invoices}</div></div>`,
   ] : [];
   if (d.today.profit !== undefined) {
@@ -60,6 +66,7 @@ export async function render(el, { actions }) {
       <p class="muted">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })} — يوم موفق في ${esc(state.settings.shop_name || 'Mobile Mix')}</p></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">${kpis.join('')}</div>
     <div class="quick" style="margin-top:24px">${quick}</div>
+    ${can('expenses.view') ? '<div class="card allow-card" id="allowances" style="margin-top:24px"><div class="empty loading"><span></span><span></span><span></span></div></div>' : ''}
     <div class="grid ${d.week ? 'grid-2' : ''} ${d.recent.length || can('sales.create') ? '' : 'hidden'}" style="margin-top:24px">
       ${d.week ? `<div class="card"><div class="card-head"><h2>مبيعات آخر 7 أيام</h2></div>${weekChart(d.week)}</div>` : ''}
       <div class="card">
@@ -107,6 +114,7 @@ export async function render(el, { actions }) {
       btn.disabled = false;
     }
   });
+  allowances(el.querySelector('#allowances'));
   return () => document.removeEventListener('mm:shift', onShift);
 }
 
@@ -127,4 +135,50 @@ function weekChart(week) {
         <div class="bar" style="height:${Math.max(1, (d.total / max) * 100)}%"></div></div>`).join('')}
     </div>
     <div class="bar-labels">${days.map((d) => `<span>${d.label}</span>`).join('')}</div>`;
+}
+
+/** Daily allowance (يومية): on top of the salary, given from the drawer — one tap per employee. */
+async function allowances(box) {
+  if (!box) return;
+  const cur = esc(state.settings.currency || 'ج.م');
+  const draw = (d) => {
+    const came = d.list.filter((u) => u.came_at && !u.given);
+    const waiting = came.length ? came : d.list.filter((u) => !u.given);
+    box.innerHTML = `
+      <div class="card-head"><h2>${icon('coins')} يومية الموظفين — النهارده</h2>
+        <span class="muted small">بتتخصم من الدرج وبتتسجل على كل موظف، بعيد عن المرتب</span>
+        ${d.total ? `<span class="pill pill-ok">اتصرف ${n(d.total)} ${cur}</span>` : ''}</div>
+      ${d.list.length ? `<div class="allow-list">${d.list.map((u) => `
+        <div class="allow-row ${u.given ? 'done' : ''}" data-id="${u.id}">
+          <span class="avatar">${esc(u.full_name.trim()[0] || '?')}</span>
+          <div class="allow-who"><b>${esc(u.full_name)}</b><span class="small muted">${u.came_at ? `حضر ${esc(u.came_at.slice(11, 16))}` : 'لسه مسجلش حضور'}</span></div>
+          ${u.given ? `<span class="allow-given">${icon('check')} اتصرف ${n(u.given)}</span>
+            <button class="btn btn-ghost btn-icon btn-sm" data-undo="${u.given_id}" title="إلغاء (غلطة)">${icon('x')}</button>`
+            : `<button class="btn btn-primary btn-sm" data-give="${u.id}">اصرف ${n(u.amount)} ${cur}</button>`}
+        </div>`).join('')}</div>
+        ${waiting.length > 1 ? `<button class="btn btn-outline" id="give-all" style="margin-top:12px;width:100%">${icon('coins')} اصرف ${came.length ? `للي حضروا (${came.length})` : `للكل (${waiting.length})`} — ${n(waiting.reduce((a, u) => a + u.amount, 0))} ${cur}</button>` : ''}`
+        : '<div class="empty">ضيف الموظفين الأول من صفحة الموظفين</div>'}
+      <p class="muted small" style="margin:10px 0 0">اليومية المعتادة ${n(d.usual)} ${cur}${can('settings.manage') ? ' — <a href="#" id="allow-edit">غيّرها</a>' : ''}. لو موظف ليه مبلغ مختلف، غيّره من صفحة المرتبات.</p>`;
+    box.querySelectorAll('[data-give]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { const r = await api.post('/allowances', { user_id: Number(b.dataset.give) }); toast(`اتصرفت يومية ${n(r.total)}`, 'ok'); draw({ ...r, total: r.day_total }); }
+      catch (e) { toast(e.message, 'err'); b.disabled = false; }
+    }));
+    box.querySelectorAll('[data-undo]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('تلغي اليومية دي؟ الفلوس هترجع للدرج.')) return;
+      try { draw(await api.del('/allowances/' + b.dataset.undo)); toast('اتلغت', 'ok'); } catch (e) { toast(e.message, 'err'); }
+    }));
+    box.querySelector('#give-all')?.addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try { const r = await api.post('/allowances', { ids: waiting.map((u) => u.id) }); toast(`اتصرفت يومية ${r.count} موظف — ${n(r.total)} ${state.settings.currency || 'ج.م'}`, 'ok'); draw({ ...r, total: r.day_total }); }
+      catch (er) { toast(er.message, 'err'); }
+    });
+    box.querySelector('#allow-edit')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const v = prompt('اليومية المعتادة لكل موظف:', d.usual);
+      if (v === null || v.trim() === '' || !(Number(v) >= 0)) return;
+      try { state.settings = await api.put('/settings', { daily_allowance: String(Number(v)) }); draw(await api.get('/allowances/today')); } catch (er) { toast(er.message, 'err'); }
+    });
+  };
+  try { draw(await api.get('/allowances/today')); } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }

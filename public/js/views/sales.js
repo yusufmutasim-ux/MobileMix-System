@@ -33,6 +33,7 @@ export async function render(el, { query, actions }) {
         <div class="search">${icon('search')}<input class="input" id="q" placeholder="رقم الفاتورة، تليفون العميل أو IMEI…"></div>
         <div class="seg" id="range">${Object.entries(RANGE_NAMES).map(([k, v]) => `<button data-r="${k}" class="${k === 'today' ? 'on' : ''}">${v}</button>`).join('')}</div>
         <input class="input num" type="date" id="from" value="${from}"> <input class="input num" type="date" id="to" value="${to}">
+        <select class="input" id="method"><option value="">كل طرق الدفع</option>${Object.entries(PAY_NAMES).map(([k, v]) => `<option value="${k}" ${query.get('method') === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
         ${users.length ? `<select class="input" id="user"><option value="">كل الموظفين</option>${users.map((u) => `<option value="${u.id}">${esc(u.full_name)}</option>`).join('')}</select>` : ''}
       </div>
       <div class="grid grid-3" id="sum" style="margin-bottom:16px"></div>
@@ -50,6 +51,7 @@ export async function render(el, { query, actions }) {
     if (q) p.set('q', q);
     else { p.set('from', from); p.set('to', to); }
     if ($('#user')?.value) p.set('user_id', $('#user').value);
+    if ($('#method').value) p.set('method', $('#method').value);
     rows = await api.get('/sales?' + p);
     const total = rows.reduce((s, r) => s + r.total - r.returned_total, 0);
     $('#sum').innerHTML = `
@@ -90,6 +92,7 @@ export async function render(el, { query, actions }) {
   $('#from').addEventListener('change', onDate);
   $('#to').addEventListener('change', onDate);
   $('#user')?.addEventListener('change', () => load().catch(toastErr));
+  $('#method').addEventListener('change', () => load().catch(toastErr));
   actions.querySelector('#warranty').addEventListener('click', () => warrantyModal());
   actions.querySelector('#csv').addEventListener('click', () => downloadCsv(`sales-${from}-${to}.csv`,
     ['الفاتورة', 'التاريخ', 'العميل', 'التليفون', 'الموظف', 'الدفع', 'الحالة', 'الإجمالي', 'مرتجع'],

@@ -174,6 +174,7 @@ module.exports = function salesRoutes(api, db) {
       where.push('date(s.created_at) BETWEEN ? AND ?');
       params.push(from, to);
     }
+    if (PAYMENT_METHODS.includes(req.query.method)) { where.push('s.payment_method = ?'); params.push(req.query.method); }
     if (!can(req.user, 'sales.view_all')) {
       where.push('s.user_id = ?');
       params.push(req.user.id);

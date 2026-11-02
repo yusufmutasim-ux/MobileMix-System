@@ -12,7 +12,7 @@ module.exports = function payrollRoutes(api, db) {
   const perm = requirePerm('payroll');
 
   function sheet(month) {
-    const users = db.prepare("SELECT id, full_name, role, active, salary, commission_pct FROM users WHERE role <> 'admin' OR salary > 0 ORDER BY active DESC, full_name").all();
+    const users = db.prepare("SELECT id, full_name, role, active, salary, commission_pct, daily_allowance FROM users WHERE role <> 'admin' OR salary > 0 ORDER BY active DESC, full_name").all();
     const like = `${month}%`;
     return users.map((u) => {
       const att = db.prepare(`SELECT COUNT(DISTINCT date(check_in_at)) AS days,
@@ -27,10 +27,11 @@ module.exports = function payrollRoutes(api, db) {
         WHERE employee_id = ? AND category = ? AND COALESCE(period, substr(created_at, 1, 7)) = ?`).get(u.id, cat, month).t);
       const advances = sum('سلفة');
       const paid = sum('مرتبات');
+      const allowances = sum('يومية'); // on top of the salary: shown, not taken off it
       const due = round2((u.salary || 0) + commission - advances - paid);
       const late = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(late_minutes), 0) AS m FROM shifts
         WHERE user_id = ? AND check_in_at LIKE ? AND late_minutes > 0`).get(u.id, like);
-      return { ...u, days: att.days, hours: round2(att.minutes / 60), late_count: late.n, late_minutes: late.m, sales, commission, advances, paid, due };
+      return { ...u, days: att.days, hours: round2(att.minutes / 60), late_count: late.n, late_minutes: late.m, sales, commission, advances, paid, allowances, due };
     });
   }
 
@@ -38,19 +39,70 @@ module.exports = function payrollRoutes(api, db) {
     const month = monthOf(req.query.month);
     const rows = sheet(month);
     const t = (k) => round2(rows.reduce((a, r) => a + (r[k] || 0), 0));
-    res.json({ month, rows, totals: { salary: t('salary'), commission: t('commission'), advances: t('advances'), paid: t('paid'), due: t('due') } });
+    res.json({ month, rows, totals: { salary: t('salary'), commission: t('commission'), advances: t('advances'), paid: t('paid'), allowances: t('allowances'), due: t('due') } });
   });
 
   api.put('/payroll/:userId', perm, (req, res) => {
-    const u = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.userId);
+    const u = db.prepare('SELECT id, daily_allowance FROM users WHERE id = ?').get(req.params.userId);
     if (!u) throw notFound('الموظف غير موجود');
     const b = req.body || {};
     const salary = round2(num(b.salary, 'المرتب', { min: 0, optional: true }) || 0);
     const pct = round2(num(b.commission_pct, 'نسبة العمولة', { min: 0, optional: true }) || 0);
     if (pct > 50) throw bad('نسبة العمولة كبيرة جداً');
-    db.prepare('UPDATE users SET salary = ?, commission_pct = ? WHERE id = ?').run(salary, pct, u.id);
+    // Not sent: keep it; empty: back to the shop's usual amount
+    const daily = b.daily_allowance === undefined ? u.daily_allowance
+      : b.daily_allowance === '' || b.daily_allowance === null ? null : round2(num(b.daily_allowance, 'اليومية', { min: 0 }));
+    db.prepare('UPDATE users SET salary = ?, commission_pct = ?, daily_allowance = ? WHERE id = ?').run(salary, pct, daily, u.id);
     audit(db, req.user.id, 'payroll.settings', { user: u.id, salary, commission_pct: pct });
     res.json({ ok: true });
+  });
+
+  // ---------- daily allowance (يومية): on top of the salary, paid from the drawer ----------
+  const allowancePerm = requirePerm('expenses.view'); // owner and managers
+  const usual = () => Number(db.prepare("SELECT value FROM settings WHERE key = 'daily_allowance'").get()?.value) || 0;
+  function todayList() {
+    const day = today();
+    return db.prepare("SELECT id, full_name, role, daily_allowance FROM users WHERE active = 1 AND role <> 'admin' ORDER BY full_name").all().map((u) => {
+      const given = db.prepare("SELECT id, amount FROM expenses WHERE employee_id = ? AND category = 'يومية' AND date(created_at) = ? ORDER BY id DESC").all(u.id, day);
+      const came = db.prepare('SELECT MIN(check_in_at) AS t FROM shifts WHERE user_id = ? AND date(check_in_at) = ?').get(u.id, day).t;
+      return { id: u.id, full_name: u.full_name, role: u.role, amount: u.daily_allowance ?? usual(),
+        given: round2(given.reduce((a, g) => a + g.amount, 0)), given_id: given[0]?.id || null, came_at: came };
+    });
+  }
+  api.get('/allowances/today', allowancePerm, (_req, res) => {
+    const list = todayList();
+    res.json({ usual: usual(), list, total: round2(list.reduce((a, u) => a + u.given, 0)) });
+  });
+  /** Give today's allowance to one or more employees (skips anyone who already got it today). */
+  api.post('/allowances', allowancePerm, (req, res) => {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : [req.body?.user_id]).map(Number).filter(Boolean);
+    if (!ids.length) throw bad('اختار الموظف');
+    const list = todayList();
+    const month = today().slice(0, 7);
+    let count = 0, total = 0;
+    for (const id of ids) {
+      const u = list.find((x) => x.id === id);
+      if (!u) throw notFound('الموظف غير موجود');
+      if (u.given > 0) continue;
+      const amount = round2(ids.length === 1 && req.body?.amount !== undefined ? num(req.body.amount, 'المبلغ', { min: 0.01 }) : u.amount);
+      if (!(amount > 0)) continue;
+      db.prepare("INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id) VALUES ('يومية', ?, 1, ?, ?, ?, ?)")
+        .run(amount, `يومية ${u.full_name}`, u.id, month, req.user.id);
+      count++; total += amount;
+    }
+    audit(db, req.user.id, 'payroll.allowance', { ids, count, total });
+    const after = todayList();
+    res.status(201).json({ count, total: round2(total), usual: usual(), list: after, day_total: round2(after.reduce((a, u) => a + u.given, 0)) });
+  });
+  /** Undo today's allowance (a mistake). */
+  api.delete('/allowances/:expenseId', allowancePerm, (req, res) => {
+    const e = db.prepare("SELECT * FROM expenses WHERE id = ? AND category = 'يومية'").get(Number(req.params.expenseId));
+    if (!e) throw notFound('اليومية دي مش موجودة');
+    if (e.created_at.slice(0, 10) !== today()) throw bad('تقدر تلغي يومية النهارده بس — القديمة من صفحة المصروفات');
+    db.prepare('DELETE FROM expenses WHERE id = ?').run(e.id);
+    audit(db, req.user.id, 'payroll.allowance_undo', { expense: e.id });
+    const list = todayList();
+    res.json({ usual: usual(), list, total: round2(list.reduce((a, u) => a + u.given, 0)) });
   });
 
   /** Pay a salary (or part of it) or give an advance — saved as an expense for that employee and month. */

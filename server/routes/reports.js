@@ -230,6 +230,9 @@ module.exports = function reportRoutes(api, db) {
     const t = db.prepare(`SELECT COUNT(*) AS invoices, COALESCE(SUM(total), 0) AS total FROM sales s
                           WHERE date(s.created_at) = ? ${mine}`).get(...args);
     const out = { today: { invoices: t.invoices, total: round2(t.total) } };
+    // Today's sales by how they were paid (card money doesn't sit in the drawer)
+    out.today.by_method = Object.fromEntries(db.prepare(`SELECT s.payment_method AS m, COUNT(*) AS n, COALESCE(SUM(s.total), 0) AS total FROM sales s
+      WHERE date(s.created_at) = ? ${mine} GROUP BY s.payment_method`).all(...args).map((r) => [r.m, { count: r.n, total: round2(r.total) }]));
     if (can(req.user, 'reports.view')) {
       const p = db.prepare(`SELECT COALESCE(SUM(${NET} - si.unit_cost * si.qty), 0) AS profit
                             FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE date(s.created_at) = ?`).get(today());

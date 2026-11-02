@@ -462,7 +462,8 @@ const DEFAULT_SETTINGS = {
   shop_lng: '',
   zone_radius: '100',
   shop_networks: '',
-  expense_categories: 'إيجار\nكهربا ومياه\nنت وتليفون\nمرتبات\nسلفة\nأكل ومشروبات\nمواصلات\nصيانة المحل\nأخرى',
+  expense_categories: 'إيجار\nكهربا ومياه\nنت وتليفون\nمرتبات\nسلفة\nيومية\nأكل ومشروبات\nمواصلات\nصيانة المحل\nأخرى',
+  daily_allowance: '100',           // usual daily allowance per employee
   daily_summary: '1',
   daily_summary_time: '23:00',
   // ---------- online store ----------
@@ -579,7 +580,9 @@ function addMissingColumns(db) {
     sale_items: ['warranty_days INTEGER NOT NULL DEFAULT 0'],
     users: ['salary REAL NOT NULL DEFAULT 0', 'commission_pct REAL NOT NULL DEFAULT 0',
       // Work schedule: from / to (HH:MM) and the week days they work (0 = Sunday … 6 = Saturday)
-      'shift_start TEXT', 'shift_end TEXT', "work_days TEXT NOT NULL DEFAULT '0123456'"],
+      'shift_start TEXT', 'shift_end TEXT', "work_days TEXT NOT NULL DEFAULT '0123456'",
+      // Daily allowance (يومية) on top of the salary; empty = the shop's usual amount
+      'daily_allowance REAL'],
   };
   for (const [table, cols] of Object.entries(wanted)) {
     const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
