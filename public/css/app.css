@@ -1653,3 +1653,8 @@ tr.clickable { cursor: pointer; }
 .kpi.visa-kpi .label, .kpi.visa-kpi .sub, .kpi.visa-kpi small { color: rgba(255,255,255,.82) !important; }
 .kpi.visa-kpi .label svg { color: #fff; }
 .kpi.visa-kpi::after { display: none; }
+.kpi.insta-kpi, a.kpi.insta-kpi { background: linear-gradient(135deg, #4b1d8f, #7b2ff7) !important; color: #fff !important; }
+.kpi.insta-kpi .value, .kpi.insta-kpi .value * { color: #fff !important; }
+.kpi.insta-kpi .label, .kpi.insta-kpi .sub, .kpi.insta-kpi small { color: rgba(255,255,255,.82) !important; }
+.kpi.insta-kpi .label svg { color: #fff; }
+.kpi.insta-kpi::after { display: none; }

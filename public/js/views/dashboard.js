@@ -10,11 +10,14 @@ export async function render(el, { actions }) {
   const methods = d.today.by_method || {};
   const byMethod = Object.entries(methods).sort((a, b) => b[1].total - a[1].total);
   const card = methods.card || { total: 0, count: 0 };
+  const insta = methods.instapay || { total: 0, count: 0 };
   const kpis = can('sales.create') ? [
     `<div class="kpi bg-mint"><div class="label">${icon('wallet')} مبيعات النهارده</div><div class="value">${n(d.today.total)} <small>${esc(state.settings.currency)}</small></div>
       ${byMethod.length > 1 ? `<div class="sub">${byMethod.map(([m, v]) => `${PAY_NAMES[m] || m}: <b>${n(v.total)}</b>`).join(' • ')}</div>` : ''}</div>`,
     `<a href="#/sales?method=card" class="kpi visa-kpi" style="color:inherit"><div class="label">${icon('card')} مبيعات الفيزا</div>
       <div class="value">${n(card.total)} <small>${esc(state.settings.currency)}</small></div><div class="sub">${card.count ? `${card.count} فاتورة — مش في الدرج، في البنك` : 'مفيش النهارده'}</div></a>`,
+    `<a href="#/sales?method=instapay" class="kpi insta-kpi" style="color:inherit"><div class="label">${icon('wallet')} مبيعات InstaPay</div>
+      <div class="value">${n(insta.total)} <small>${esc(state.settings.currency)}</small></div><div class="sub">${insta.count ? `${insta.count} فاتورة — مش في الدرج، في الحساب` : 'مفيش النهارده'}</div></a>`,
     `<div class="kpi bg-sky"><div class="label">${icon('receipt')} عدد الفواتير</div><div class="value">${d.today.invoices}</div></div>`,
   ] : [];
   if (d.today.profit !== undefined) {
