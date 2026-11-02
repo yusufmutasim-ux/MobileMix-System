@@ -7,7 +7,7 @@ const hosting = require('./hosting');
 const { createNotifier } = require('./notify');
 
 // Bump with every release so it's easy to see which version a shop is running
-const BUILD = '2026.11.02-wall1';
+const BUILD = '2026.11.02-icon1';
 
 function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSender } = {}) {
   const app = express();
@@ -70,6 +70,20 @@ function createApp(db, { dataDir = path.join(__dirname, '..', 'data'), pushSende
     const host = String(req.hostname || '').toLowerCase();
     if (domain && (host === domain || host === `www.${domain}`)) return res.redirect('/shop/');
     next();
+  });
+  // The online store installs as its own app on customers' phones, with the shop's name and icon
+  app.get('/shop/manifest.webmanifest', (_req, res) => {
+    const st = Object.fromEntries(db.prepare("SELECT key, value FROM settings WHERE key IN ('store_title', 'shop_name')").all().map((r) => [r.key, r.value]));
+    const name = st.store_title || st.shop_name || 'Mobile Mix';
+    res.type('application/manifest+json').set('Cache-Control', 'no-cache').send(JSON.stringify({
+      name, short_name: name.length > 12 ? name.slice(0, 12) : name, id: '/shop/', start_url: '/shop/', scope: '/shop/',
+      display: 'standalone', lang: 'ar', dir: 'rtl', background_color: '#141414', theme_color: '#141414',
+      icons: [
+        { src: '/icons/icon-192.png?v=3', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icons/icon-512.png?v=3', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: '/icons/maskable-512.png?v=3', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    }));
   });
   app.use('/fonts/plex', express.static(path.join(root, 'node_modules/@fontsource/ibm-plex-sans-arabic/files'), { maxAge: '30d' }));
   app.use('/fonts/poppins', express.static(path.join(root, 'node_modules/@fontsource/poppins/files'), { maxAge: '30d' }));
