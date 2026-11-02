@@ -135,7 +135,7 @@ export async function render(el, { actions }) {
     bn.querySelector('[data-i=later]').addEventListener('click', () => { try { localStorage.setItem('mm_install_later', String(Date.now() + 7 * 864e5)); } catch { /* ignore */ } bn.remove(); });
   };
   document.addEventListener('mm:installable', offer, { once: true });
-  if (window.matchMedia && !matchMedia('(display-mode: standalone)').matches) setTimeout(() => { if (document.querySelector('[data-act="install"]:not(.hidden)')) offer(); }, 300);
+  if (window.matchMedia && !matchMedia('(display-mode: standalone)').matches && navigator.standalone !== true) setTimeout(offer, 300);
   return () => document.removeEventListener('mm:shift', onShift);
 }
 
