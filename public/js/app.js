@@ -46,6 +46,7 @@ window.addEventListener('appinstalled', () => {
   toast('اتثبت ✓ هتلاقيه على سطح المكتب وفي قايمة Start', 'ok');
 });
 export async function installApp() {
+  if (!installPrompt && window.__mmInstall) installPrompt = window.__mmInstall;
   if (installPrompt) {
     installPrompt.prompt();
     const r = await installPrompt.userChoice.catch(() => null);
@@ -59,7 +60,7 @@ export async function installApp() {
     body: isInstalled() ? '<p style="margin-top:0">السيستم متثبت بالفعل على الجهاز ده ✓</p>' : ios
       ? '<ol class="setup-steps"><li>افتح السيستم من <b>Safari</b>.</li><li>دوس زرار المشاركة <b>⬆</b> تحت.</li><li>اختار <b>Add to Home Screen</b> ثم <b>Add</b>.</li></ol>'
       : `<ol class="setup-steps"><li>افتح السيستم من <b>Google Chrome</b> أو <b>Microsoft Edge</b>.</li>
-          <li>في شريط العنوان فوق هتلاقي أيقونة <b>تثبيت</b> (شاشة عليها سهم ⊕) — دوس عليها، أو من قايمة <b>⋮</b> اختار <b>Install Mobile Mix</b> / <b>Apps ← Install this site as an app</b>.</li>
+          <li><b>Chrome:</b> دوس النقط التلاتة <b>⋮</b> فوق على اليمين ← <b>Cast, save, and share</b> (أو <b>حفظ ومشاركة</b>) ← <b>Install page as app…</b> (أو <b>تثبيت الصفحة كتطبيق</b>).</li><li><b>Edge:</b> دوس <b>⋯</b> ← <b>Apps</b> ← <b>Install this site as an app</b>.</li><li>لو لقيت بدالها <b>Open in Mobile Mix</b> يبقى هو متثبت فعلاً — دوّر عليه في قايمة Start.</li>
           <li>دوس <b>Install</b> — هيتحط على سطح المكتب وفي قايمة Start، ويفتح في نافذة لوحده زي أي برنامج.</li></ol>`,
     foot: '<button class="btn btn-primary" data-close>تمام</button>',
   });

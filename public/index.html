@@ -16,6 +16,8 @@
       // Installed on an iPhone home screen: iOS blurs a band under the clock, so the app keeps its content below it
       if (navigator.standalone === true) document.documentElement.classList.add('ios-app');
     })();
+    // Chrome can offer "install" before the app code loads: keep the offer for the install button
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__mmInstall = e; });
   </script>
   <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
