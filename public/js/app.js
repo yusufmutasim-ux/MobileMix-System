@@ -364,6 +364,7 @@ function topNav(visible, u) {
       <div class="dd-menu">
         <div class="dd-head"><b>${esc(u.full_name)}</b><span class="muted small">${ROLE_NAMES[u.role]}</span></div>
         <button type="button" data-act="theme">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}<span class="theme-label">${currentTheme() === 'dark' ? 'الوضع الفاتح' : 'الوضع الغامق'}</span></button>
+        <a href="/brand/wallpaper-4k.png" download="MobileMix-Wallpaper-4K.png" class="dd-item-link">${icon('download')}<span>نزّل خلفية الكمبيوتر</span></a>
         <button type="button" data-act="install" class="${isInstalled() ? 'hidden' : ''}">${icon('download')}<span>ثبّت كأبلكيشن على الجهاز</span></button>
         <button type="button" data-act="logout">${icon('logout')}<span>تسجيل خروج</span></button>
         <div class="small muted num app-version dd-foot"></div>
