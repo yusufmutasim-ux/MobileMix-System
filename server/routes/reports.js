@@ -264,6 +264,11 @@ module.exports = function reportRoutes(api, db) {
       if (out.today.profit !== undefined) out.today.net = round2(out.today.profit - out.expenses_today);
     }
     if (can(req.user, 'drawer.view')) out.drawer = drawerNow(db).expected;
+    // Last time the drawer was closed (shown on the home page for whoever closes it)
+    if (can(req.user, 'drawer.close')) {
+      const c = db.prepare(`SELECT d.closed_at, d.counted, d.diff, u.full_name AS by FROM drawer_closings d LEFT JOIN users u ON u.id = d.user_id ORDER BY d.id DESC LIMIT 1`).get();
+      out.last_close = c ? { at: c.closed_at, by: c.by, ...(can(req.user, 'drawer.view') ? { counted: round2(c.counted), diff: round2(c.diff) } : {}) } : null;
+    }
     if (can(req.user, 'customers.view')) {
       const late = lateInstallments(db);
       out.credit = {

@@ -30,8 +30,19 @@ export async function render(el, { actions }) {
 
   // 2) Drawer and profit
   const side = [];
-  if (d.drawer !== undefined) side.push(`<a href="#/drawer" class="kpi" style="color:inherit"><div class="label">${icon('drawer')} في الدرج دلوقتي</div>
-      <div class="value">${n(d.drawer)} <small>${cur}</small></div>${d.expenses_today ? `<div class="sub">مصاريف النهارده ${n(d.expenses_today)}</div>` : ''}</a>`);
+  // The drawer: what's in it, when it was last closed, and closing it in one tap
+  if (d.drawer !== undefined || can('drawer.close')) {
+    const lc = d.last_close;
+    const closedToday = lc && lc.at.slice(0, 10) === new Date().toLocaleDateString('en-CA');
+    side.push(`<div class="kpi drawer-kpi">
+      <div class="label">${icon('drawer')} الدرج</div>
+      ${d.drawer !== undefined ? `<div class="value">${n(d.drawer)} <small>${cur}</small></div>` : ''}
+      <div class="sub">${lc ? `آخر تقفيلة: ${closedToday ? 'النهارده' : esc(fmtDate(lc.at, false))} ${esc(lc.at.slice(11, 16))}${lc.by ? ` — ${esc(lc.by)}` : ''}${lc.diff ? ` <b style="color:${lc.diff < 0 ? 'var(--danger)' : 'inherit'}">(${lc.diff > 0 ? '+' : ''}${n(lc.diff)})</b>` : ''}` : 'لسه متقفلش قبل كده'}
+        ${d.expenses_today ? `<br>مصاريف النهارده ${n(d.expenses_today)}` : ''}</div>
+      <div class="drawer-acts">${can('drawer.close') ? `<a class="btn btn-primary btn-sm" href="#/drawer?close=1">${icon('check')} قفّل الدرج</a>` : ''}
+        ${d.drawer !== undefined ? `<a class="btn btn-ghost btn-sm" href="#/drawer">التفاصيل</a>` : ''}</div>
+    </div>`);
+  }
   if (d.today.profit !== undefined) side.push(`<a href="#/reports" class="kpi bg-lavender" style="color:inherit"><div class="label">${icon('trend')} ربح النهارده</div>
       <div class="value">${n(d.today.profit)} <small>${cur}</small></div>${d.today.net !== undefined ? `<div class="sub">بعد المصاريف ${n(d.today.net)}</div>` : ''}</a>`);
 
@@ -48,8 +59,8 @@ export async function render(el, { actions }) {
   const quick = [
     can('repairs.create') && `<a href="#/repairs?new=1" class="bg-aqua">${icon('wrench')}استلام صيانة</a>`,
     can('expenses.create') && `<a href="#/expenses?new=1" class="bg-peony">${icon('expense')}مصروف</a>`,
-    can('drawer.close') && `<a href="#/drawer?close=1" class="bg-mint">${icon('drawer')}تقفيل الدرج</a>`,
     can('products.edit') && `<a href="#/products?new=1" class="bg-sky">${icon('box')}إضافة منتج</a>`,
+    can('purchases.manage') && `<a href="#/purchases?new=1" class="bg-mint">${icon('truck')}شراء بضاعة</a>`,
     can('labels.print') && `<a href="#/labels" class="bg-sky">${icon('tag')}ليبلات</a>`,
     !can('reports.view') && can('sales.create') && `<a href="#/sales" class="bg-lavender">${icon('receipt')}فواتيري</a>`,
   ].filter(Boolean).slice(0, 4).join('');

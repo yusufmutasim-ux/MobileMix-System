@@ -1700,3 +1700,6 @@ tr.clickable { cursor: pointer; }
 .allow-toggle .chev { transition: transform .2s; opacity: .6; }
 .allow-toggle .chev.up { transform: rotate(180deg); }
 .allow-body { margin-top: 12px; }
+.drawer-kpi { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.drawer-kpi .sub { line-height: 1.7; }
+.drawer-acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
