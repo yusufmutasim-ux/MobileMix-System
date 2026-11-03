@@ -1,4 +1,4 @@
-import { api, can, icon, esc, money, n, fmtDate, emptyRow } from '../core.js';
+import { api, can, icon, esc, money, n, fmtDate, emptyRow, toast } from '../core.js';
 import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal } from '../money-ui.js';
 
 /** The cash drawer: what should be in it now, closing (counting) it, and the history. */
@@ -7,8 +7,14 @@ export async function render(el, { query, actions }) {
   actions.innerHTML = `
     <button class="btn btn-primary" id="close">${icon('check')} قفّل الدرج</button>
     ${can('expenses.create') ? `<button class="btn btn-outline" id="exp">${icon('expense')} مصروف</button>` : ''}
+    ${manager ? `<button class="btn btn-outline" id="forgot-top">${icon('plus')} نسيت حاجة؟</button>` : ''}
     ${manager ? `<button class="btn btn-outline" id="in">${icon('arrowIn')} إيداع</button><button class="btn btn-outline" id="out">${icon('arrowOut')} سحب</button>` : ''}`;
 
+  let lastClose = null;
+  const openForgot = () => {
+    if (!lastClose) return toast('لسه مفيش تقفيلة درج — سجّلها عادي من زرار "مصروف" أو "سحب" وهتتحسب على الدرج الحالي', 'err');
+    forgotModal(fmtDate(lastClose));
+  };
   async function load() {
     const d = await api.get('/drawer');
     if (d.blind) {
@@ -47,17 +53,19 @@ export async function render(el, { query, actions }) {
             <td>${money(c.left_in_drawer)}</td><td class="small">${esc(c.note || '')}</td></tr>`).join('') : emptyRow(7, 'لسه مفيش تقفيلات')}</tbody>
         </table></div>
       </div>` : ''}`;
-    el.querySelector('#forgot')?.addEventListener('click', () => forgotModal(fmtDate(d.closings[0].closed_at)));
+    lastClose = d.closings[0]?.closed_at || null;
+    el.querySelector('#forgot')?.addEventListener('click', openForgot);
   }
 
   actions.querySelector('#close').addEventListener('click', async () => { if (await closeDrawerModal()) load(); });
   actions.querySelector('#exp')?.addEventListener('click', async () => { if (await expenseModal()) load(); });
+  actions.querySelector('#forgot-top')?.addEventListener('click', openForgot);
   actions.querySelector('#in')?.addEventListener('click', async () => { if (await moveModal('in')) load(); });
   actions.querySelector('#out')?.addEventListener('click', async () => { if (await moveModal('out')) load(); });
   const onChange = () => load();
   document.addEventListener('mm:drawer-changed', onChange);
   await load();
-  if (query.get('forgot') && manager) setTimeout(() => el.querySelector('#forgot')?.click(), 100);
+  if (query.get('forgot') && manager) openForgot();
   if (query.get('close')) closeDrawerModal().then((ok) => ok && load());
   return () => document.removeEventListener('mm:drawer-changed', onChange);
 }

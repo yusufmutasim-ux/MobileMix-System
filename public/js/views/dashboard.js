@@ -41,7 +41,7 @@ export async function render(el, { actions }) {
         ${d.expenses_today ? `<br>مصاريف النهارده ${n(d.expenses_today)}` : ''}</div>
       <div class="drawer-acts">${can('drawer.close') ? `<a class="btn btn-primary btn-sm" href="#/drawer?close=1">${icon('check')} قفّل الدرج</a>` : ''}
         ${d.drawer !== undefined ? `<a class="btn btn-ghost btn-sm" href="#/drawer">التفاصيل</a>` : ''}
-        ${lc && can('drawer.view') ? `<a class="btn btn-ghost btn-sm" href="#/drawer?forgot=1" title="سجّل مصروف أو يومية أو سحب اتنسى قبل آخر تقفيل">نسيت حاجة؟</a>` : ''}</div>
+        ${can('drawer.view') ? `<a class="btn btn-ghost btn-sm" href="#/drawer?forgot=1" title="سجّل مصروف أو يومية أو سحب اتنسى قبل آخر تقفيل">نسيت حاجة؟</a>` : ''}</div>
     </div>`);
   }
   if (d.today.profit !== undefined) side.push(`<a href="#/reports" class="kpi bg-lavender" style="color:inherit"><div class="label">${icon('trend')} ربح النهارده</div>
