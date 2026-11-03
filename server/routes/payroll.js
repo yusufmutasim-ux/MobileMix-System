@@ -30,9 +30,9 @@ module.exports = function payrollRoutes(api, db) {
     const users = db.prepare("SELECT id, full_name, role, active, salary, commission_pct, daily_allowance, shift_start, shift_end, work_days, schedule_since, created_at, deleted_at FROM users WHERE role <> 'admin' OR salary > 0 ORDER BY active DESC, full_name").all();
     const like = `${month}%`;
     return users.map((u) => {
-      const att = db.prepare(`SELECT COUNT(DISTINCT date(check_in_at)) AS days,
+      const att = db.prepare(`SELECT COUNT(DISTINCT bday(check_in_at)) AS days,
           COALESCE(SUM(CASE WHEN check_out_at IS NOT NULL THEN (julianday(check_out_at) - julianday(check_in_at)) * 1440 END), 0) AS minutes
-        FROM shifts WHERE user_id = ? AND check_in_at LIKE ?`).get(u.id, like);
+        FROM shifts WHERE user_id = ? AND bday(check_in_at) LIKE ?`).get(u.id, like);
       const sold = db.prepare('SELECT COALESCE(SUM(total), 0) AS t FROM sales WHERE user_id = ? AND created_at LIKE ?').get(u.id, like).t;
       const returned = db.prepare(`SELECT COALESCE(SUM(r.amount), 0) AS t FROM returns r JOIN sales s ON s.id = r.sale_id
         WHERE s.user_id = ? AND r.created_at LIKE ?`).get(u.id, like).t;
@@ -43,9 +43,9 @@ module.exports = function payrollRoutes(api, db) {
       const advances = sum('سلفة');
       const paid = sum('مرتبات');
       const allowances = sum('يومية'); // on top of the salary: shown, not taken off it
-      const late = db.prepare(`SELECT COUNT(DISTINCT date(check_in_at)) AS n, COALESCE(SUM(late_minutes), 0) AS m FROM shifts
-        WHERE user_id = ? AND check_in_at LIKE ? AND late_minutes > 0
-          AND date(check_in_at) NOT IN (SELECT day FROM attendance_excuses WHERE user_id = ?)`).get(u.id, like, u.id);
+      const late = db.prepare(`SELECT COUNT(DISTINCT bday(check_in_at)) AS n, COALESCE(SUM(late_minutes), 0) AS m FROM shifts
+        WHERE user_id = ? AND bday(check_in_at) LIKE ? AND late_minutes > 0
+          AND bday(check_in_at) NOT IN (SELECT day FROM attendance_excuses WHERE user_id = ?)`).get(u.id, like, u.id);
       const absent = absences(db, u, `${month}-01`, `${month}-${String(last).padStart(2, '0')}`);
       // Automatic deductions: a day's pay = monthly salary / 30
       const rate = (u.salary || 0) / 30;
@@ -69,7 +69,7 @@ module.exports = function payrollRoutes(api, db) {
     const month = monthOf(req.query.month);
     const row = sheet(month).find((r) => r.id === Number(req.params.userId));
     if (!row) throw notFound('الموظف غير موجود');
-    const late = db.prepare(`SELECT date(check_in_at) AS day, MAX(late_minutes) AS minutes FROM shifts WHERE user_id = ? AND check_in_at LIKE ? AND late_minutes > 0 GROUP BY day ORDER BY day`)
+    const late = db.prepare(`SELECT bday(check_in_at) AS day, MAX(late_minutes) AS minutes FROM shifts WHERE user_id = ? AND bday(check_in_at) LIKE ? AND late_minutes > 0 GROUP BY day ORDER BY day`)
       .all(row.id, `${month}%`);
     const excused = db.prepare('SELECT day, note FROM attendance_excuses WHERE user_id = ? AND day LIKE ? ORDER BY day').all(row.id, `${month}%`);
     res.json({ month, row, late, excused });
@@ -108,7 +108,7 @@ module.exports = function payrollRoutes(api, db) {
     const day = today();
     return db.prepare("SELECT id, full_name, role, daily_allowance FROM users WHERE active = 1 AND deleted_at IS NULL AND role <> 'admin' ORDER BY full_name").all().map((u) => {
       const given = db.prepare("SELECT id, amount FROM expenses WHERE employee_id = ? AND category = 'يومية' AND bday(created_at) = ? ORDER BY id DESC").all(u.id, day);
-      const came = db.prepare('SELECT MIN(check_in_at) AS t FROM shifts WHERE user_id = ? AND date(check_in_at) = ?').get(u.id, day).t;
+      const came = db.prepare('SELECT MIN(check_in_at) AS t FROM shifts WHERE user_id = ? AND bday(check_in_at) = ?').get(u.id, day).t;
       return { id: u.id, full_name: u.full_name, role: u.role, amount: u.daily_allowance ?? usual(),
         given: round2(given.reduce((a, g) => a + g.amount, 0)), given_id: given[0]?.id || null, came_at: came };
     });

@@ -129,3 +129,28 @@ test('payroll: deduction = absent days × a day\'s pay + late days × a quarter;
   await admin.put('/settings', { auto_deduct: '1' });
   db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
 });
+
+test('overnight shift (5 PM – 1 AM) counts on the day it started', () => {
+  const { absences } = require('../server/schedule');
+  const u = user('17:00', '01:00', '3'); // Wednesdays only
+  const THU = '2026-10-22';
+  // Checking in very late, after midnight, is still Wednesday's shift
+  assert.equal(lateMinutes(db, u, `${THU} 00:20:00`), 440);
+  assert.equal(lateMinutes(db, u, `${WED} 17:30:00`), 30);
+  // Leaving at 00:50 is within the grace; at 00:00 it's an hour early
+  assert.equal(earlyMinutes(db, u, `${WED} 17:00:00`, `${THU} 00:50:00`), 0);
+  assert.equal(earlyMinutes(db, u, `${WED} 17:00:00`, `${THU} 00:00:00`), 60);
+  // Not checked in: still "missing" at half past midnight (the shift runs till 1)
+  const ins = db.prepare("INSERT INTO users (username, full_name, password_hash, role, shift_start, shift_end, work_days, schedule_since, created_at) VALUES (?, ?, '', 'cashier', '17:00', '01:00', '3', ?, '2026-10-01 09:00:00')");
+  const id = Number(ins.run('night', 'ليلي', WED).lastInsertRowid);
+  assert.ok(missingNow(db, `${THU} 00:30:00`).some((x) => x.id === id));
+  assert.ok(!missingNow(db, `${THU} 01:30:00`).some((x) => x.id === id));
+  // Absence only once the shift is over (1 AM Thursday), filed on Wednesday
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  assert.deepEqual(absences(db, row, WED, THU, new Date(`${THU}T00:30:00`)), []);
+  assert.deepEqual(absences(db, row, WED, THU, new Date(`${THU}T02:00:00`)), [WED]);
+  // Came at 17:05 Wednesday: not missing after midnight, not absent
+  db.prepare("INSERT INTO shifts (user_id, check_in_at) VALUES (?, ?)").run(id, `${WED} 17:05:00`);
+  assert.ok(!missingNow(db, `${THU} 00:30:00`).some((x) => x.id === id));
+  assert.deepEqual(absences(db, row, WED, THU, new Date(`${THU}T02:00:00`)), []);
+});

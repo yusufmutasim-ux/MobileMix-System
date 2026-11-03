@@ -246,7 +246,8 @@ test('search everything and warranty lookup', async () => {
 });
 
 test('scheduler sends the day summary once a day', async () => {
-  db.prepare("UPDATE settings SET value = '00:00' WHERE key = 'daily_summary_time'").run();
+  // the start of the shop day (it ends at 3 AM by default): already past, whatever the time
+  db.prepare("UPDATE settings SET value = '03:00' WHERE key = 'daily_summary_time'").run();
   const before = sent.length;
   const t = startScheduler(db, { notify: (n) => sent.push(n) }, { every: 10 });
   await new Promise((r) => setTimeout(r, 60));

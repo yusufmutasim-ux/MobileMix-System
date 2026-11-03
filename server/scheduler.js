@@ -1,5 +1,5 @@
 'use strict';
-const { getSettings, today, round2 } = require('./util');
+const { getSettings, today, round2, getDayEnd } = require('./util');
 const { drawerNow, lateInstallments } = require('./money');
 const { missingNow } = require('./schedule');
 
@@ -37,7 +37,9 @@ function startScheduler(db, notifier, { every = 60_000 } = {}) {
       const now = new Date();
       const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const cur = st.currency;
-      if (st.daily_summary === '1' && hhmm >= (st.daily_summary_time || '23:00') && st.last_daily_summary !== today()) {
+      // Times on the shop's clock: with the day ending at 3 AM, 01:30 comes after 23:00
+      const shopMin = (t) => { const [h, m] = String(t).split(':').map(Number); return ((h * 60 + m) - getDayEnd() * 60 + 1440) % 1440; };
+      if (st.daily_summary === '1' && shopMin(hhmm) >= shopMin(st.daily_summary_time || '23:00') && st.last_daily_summary !== today()) {
         mark('last_daily_summary');
         const s = daySummary(db);
         notifier.notify({

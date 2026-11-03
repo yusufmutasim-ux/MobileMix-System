@@ -97,7 +97,7 @@ export async function render(el, { query } = {}) {
         <div class="card-head"><h2>${icon('calendar')} تذكيرات تلقائية</h2></div>
         <form class="form-grid settings-form" onsubmit="return false">
           <label class="field"><span>ملخص اليوم على الموبايل</span>${sel('daily_summary', s.daily_summary === '0' ? '0' : '1', [['1', 'يتبعت كل يوم'], ['0', 'مقفول']])}</label>
-          <label class="field"><span>الساعة كام؟</span><input class="input num" type="time" name="daily_summary_time" value="${esc(s.daily_summary_time || '23:00')}"></label>
+          <label class="field"><span>الساعة كام؟ (ينفع بعد نص الليل)</span><input class="input num" type="time" name="daily_summary_time" value="${esc(s.daily_summary_time || '23:00')}"></label>
           <label class="field full"><span>تذكير الأقساط المتأخرة (الساعة 10 الصبح)</span>${sel('installment_reminders', s.installment_reminders === '0' ? '0' : '1', [['1', 'شغال'], ['0', 'مقفول']])}</label>
           ${saveBtn}
         </form>

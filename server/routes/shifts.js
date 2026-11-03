@@ -197,7 +197,7 @@ module.exports = function shiftRoutes(api, db) {
     const rows = db.prepare(`
       SELECT s.*, u.full_name, c.full_name AS closed_by_name FROM shifts s JOIN users u ON u.id = s.user_id
       LEFT JOIN users c ON c.id = s.closed_by
-      WHERE date(s.check_in_at) BETWEEN ? AND ? ${userId ? 'AND s.user_id = ?' : ''}
+      WHERE bday(s.check_in_at) BETWEEN ? AND ? ${userId ? 'AND s.user_id = ?' : ''}
       ORDER BY s.check_in_at DESC LIMIT 2000`).all(...(userId ? [from, to, userId] : [from, to]))
       .map((s) => ({ ...s, minutes: minutesBetween(s.check_in_at, s.check_out_at || now) }));
     const totals = {};
@@ -209,7 +209,7 @@ module.exports = function shiftRoutes(api, db) {
     }
     const denied = db.prepare(`
       SELECT a.id, a.details, a.created_at, u.full_name, a.user_id FROM audit_log a JOIN users u ON u.id = a.user_id
-      WHERE a.action = 'shift.denied' AND date(a.created_at) BETWEEN ? AND ? ${userId ? 'AND a.user_id = ?' : ''}
+      WHERE a.action = 'shift.denied' AND bday(a.created_at) BETWEEN ? AND ? ${userId ? 'AND a.user_id = ?' : ''}
       ORDER BY a.id DESC LIMIT 200`).all(...(userId ? [from, to, userId] : [from, to]))
       .map(({ details, ...d }) => ({ ...d, ...JSON.parse(details || '{}') }));
     res.json({
