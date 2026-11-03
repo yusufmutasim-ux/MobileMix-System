@@ -1,5 +1,5 @@
 import { api, can, icon, esc, money, n, fmtDate, emptyRow } from '../core.js';
-import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal } from '../money-ui.js';
+import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal } from '../money-ui.js';
 
 /** The cash drawer: what should be in it now, closing (counting) it, and the history. */
 export async function render(el, { query, actions }) {
@@ -37,7 +37,7 @@ export async function render(el, { query, actions }) {
         </div>` : ''}
       </div>
       ${manager ? `<div class="card" style="margin-top:18px">
-        <div class="card-head"><h2>التقفيلات السابقة</h2></div>
+        <div class="card-head"><h2>التقفيلات السابقة</h2>${d.closings.length ? `<button class="btn btn-outline btn-sm" id="forgot">${icon('plus')} نسيت حاجة قبل آخر تقفيل؟</button>` : ''}</div>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>التاريخ</th><th>الموظف</th><th>المفروض</th><th>اتعد</th><th>الفرق</th><th>اتساب في الدرج</th><th>ملاحظة</th></tr></thead>
           <tbody>${d.closings.length ? d.closings.map((c) => `<tr>
@@ -47,12 +47,17 @@ export async function render(el, { query, actions }) {
             <td>${money(c.left_in_drawer)}</td><td class="small">${esc(c.note || '')}</td></tr>`).join('') : emptyRow(7, 'لسه مفيش تقفيلات')}</tbody>
         </table></div>
       </div>` : ''}`;
+    el.querySelector('#forgot')?.addEventListener('click', () => forgotModal(fmtDate(d.closings[0].closed_at)));
   }
 
   actions.querySelector('#close').addEventListener('click', async () => { if (await closeDrawerModal()) load(); });
   actions.querySelector('#exp')?.addEventListener('click', async () => { if (await expenseModal()) load(); });
   actions.querySelector('#in')?.addEventListener('click', async () => { if (await moveModal('in')) load(); });
   actions.querySelector('#out')?.addEventListener('click', async () => { if (await moveModal('out')) load(); });
+  const onChange = () => load();
+  document.addEventListener('mm:drawer-changed', onChange);
   await load();
+  if (query.get('forgot') && manager) setTimeout(() => el.querySelector('#forgot')?.click(), 100);
   if (query.get('close')) closeDrawerModal().then((ok) => ok && load());
+  return () => document.removeEventListener('mm:drawer-changed', onChange);
 }

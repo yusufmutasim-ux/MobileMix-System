@@ -1817,3 +1817,11 @@ tr.clickable { cursor: pointer; }
 .install-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border: 1.5px dashed var(--t-lime-fg); flex-wrap: wrap; }
 .install-banner > span { width: 40px; height: 40px; border-radius: 12px; background: var(--t-lime-bg); color: var(--t-lime-fg); display: grid; place-items: center; }
 .install-banner > div { flex: 1; min-width: 200px; display: flex; flex-direction: column; }
+
+/* Forgot something before the drawer closing: pick what */
+.forgot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.forgot-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px; border-radius: 16px; border: 1.5px solid var(--line, #e5e5e5); background: var(--snow, #fff); color: var(--ink); text-align: start; cursor: pointer; transition: border-color .15s, transform .15s; }
+.forgot-opt:hover { border-color: var(--lime); transform: translateY(-1px); }
+.forgot-opt svg { width: 34px; height: 34px; padding: 7px; border-radius: 10px; background: var(--t-lime-bg, #eef4cf); color: var(--t-lime-fg, #4a5a00); margin-bottom: 4px; }
+.forgot-opt b { font-weight: 600; }
+@media (max-width: 420px) { .forgot-grid { grid-template-columns: minmax(0, 1fr); } }

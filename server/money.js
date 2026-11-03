@@ -82,6 +82,31 @@ function drawerNow(db) {
   return { from: last ? from : null, to, opening: round2(opening), parts, expected, last: last || null };
 }
 
+/**
+ * Something paid out (or put in) was forgotten before the drawer was closed.
+ * Returns the time just before the last closing, so the entry lands inside that closed period.
+ */
+function beforeLastClose(db) {
+  const last = db.prepare('SELECT id, closed_at FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
+  if (!last) return null;
+  return db.prepare("SELECT datetime(?, '-1 second') AS t").get(last.closed_at).t;
+}
+
+/**
+ * A drawer entry was added or removed after its period was closed: fix that closing so its
+ * "should be in the drawer" and shortage / extra reflect it. delta = change in cash (− for money out).
+ */
+function adjustClosing(db, at, delta, part) {
+  const c = db.prepare(`SELECT * FROM drawer_closings WHERE closed_at >= ? AND (opened_at IS NULL OR opened_at < ?)
+                        ORDER BY id LIMIT 1`).get(at, at);
+  if (!c) return null;
+  const expected = round2(c.expected + delta);
+  let details = c.details;
+  try { const d = JSON.parse(c.details || '{}'); d[part] = round2((d[part] || 0) + delta); details = JSON.stringify(d); } catch { /* keep as is */ }
+  db.prepare('UPDATE drawer_closings SET expected = ?, diff = ?, details = ? WHERE id = ?').run(expected, round2(c.counted - expected), details, c.id);
+  return db.prepare('SELECT * FROM drawer_closings WHERE id = ?').get(c.id);
+}
+
 /** Save the customer (by phone) the first time they buy or bring a device in; keep their latest name. */
 function rememberCustomer(db, name, phone) {
   const p = cleanPhone(phone);
@@ -104,4 +129,4 @@ function lateInstallments(db) {
     .map((i) => ({ ...i, invoice_no: s.invoice_no, customer_name: s.customer_name, phone: s.phone })));
 }
 
-module.exports = { lateInstallments, CASH_SALE_METHODS, IN_CASH, cleanPhone, RECEIVED_SQL, REFUNDED_SQL, DUE_SQL, saleMoney, installmentsOf, drawerNow, rememberCustomer };
+module.exports = { lateInstallments, CASH_SALE_METHODS, IN_CASH, cleanPhone, RECEIVED_SQL, REFUNDED_SQL, DUE_SQL, saleMoney, installmentsOf, drawerNow, beforeLastClose, adjustClosing, rememberCustomer };

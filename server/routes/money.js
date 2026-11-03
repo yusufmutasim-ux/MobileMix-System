@@ -2,7 +2,7 @@
 const { requirePerm, can } = require('../auth');
 const { tx } = require('../db');
 const { bad, notFound, num, str, round2, dateRange, audit, getSettings } = require('../util');
-const { drawerNow } = require('../money');
+const { drawerNow, beforeLastClose, adjustClosing } = require('../money');
 
 const fmt = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
 
@@ -42,15 +42,25 @@ module.exports = function moneyRoutes(api, db) {
       if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(employeeId)) throw bad('الموظف غير موجود');
       period = /^\d{4}-\d{2}$/.test(String(b.period || '')) ? String(b.period) : null;
     }
-    const r = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id)
-                          VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(category, amount, fromDrawer, str(b.note, 'الملاحظة', { optional: true, max: 300 }), employeeId, period, req.user.id);
-    const row = db.prepare('SELECT * FROM expenses WHERE id = ?').get(r.lastInsertRowid);
-    audit(db, req.user.id, 'expense.add', { id: row.id, category, amount });
+    // Forgotten before the last drawer closing (managers): goes into that closed period and fixes its count
+    const late = b.before_close === true || b.before_close === 1 || b.before_close === '1';
+    if (late && !manager) throw bad('تسجيل مصروف على تقفيلة فاتت للمدير بس');
+    const at = late ? beforeLastClose(db) : null;
+    if (late && !at) throw bad('لسه مفيش تقفيلة درج قبل كده');
+    const note = str(b.note, 'الملاحظة', { optional: true, max: 300 });
+    const { row, closing } = tx(db, () => {
+      const r = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`)
+        .run(category, amount, fromDrawer, note, employeeId, period, req.user.id, at);
+      const row = db.prepare('SELECT * FROM expenses WHERE id = ?').get(r.lastInsertRowid);
+      return { row, closing: at && fromDrawer ? adjustClosing(db, at, -amount, 'expenses') : null };
+    });
+    if (closing) row.closing = closing;
+    audit(db, req.user.id, 'expense.add', { id: row.id, category, amount, before_close: late || undefined });
     req.app.locals.notifier.notify({
       type: 'expense', actorId: req.user.id, url: '#/expenses',
       title: `مصروف — ${fmt(amount, getSettings(db).currency)}`,
-      body: `${req.user.full_name} • ${category}${row.note ? ` • ${row.note}` : ''}${fromDrawer ? ' • من الدرج' : ''}`,
+      body: `${req.user.full_name} • ${category}${row.note ? ` • ${row.note}` : ''}${fromDrawer ? ' • من الدرج' : ''}${late ? ' • على التقفيلة اللي فاتت' : ''}`,
     });
     res.status(201).json(row);
   });
@@ -64,7 +74,11 @@ module.exports = function moneyRoutes(api, db) {
       throw bad('تقدر تمسح المصروف اللي سجلته النهارده بس — كلّم المدير');
     }
     if (e.employee_id && !can(req.user, 'payroll')) throw bad('المرتبات والسلف للمدير بس');
-    db.prepare('DELETE FROM expenses WHERE id = ?').run(e.id);
+    tx(db, () => {
+      db.prepare('DELETE FROM expenses WHERE id = ?').run(e.id);
+      // Removed after its drawer was closed: give the money back to that closing's count
+      if (e.from_drawer) adjustClosing(db, e.created_at, e.amount, 'expenses');
+    });
     audit(db, req.user.id, 'expense.delete', { id: e.id, category: e.category, amount: e.amount });
     res.json({ ok: true });
   });
@@ -118,9 +132,18 @@ module.exports = function moneyRoutes(api, db) {
     const kind = b.kind === 'in' ? 'in' : b.kind === 'out' ? 'out' : null;
     if (!kind) throw bad('اختار إيداع ولا سحب');
     const amount = round2(num(b.amount, 'المبلغ', { min: 0.01 }));
-    const r = db.prepare('INSERT INTO cash_moves (kind, amount, note, user_id) VALUES (?, ?, ?, ?)')
-      .run(kind, amount, str(b.note, 'الملاحظة', { optional: true, max: 200 }), req.user.id);
-    audit(db, req.user.id, 'drawer.move', { kind, amount });
-    res.status(201).json(db.prepare('SELECT * FROM cash_moves WHERE id = ?').get(r.lastInsertRowid));
+    const late = b.before_close === true || b.before_close === 1 || b.before_close === '1';
+    const at = late ? beforeLastClose(db) : null;
+    if (late && !at) throw bad('لسه مفيش تقفيلة درج قبل كده');
+    const out = tx(db, () => {
+      const r = db.prepare(`INSERT INTO cash_moves (kind, amount, note, user_id, created_at)
+                            VALUES (?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`)
+        .run(kind, amount, str(b.note, 'الملاحظة', { optional: true, max: 200 }), req.user.id, at);
+      const row = db.prepare('SELECT * FROM cash_moves WHERE id = ?').get(r.lastInsertRowid);
+      if (at) row.closing = adjustClosing(db, at, kind === 'in' ? amount : -amount, kind === 'in' ? 'moves_in' : 'moves_out');
+      return row;
+    });
+    audit(db, req.user.id, 'drawer.move', { kind, amount, before_close: late || undefined });
+    res.status(201).json(out);
   });
 };

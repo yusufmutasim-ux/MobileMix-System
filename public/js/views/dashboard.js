@@ -40,7 +40,8 @@ export async function render(el, { actions }) {
       <div class="sub">${lc ? `آخر تقفيلة: ${closedToday ? 'النهارده' : esc(fmtDate(lc.at, false))} ${esc(lc.at.slice(11, 16))}${lc.by ? ` — ${esc(lc.by)}` : ''}${lc.diff ? ` <b style="color:${lc.diff < 0 ? 'var(--danger)' : 'inherit'}">(${lc.diff > 0 ? '+' : ''}${n(lc.diff)})</b>` : ''}` : 'لسه متقفلش قبل كده'}
         ${d.expenses_today ? `<br>مصاريف النهارده ${n(d.expenses_today)}` : ''}</div>
       <div class="drawer-acts">${can('drawer.close') ? `<a class="btn btn-primary btn-sm" href="#/drawer?close=1">${icon('check')} قفّل الدرج</a>` : ''}
-        ${d.drawer !== undefined ? `<a class="btn btn-ghost btn-sm" href="#/drawer">التفاصيل</a>` : ''}</div>
+        ${d.drawer !== undefined ? `<a class="btn btn-ghost btn-sm" href="#/drawer">التفاصيل</a>` : ''}
+        ${lc && can('drawer.view') ? `<a class="btn btn-ghost btn-sm" href="#/drawer?forgot=1" title="سجّل مصروف أو يومية أو سحب اتنسى قبل آخر تقفيل">نسيت حاجة؟</a>` : ''}</div>
     </div>`);
   }
   if (d.today.profit !== undefined) side.push(`<a href="#/reports" class="kpi bg-lavender" style="color:inherit"><div class="label">${icon('trend')} ربح النهارده</div>

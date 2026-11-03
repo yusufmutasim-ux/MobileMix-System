@@ -2,6 +2,16 @@
 const { requirePerm } = require('../auth');
 const { bad, notFound, num, str, round2, audit, today, getSettings } = require('../util');
 const { absences } = require('../schedule');
+const { beforeLastClose, adjustClosing } = require('../money');
+
+/** "Forgotten before the last drawer closing": the time to file it at, or null for now. */
+function lateAt(db, body) {
+  const b = body?.before_close;
+  if (!(b === true || b === 1 || b === '1')) return null;
+  const at = beforeLastClose(db);
+  if (!at) throw bad('لسه مفيش تقفيلة درج قبل كده');
+  return at;
+}
 
 const monthOf = (v) => (/^\d{4}-\d{2}$/.test(String(v || '')) ? String(v) : today().slice(0, 7));
 
@@ -111,20 +121,24 @@ module.exports = function payrollRoutes(api, db) {
   api.post('/allowances', allowancePerm, (req, res) => {
     const ids = (Array.isArray(req.body?.ids) ? req.body.ids : [req.body?.user_id]).map(Number).filter(Boolean);
     if (!ids.length) throw bad('اختار الموظف');
+    const at = lateAt(db, req.body);
     const list = todayList();
     const month = today().slice(0, 7);
     let count = 0, total = 0;
     for (const id of ids) {
       const u = list.find((x) => x.id === id);
       if (!u) throw notFound('الموظف غير موجود');
-      if (u.given > 0) continue;
+      // Filed on the closed drawer's day: skip if that day already has one
+      if (at ? db.prepare("SELECT 1 FROM expenses WHERE category = 'يومية' AND employee_id = ? AND date(created_at) = date(?)").get(id, at) : u.given > 0) continue;
       const amount = round2(ids.length === 1 && req.body?.amount !== undefined ? num(req.body.amount, 'المبلغ', { min: 0.01 }) : u.amount);
       if (!(amount > 0)) continue;
-      db.prepare("INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id) VALUES ('يومية', ?, 1, ?, ?, ?, ?)")
-        .run(amount, `يومية ${u.full_name}`, u.id, month, req.user.id);
+      db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id, created_at)
+                  VALUES ('يومية', ?, 1, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`)
+        .run(amount, `يومية ${u.full_name}`, u.id, at ? at.slice(0, 7) : month, req.user.id, at);
+      if (at) adjustClosing(db, at, -amount, 'expenses');
       count++; total += amount;
     }
-    audit(db, req.user.id, 'payroll.allowance', { ids, count, total });
+    audit(db, req.user.id, 'payroll.allowance', { ids, count, total, before_close: at ? true : undefined });
     const after = todayList();
     res.status(201).json({ count, total: round2(total), usual: usual(), list: after, day_total: round2(after.reduce((a, u) => a + u.given, 0)) });
   });
@@ -134,6 +148,7 @@ module.exports = function payrollRoutes(api, db) {
     if (!e) throw notFound('اليومية دي مش موجودة');
     if (e.created_at.slice(0, 10) !== today()) throw bad('تقدر تلغي يومية النهارده بس — القديمة من صفحة المصروفات');
     db.prepare('DELETE FROM expenses WHERE id = ?').run(e.id);
+    adjustClosing(db, e.created_at, e.amount, 'expenses'); // undone after the drawer was closed
     audit(db, req.user.id, 'payroll.allowance_undo', { expense: e.id });
     const list = todayList();
     res.json({ usual: usual(), list, total: round2(list.reduce((a, u) => a + u.given, 0)) });
@@ -150,8 +165,11 @@ module.exports = function payrollRoutes(api, db) {
     const month = monthOf(b.month);
     const fromDrawer = b.from_drawer === false || b.from_drawer === 0 || b.from_drawer === '0' ? 0 : 1;
     const note = str(b.note, 'الملاحظة', { optional: true, max: 200 }) || `${kind === 'سلفة' ? 'سلفة' : 'مرتب'} ${u.full_name} — ${month}`;
-    db.prepare('INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(kind, amount, fromDrawer, note, u.id, month, req.user.id);
+    const at = lateAt(db, b);
+    db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`)
+      .run(kind, amount, fromDrawer, note, u.id, month, req.user.id, at);
+    if (at && fromDrawer) adjustClosing(db, at, -amount, 'expenses');
     audit(db, req.user.id, kind === 'سلفة' ? 'payroll.advance' : 'payroll.pay', { user: u.id, amount, month });
     res.status(201).json(sheet(month).find((r) => r.id === u.id) || { ok: true });
   });

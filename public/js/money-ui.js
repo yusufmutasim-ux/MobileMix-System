@@ -5,27 +5,86 @@ export const categories = () => String(state.settings.expense_categories || 'أ�
   .filter((c) => (can('payroll') ? true : c !== 'مرتبات' && c !== 'سلفة'));
 
 /** Record an expense. Resolves true when saved. */
-export function expenseModal() {
+export function expenseModal({ beforeClose = false } = {}) {
   const manager = can('expenses.view');
   return modal({
-    title: 'تسجيل مصروف',
+    title: beforeClose ? 'مصروف اتنسى قبل التقفيل' : 'تسجيل مصروف',
     body: `<form class="form-grid" autocomplete="off" onsubmit="return false">
       <label class="field"><span>المبلغ *</span><input class="input num" type="number" min="0" step="any" name="amount" inputmode="decimal" autofocus></label>
       <label class="field"><span>النوع *</span><select class="input" name="category">${categories().map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label class="field full"><span>تفاصيل</span><input class="input" name="note" placeholder="مثلاً: فاتورة الكهربا شهر 10"></label>
       ${manager ? `<label class="check full"><input type="checkbox" name="from_drawer" checked> اتدفع كاش من الدرج</label>` : '<p class="muted small full" style="margin:0">المبلغ هيتخصم من الدرج.</p>'}
+      ${beforeClose ? `<p class="note-warn full" style="margin:0">${LATE_HINT}</p>` : ''}
     </form>`,
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
     onMount: (m, close) => {
       const save = (e) => busy(m.querySelector('[data-ok]'), async () => {
         e?.preventDefault?.();
         const f = formData(m.querySelector('form'));
-        await api.post('/expenses', f);
-        toast('اتسجل المصروف', 'ok');
+        if (beforeClose) f.before_close = true;
+        const r = await api.post('/expenses', f);
+        toast(r.closing ? lateToast(r.closing) : 'اتسجل المصروف', 'ok');
         close(true);
       });
       m.querySelector('[data-ok]').addEventListener('click', save);
       m.querySelector('[name=amount]').addEventListener('keydown', (e) => { if (e.key === 'Enter') save(e); });
+    },
+  });
+}
+
+const LATE_HINT = 'هيتسجل على آخر تقفيلة للدرج، والعجز أو الزيادة بتاعها هيتعدلوا. الدرج الحالي مش هيتأثر.';
+const lateToast = (c) => `اتسجل على التقفيلة اللي فاتت — ${Math.abs(c.diff) < 0.5 ? 'بقت مظبوطة ✅' : c.diff < 0 ? `العجز بقى ${n(-c.diff)}` : `الزيادة بقت ${n(c.diff)}`}`;
+
+/** Forgot to record something before the drawer was closed: pick what it was. */
+export function forgotModal(lastClose) {
+  const opts = [
+    ['expense', 'expense', 'مصروف', 'كهربا، أكل، مواصلات…', can('expenses.view')],
+    ['allowance', 'user', 'يومية موظف', 'اليومية اللي اتصرفت من الدرج', can('expenses.view')],
+    ['advance', 'coins', 'سلفة موظف', 'بتتخصم من مرتبه', can('payroll')],
+    ['out', 'arrowOut', 'فلوس طلعتها من الدرج', 'سحب من الإيراد', can('drawer.view')],
+  ].filter((o) => o[4]);
+  return modal({
+    title: 'نسيت تسجل حاجة قبل التقفيل؟',
+    body: `<p class="muted" style="margin-top:0">هتتسجل على تقفيلة <b>${esc(lastClose || '')}</b> وهيتعدل حسابها.</p>
+      <div class="forgot-grid">${opts.map(([k, ic, t, sub]) => `<button type="button" class="forgot-opt" data-k="${k}">${icon(ic)}<b>${t}</b><span class="muted small">${sub}</span></button>`).join('')}</div>`,
+    foot: '<button class="btn btn-outline" data-close>إلغاء</button>',
+    onMount: (m, close) => m.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', async () => {
+      const k = b.dataset.k;
+      close(false);
+      const ok = k === 'expense' ? await expenseModal({ beforeClose: true })
+        : k === 'out' ? await moveModal('out', { beforeClose: true })
+        : await staffMoneyModal(k);
+      if (ok) document.dispatchEvent(new CustomEvent('mm:drawer-changed'));
+    })),
+  });
+}
+
+/** An employee's daily allowance or advance that was paid before the last drawer closing. */
+async function staffMoneyModal(kind) {
+  const t = await api.get('/allowances/today');
+  const isAdv = kind === 'advance';
+  return modal({
+    title: `${isAdv ? 'سلفة' : 'يومية'} اتنست قبل التقفيل`,
+    body: `<div class="form-grid">
+      <label class="field full"><span>الموظف *</span><select class="input" id="emp">${t.list.map((u) => `<option value="${u.id}" data-amount="${u.amount}">${esc(u.full_name)}</option>`).join('')}</select></label>
+      <label class="field full"><span>المبلغ *</span><input class="input input-lg num" type="number" min="0" step="any" id="amount" inputmode="decimal"></label>
+      <p class="note-warn full" style="margin:0">${LATE_HINT}</p>
+    </div>`,
+    foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
+    onMount: (m, close) => {
+      const emp = m.querySelector('#emp'), amount = m.querySelector('#amount');
+      const fill = () => { if (!isAdv) amount.value = emp.selectedOptions[0]?.dataset.amount || ''; };
+      emp.addEventListener('change', fill); fill();
+      m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        if (!emp.value) throw new Error('اختار الموظف');
+        if (isAdv) await api.post(`/payroll/${emp.value}/advance`, { amount: amount.value, before_close: true });
+        else {
+          const r = await api.post('/allowances', { user_id: Number(emp.value), amount: amount.value, before_close: true });
+          if (!r.count) throw new Error('اليومية دي متسجلة على اليوم ده قبل كده');
+        }
+        toast('اتسجل على التقفيلة اللي فاتت ✓', 'ok');
+        close(true);
+      }));
     },
   });
 }
@@ -88,18 +147,19 @@ export async function closeDrawerModal() {
 }
 
 /** Owner puts money into / takes money out of the drawer. */
-export function moveModal(kind) {
+export function moveModal(kind, { beforeClose = false } = {}) {
   return modal({
-    title: kind === 'in' ? 'إيداع في الدرج' : 'سحب من الدرج',
+    title: (kind === 'in' ? 'إيداع في الدرج' : 'سحب من الدرج') + (beforeClose ? ' — اتنسى قبل التقفيل' : ''),
     body: `<div class="form-grid">
       <label class="field full"><span>المبلغ *</span><input class="input input-lg num" type="number" min="0" step="any" id="amount" inputmode="decimal" autofocus></label>
       <label class="field full"><span>ملاحظة</span><input class="input" id="note" placeholder="${kind === 'in' ? 'مثلاً: فكة' : 'مثلاً: المالك خد الإيراد'}"></label>
+      ${beforeClose ? `<p class="note-warn full" style="margin:0">${LATE_HINT}</p>` : ''}
     </div>`,
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
     onMount: (m, close) => {
       m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-        await api.post('/drawer/move', { kind, amount: m.querySelector('#amount').value, note: m.querySelector('#note').value });
-        toast('اتسجل', 'ok');
+        const r = await api.post('/drawer/move', { kind, amount: m.querySelector('#amount').value, note: m.querySelector('#note').value, before_close: beforeClose || undefined });
+        toast(r.closing ? lateToast(r.closing) : 'اتسجل', 'ok');
         close(true);
       }));
     },
