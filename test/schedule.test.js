@@ -154,3 +154,17 @@ test('overnight shift (5 PM – 1 AM) counts on the day it started', () => {
   assert.ok(!missingNow(db, `${THU} 00:30:00`).some((x) => x.id === id));
   assert.deepEqual(absences(db, row, WED, THU, new Date(`${THU}T02:00:00`)), []);
 });
+
+test('old shifts are recounted with the shop-day rules', async () => {
+  const admin = client();
+  await admin.login('admin', 'admin123');
+  const id = Number(db.prepare("INSERT INTO users (username, full_name, password_hash, role, shift_start, shift_end, work_days) VALUES ('old', 'قديم', '', 'cashier', '17:00', '01:00', '3')").run().lastInsertRowid);
+  // Saved under the old rules: left at 00:50 Thursday marked as leaving early, late after midnight not counted
+  const a = Number(db.prepare("INSERT INTO shifts (user_id, check_in_at, check_out_at, late_minutes, early_minutes) VALUES (?, '2026-10-21 17:05:00', '2026-10-22 00:50:00', 0, 999)").run(id).lastInsertRowid);
+  const b = Number(db.prepare("INSERT INTO shifts (user_id, check_in_at, check_out_at, late_minutes, early_minutes) VALUES (?, '2026-10-29 00:20:00', '2026-10-29 01:00:00', NULL, NULL)").run(id).lastInsertRowid);
+  const r = await admin.post('/attendance/recount', {});
+  assert.equal(r.status, 200);
+  const get = (x) => db.prepare('SELECT late_minutes, early_minutes FROM shifts WHERE id = ?').get(x);
+  assert.deepEqual({ ...get(a) }, { late_minutes: 0, early_minutes: 0 });
+  assert.deepEqual({ ...get(b) }, { late_minutes: 440, early_minutes: 0 }); // Wednesday 28th's shift, very late
+});

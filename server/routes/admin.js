@@ -6,7 +6,7 @@ const {
   hashPassword, verifyPassword, createSession, requireAuth, requirePerm, PERMISSIONS, SESSION_DAYS,
 } = require('../auth');
 const { bad, notFound, str, audit, getSettings, today, setDayEnd } = require('../util');
-const { DEFAULT_SETTINGS } = require('../db');
+const { DEFAULT_SETTINGS, recountAttendance } = require('../db');
 const { runBackup, listBackups, backupDir, snapshot } = require('../backup');
 const { tx } = require('../db');
 const { TIME } = require('../schedule');
@@ -120,6 +120,13 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     if (start) db.prepare("UPDATE users SET schedule_since = date('now','localtime') WHERE id = ? AND schedule_since IS NULL").run(u.id);
     audit(db, req.user.id, 'user.schedule', { id: u.id, start, end, days });
     res.json(db.prepare('SELECT id, full_name, shift_start, shift_end, work_days FROM users WHERE id = ?').get(u.id));
+  });
+
+  /** Recount lateness / leaving early on all past shifts with everyone's current shift times. */
+  api.post('/attendance/recount', manageUsers, (req, res) => {
+    const n = recountAttendance(db);
+    audit(db, req.user.id, 'attendance.recount', { shifts: n });
+    res.json({ ok: true, shifts: n });
   });
 
   // Small list (id + name) used in report filters

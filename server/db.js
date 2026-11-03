@@ -547,6 +547,7 @@ function open(file) {
   backfillCustomers(db);
   backfillBrands(db);
   attendanceRulesOnce(db);
+  attendanceNightOnce(db);
   return db;
 }
 
@@ -560,6 +561,34 @@ function attendanceRulesOnce(db) {
   db.prepare("UPDATE settings SET value = '15' WHERE key = 'late_grace' AND value = '10'").run();
   db.prepare("UPDATE users SET schedule_since = date('now','localtime') WHERE shift_start IS NOT NULL AND schedule_since IS NULL").run();
   db.prepare("INSERT INTO settings (key, value) VALUES ('attendance_rules_v1', datetime('now','localtime'))").run();
+}
+
+/**
+ * Once: recount lateness / leaving early on every past shift with the shop-day rules
+ * (a shift that ends after midnight belongs to the day it started), using each person's current shift times.
+ */
+function attendanceNightOnce(db) {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = 'attendance_night_v1'").get()) return;
+  recountAttendance(db);
+  db.prepare("INSERT INTO settings (key, value) VALUES ('attendance_night_v1', datetime('now','localtime'))").run();
+}
+
+function recountAttendance(db) {
+  const { lateMinutes, earlyMinutes } = require('./schedule');
+  const users = new Map(db.prepare('SELECT id, shift_start, shift_end, work_days FROM users').all().map((u) => [u.id, u]));
+  const set = db.prepare('UPDATE shifts SET late_minutes = ?, early_minutes = ? WHERE id = ?');
+  let n = 0;
+  db.exec('BEGIN');
+  try {
+    for (const s of db.prepare('SELECT id, user_id, check_in_at, check_out_at FROM shifts').all()) {
+      const u = users.get(s.user_id);
+      if (!u || !u.shift_start) continue;
+      set.run(lateMinutes(db, u, s.check_in_at), s.check_out_at ? earlyMinutes(db, u, s.check_in_at, s.check_out_at) : null, s.id);
+      n++;
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return n;
 }
 
 function applyAdminPassword(db) {
@@ -688,4 +717,5 @@ function tx(db, fn) {
   }
 }
 
-module.exports = { open, tx, DEFAULT_SETTINGS };
+module.exports = {
+  recountAttendance, open, tx, DEFAULT_SETTINGS };

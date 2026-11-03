@@ -335,8 +335,13 @@ export async function render(el, { query } = {}) {
         <label class="field"><span>لو حد شيفته بدأ ومسجلش حضور</span><select class="input" id="absence">
           <option value="1" ${st.absence_alert !== '0' ? 'selected' : ''}>ابعتلي إشعار</option><option value="0" ${st.absence_alert === '0' ? 'selected' : ''}>من غير إشعار</option></select></label>
         <button class="btn btn-outline btn-sm" id="save-rules">${icon('check')} حفظ</button>
+        <button class="btn btn-ghost btn-sm" id="recount" title="بعد ما تغيّر المواعيد: التأخير والمشي بدري في كل الأيام اللي فاتت يتحسبوا بالمواعيد الحالية">${icon('clock')} احسب الحضور القديم بالمواعيد دي</button>
         <p class="muted small" style="margin:0;flex-basis:100%">الغياب = يوم شغل الموظف ما سجلش فيه حضور خالص؛ التأخير = حضر بعد السماحية. يوم المرتب = المرتب ÷ 30، وتقدر تعفي أي يوم من صفحة المرتبات. سيب الميعاد فاضي للموظف اللي مالوش شيفت ثابت. الشيفت اللي بيعدّي نص الليل (زي 6 م لحد 2 ص) شغال عادي.</p>
       </div>`;
+    card.querySelector('#recount')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      const r = await api.post('/attendance/recount', {});
+      toast(`اتحسب من جديد — ${r.shifts} شيفت`, 'ok');
+    }));
     card.querySelectorAll('.sched-days').forEach((g) => g.addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (b) b.classList.toggle('on');
