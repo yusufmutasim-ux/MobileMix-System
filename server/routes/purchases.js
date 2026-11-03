@@ -69,7 +69,7 @@ module.exports = function purchaseRoutes(api, db) {
   // ---------- purchase invoices ----------
   api.get('/purchases', perm, (req, res) => {
     const { from, to } = dateRange(req.query);
-    const where = ['date(p.created_at) BETWEEN ? AND ?'];
+    const where = ['bday(p.created_at) BETWEEN ? AND ?'];
     const params = [from, to];
     if (req.query.supplier_id) { where.push('p.supplier_id = ?'); params.push(Number(req.query.supplier_id)); }
     const rows = db.prepare(`

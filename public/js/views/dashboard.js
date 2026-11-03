@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText, modal, toast } from '../core.js';
+import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText, modal, toast, shopDay, todayStr } from '../core.js';
 import { currentShift, zoneOn, locationPermission, getPosition, locationHelp } from '../live.js';
 
 export async function render(el, { actions }) {
@@ -33,7 +33,7 @@ export async function render(el, { actions }) {
   // The drawer: what's in it, when it was last closed, and closing it in one tap
   if (d.drawer !== undefined || can('drawer.close')) {
     const lc = d.last_close;
-    const closedToday = lc && lc.at.slice(0, 10) === new Date().toLocaleDateString('en-CA');
+    const closedToday = lc && shopDay(lc.at) === todayStr();
     side.push(`<div class="kpi drawer-kpi">
       <div class="label">${icon('drawer')} الدرج</div>
       ${d.drawer !== undefined ? `<div class="value">${n(d.drawer)} <small>${cur}</small></div>` : ''}

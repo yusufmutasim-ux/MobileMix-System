@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { hashPassword, verifyPassword } = require('./auth');
+const { bday, setDayEnd } = require('./util');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -504,6 +505,7 @@ const DEFAULT_SETTINGS = {
   store_strip: '',                 // offers line across the top of the store
   store_strip_color: '#141414',
   installment_reminders: '1',
+  day_end_hour: '3',       // the shop's day ends at 3 AM: sales / expenses / closing after midnight count on the day before
   late_grace: '15',        // minutes after the shift start before someone counts as late
   absence_alert: '1',
   auto_deduct: '1',                 // take absences / lateness off the salary automatically
@@ -517,12 +519,15 @@ function open(file) {
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   // digits('010 1234-5678') = '01012345678' — to match phone numbers however they were typed
   db.function('digits', { deterministic: true }, (v) => String(v ?? '').replace(/\D/g, ''));
+  // bday(created_at) = the shop day it counts on (after midnight, until the day-end hour, is still yesterday)
+  db.function('bday', (v) => bday(v));
   upgrade(db);
   db.exec(SCHEMA);
   addMissingColumns(db);
 
   const setDefault = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) setDefault.run(k, v);
+  setDayEnd(db.prepare("SELECT value FROM settings WHERE key = 'day_end_hour'").get()?.value);
 
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {

@@ -1,7 +1,7 @@
 'use strict';
 const { requirePerm, can } = require('../auth');
 const { tx } = require('../db');
-const { bad, notFound, num, str, round2, dateRange, audit, getSettings } = require('../util');
+const { bad, notFound, num, str, round2, dateRange, audit, getSettings, bday, today: todayStr } = require('../util');
 const { drawerNow, beforeLastClose, adjustClosing } = require('../money');
 
 const fmt = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
@@ -11,7 +11,7 @@ module.exports = function moneyRoutes(api, db) {
   // ---------- expenses ----------
   api.get('/expenses', requirePerm('expenses.create'), (req, res) => {
     const { from, to } = dateRange(req.query);
-    const where = ['date(e.created_at) BETWEEN ? AND ?'];
+    const where = ['bday(e.created_at) BETWEEN ? AND ?'];
     const params = [from, to];
     if (!can(req.user, 'expenses.view')) { where.push('e.user_id = ?'); params.push(req.user.id); }
     if (req.query.category) { where.push('e.category = ?'); params.push(String(req.query.category)); }
@@ -69,8 +69,8 @@ module.exports = function moneyRoutes(api, db) {
     const e = db.prepare('SELECT * FROM expenses WHERE id = ?').get(req.params.id);
     if (!e) throw notFound('المصروف غير موجود');
     // Staff may undo their own mistake on the same day only
-    const today = db.prepare("SELECT date('now','localtime') AS d").get().d;
-    if (!can(req.user, 'expenses.view') && (e.user_id !== req.user.id || e.created_at.slice(0, 10) !== today)) {
+    const today = todayStr();
+    if (!can(req.user, 'expenses.view') && (e.user_id !== req.user.id || bday(e.created_at) !== today)) {
       throw bad('تقدر تمسح المصروف اللي سجلته النهارده بس — كلّم المدير');
     }
     if (e.employee_id && !can(req.user, 'payroll')) throw bad('المرتبات والسلف للمدير بس');

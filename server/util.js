@@ -36,8 +36,27 @@ function str(value, label, { optional = false, max = 200 } = {}) {
 
 const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+/*
+ * The shop's day ends at `dayEnd` o'clock (0–6). A shop open past midnight keeps counting its sales,
+ * expenses and drawer closing on the day that started, until that hour.
+ */
+let dayEnd = 0;
+function setDayEnd(h) { dayEnd = Math.min(6, Math.max(0, Math.floor(Number(h) || 0))); }
+const getDayEnd = () => dayEnd;
+
+/** The shop day a 'YYYY-MM-DD HH:MM:SS' (local) time belongs to. */
+function bday(ts) {
+  if (ts == null) return null;
+  const t = String(ts);
+  const day = t.slice(0, 10);
+  if (!dayEnd || t.length < 13 || Number(t.slice(11, 13)) >= dayEnd) return day;
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function today() {
-  const d = new Date();
+  const d = new Date(Date.now() - dayEnd * 3600e3);
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
@@ -62,4 +81,4 @@ function getSettings(db) {
   return out;
 }
 
-module.exports = { HttpError, bad, notFound, round2, num, str, dateRange, today, pad, audit, getSettings };
+module.exports = { HttpError, bad, notFound, round2, num, str, dateRange, today, bday, setDayEnd, getDayEnd, pad, audit, getSettings };

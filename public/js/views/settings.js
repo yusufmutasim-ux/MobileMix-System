@@ -27,6 +27,8 @@ export async function render(el, { query } = {}) {
           <label class="field full"><span>العنوان</span><input class="input" name="shop_address" value="${esc(s.shop_address)}"></label>
           <label class="field"><span>التليفون</span><input class="input ltr" name="shop_phone" value="${esc(s.shop_phone)}"></label>
           <label class="field"><span>العملة</span><input class="input" name="currency" value="${esc(s.currency)}"></label>
+          <label class="field full"><span>اليوم في المحل بيخلص الساعة</span>${sel('day_end_hour', String(s.day_end_hour ?? '0'), [['0', '12 بالليل (عادي)'], ['1', '1 بعد نص الليل'], ['2', '2 بعد نص الليل'], ['3', '3 بعد نص الليل'], ['4', '4 الفجر'], ['5', '5 الصبح'], ['6', '6 الصبح']])}
+            <small class="muted">لو بتقفل بعد نص الليل: أي بيع أو مصروف أو تقفيلة درج قبل الساعة دي بتتحسب على اليوم اللي قبله.</small></label>
           ${saveBtn}
         </form>
       </div>

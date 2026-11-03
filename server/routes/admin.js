@@ -5,7 +5,7 @@ const path = require('node:path');
 const {
   hashPassword, verifyPassword, createSession, requireAuth, requirePerm, PERMISSIONS, SESSION_DAYS,
 } = require('../auth');
-const { bad, notFound, str, audit, getSettings, today } = require('../util');
+const { bad, notFound, str, audit, getSettings, today, setDayEnd } = require('../util');
 const { DEFAULT_SETTINGS } = require('../db');
 const { runBackup, listBackups, backupDir, snapshot } = require('../backup');
 const { tx } = require('../db');
@@ -203,6 +203,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
       const max = ['store_ship_fees', 'store_about', 'store_transfer_info', 'invoice_footer', 'repair_terms'].includes(key) ? 6000 : 500;
       if (req.body?.[key] !== undefined) set.run(key, String(req.body[key]).slice(0, max));
     }
+    if (req.body?.day_end_hour !== undefined) setDayEnd(req.body.day_end_hour);
     audit(db, req.user.id, 'settings.update');
     res.json(getSettings(db));
   });

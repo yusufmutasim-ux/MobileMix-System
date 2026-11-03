@@ -8,16 +8,16 @@ const NET = 'si.line_total * (CASE WHEN s.subtotal > 0 THEN s.total / s.subtotal
 
 /** The day in numbers, for the owner's phone. */
 function daySummary(db, day = today()) {
-  const sales = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS t FROM sales WHERE date(created_at) = ?').get(day);
+  const sales = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS t FROM sales WHERE bday(created_at) = ?').get(day);
   const profit = db.prepare(`SELECT COALESCE(SUM(${NET} - si.unit_cost * si.qty), 0) AS p FROM sale_items si JOIN sales s ON s.id = si.sale_id
-                             WHERE date(s.created_at) = ?`).get(day).p;
-  const rets = db.prepare('SELECT COALESCE(SUM(amount), 0) AS a, COALESCE(SUM(cost), 0) AS c FROM returns WHERE date(created_at) = ?').get(day);
+                             WHERE bday(s.created_at) = ?`).get(day).p;
+  const rets = db.prepare('SELECT COALESCE(SUM(amount), 0) AS a, COALESCE(SUM(cost), 0) AS c FROM returns WHERE bday(created_at) = ?').get(day);
   const PARTS = '(SELECT COALESCE(SUM(qty * unit_cost), 0) FROM repair_parts WHERE repair_id = r.id)';
   const rep = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(COALESCE(r.price, 0) - ${PARTS} - r.extra_cost), 0) AS p FROM repairs r
-                          WHERE r.status = 'delivered' AND date(r.delivered_at) = ?`).get(day);
-  const received = db.prepare('SELECT COUNT(*) AS n FROM repairs WHERE date(created_at) = ?').get(day).n;
-  const expenses = db.prepare('SELECT COALESCE(SUM(amount), 0) AS t FROM expenses WHERE date(created_at) = ?').get(day).t;
-  const collected = db.prepare('SELECT COALESCE(SUM(amount), 0) AS t FROM sale_payments WHERE date(created_at) = ?').get(day).t;
+                          WHERE r.status = 'delivered' AND bday(r.delivered_at) = ?`).get(day);
+  const received = db.prepare('SELECT COUNT(*) AS n FROM repairs WHERE bday(created_at) = ?').get(day).n;
+  const expenses = db.prepare('SELECT COALESCE(SUM(amount), 0) AS t FROM expenses WHERE bday(created_at) = ?').get(day).t;
+  const collected = db.prepare('SELECT COALESCE(SUM(amount), 0) AS t FROM sale_payments WHERE bday(created_at) = ?').get(day).t;
   const gross = profit - (rets.a - rets.c) + rep.p;
   return {
     day, invoices: sales.n, sales: round2(sales.t - rets.a), profit: round2(gross), repairs_delivered: rep.n, repairs_received: received,

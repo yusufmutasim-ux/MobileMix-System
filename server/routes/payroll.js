@@ -1,6 +1,6 @@
 'use strict';
 const { requirePerm } = require('../auth');
-const { bad, notFound, num, str, round2, audit, today, getSettings } = require('../util');
+const { bad, notFound, num, str, round2, audit, today, bday, getSettings } = require('../util');
 const { absences } = require('../schedule');
 const { beforeLastClose, adjustClosing } = require('../money');
 
@@ -107,7 +107,7 @@ module.exports = function payrollRoutes(api, db) {
   function todayList() {
     const day = today();
     return db.prepare("SELECT id, full_name, role, daily_allowance FROM users WHERE active = 1 AND deleted_at IS NULL AND role <> 'admin' ORDER BY full_name").all().map((u) => {
-      const given = db.prepare("SELECT id, amount FROM expenses WHERE employee_id = ? AND category = 'يومية' AND date(created_at) = ? ORDER BY id DESC").all(u.id, day);
+      const given = db.prepare("SELECT id, amount FROM expenses WHERE employee_id = ? AND category = 'يومية' AND bday(created_at) = ? ORDER BY id DESC").all(u.id, day);
       const came = db.prepare('SELECT MIN(check_in_at) AS t FROM shifts WHERE user_id = ? AND date(check_in_at) = ?').get(u.id, day).t;
       return { id: u.id, full_name: u.full_name, role: u.role, amount: u.daily_allowance ?? usual(),
         given: round2(given.reduce((a, g) => a + g.amount, 0)), given_id: given[0]?.id || null, came_at: came };
@@ -129,7 +129,7 @@ module.exports = function payrollRoutes(api, db) {
       const u = list.find((x) => x.id === id);
       if (!u) throw notFound('الموظف غير موجود');
       // Filed on the closed drawer's day: skip if that day already has one
-      if (at ? db.prepare("SELECT 1 FROM expenses WHERE category = 'يومية' AND employee_id = ? AND date(created_at) = date(?)").get(id, at) : u.given > 0) continue;
+      if (at ? db.prepare("SELECT 1 FROM expenses WHERE category = 'يومية' AND employee_id = ? AND bday(created_at) = bday(?)").get(id, at) : u.given > 0) continue;
       const amount = round2(ids.length === 1 && req.body?.amount !== undefined ? num(req.body.amount, 'المبلغ', { min: 0.01 }) : u.amount);
       if (!(amount > 0)) continue;
       db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id, created_at)
@@ -146,7 +146,7 @@ module.exports = function payrollRoutes(api, db) {
   api.delete('/allowances/:expenseId', allowancePerm, (req, res) => {
     const e = db.prepare("SELECT * FROM expenses WHERE id = ? AND category = 'يومية'").get(Number(req.params.expenseId));
     if (!e) throw notFound('اليومية دي مش موجودة');
-    if (e.created_at.slice(0, 10) !== today()) throw bad('تقدر تلغي يومية النهارده بس — القديمة من صفحة المصروفات');
+    if (bday(e.created_at) !== today()) throw bad('تقدر تلغي يومية النهارده بس — القديمة من صفحة المصروفات');
     db.prepare('DELETE FROM expenses WHERE id = ?').run(e.id);
     adjustClosing(db, e.created_at, e.amount, 'expenses'); // undone after the drawer was closed
     audit(db, req.user.id, 'payroll.allowance_undo', { expense: e.id });

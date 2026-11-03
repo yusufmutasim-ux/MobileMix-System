@@ -62,11 +62,23 @@ export const n = (v) => nf.format(Number(v) || 0);
 export const money = (v) => `<span class="num">${n(v)}</span> <span class="muted small">${esc(state.settings.currency || 'ج.م')}</span>`;
 export const moneyText = (v) => `${n(v)} ${state.settings.currency || 'ج.م'}`;
 
+/** The shop's day ends at this hour (after midnight): until then it's still yesterday. */
+const dayEndMs = () => Math.min(6, Math.max(0, Number(state.settings?.day_end_hour) || 0)) * 3600e3;
+
 export function todayStr(offset = 0) {
-  const d = new Date();
+  const d = new Date(Date.now() - dayEndMs());
   d.setDate(d.getDate() + offset);
   const p = (x) => String(x).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** The shop day a 'YYYY-MM-DD HH:MM:SS' time counts on. */
+export function shopDay(ts) {
+  const t = String(ts || '');
+  const h = dayEndMs() / 3600e3;
+  if (!h || Number(t.slice(11, 13)) >= h) return t.slice(0, 10);
+  const d = new Date(`${t.slice(0, 10)}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 export function fmtDate(s, withTime = true) {
