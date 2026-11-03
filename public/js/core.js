@@ -89,6 +89,15 @@ export function fmtDate(s, withTime = true) {
   return `${date} — ${d.toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' })}`;
 }
 
+/** A drawer closing (or anything that ends a shop day): shown on its shop day, with the real time. */
+export function fmtShopTime(ts) {
+  if (!ts) return '';
+  const day = shopDay(ts);
+  if (day === String(ts).slice(0, 10)) return fmtDate(ts);
+  const time = new Date(String(ts).replace(' ', 'T')).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' });
+  return `${fmtDate(day, false)} — ${time} بعد نص الليل`;
+}
+
 export const ROLE_NAMES = { admin: 'مدير', manager: 'مشرف', cashier: 'كاشير', technician: 'فني صيانة' };
 export const PAY_NAMES = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
 export const COLLECT_METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay' };

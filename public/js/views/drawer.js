@@ -1,4 +1,4 @@
-import { api, can, icon, esc, money, n, fmtDate, emptyRow, toast } from '../core.js';
+import { api, can, icon, esc, money, n, fmtDate, emptyRow, toast, fmtShopTime } from '../core.js';
 import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal } from '../money-ui.js';
 
 /** The cash drawer: what should be in it now, closing (counting) it, and the history. */
@@ -13,7 +13,7 @@ export async function render(el, { query, actions }) {
   let lastClose = null;
   const openForgot = () => {
     if (!lastClose) return toast('لسه مفيش تقفيلة درج — سجّلها عادي من زرار "مصروف" أو "سحب" وهتتحسب على الدرج الحالي', 'err');
-    forgotModal(fmtDate(lastClose));
+    forgotModal(fmtShopTime(lastClose));
   };
   async function load() {
     const d = await api.get('/drawer');
@@ -21,7 +21,7 @@ export async function render(el, { query, actions }) {
       el.innerHTML = `<div class="card drawer-hero" style="max-width:560px">
         <h2 style="margin-top:0">${icon('drawer')} تقفيل الدرج</h2>
         <p class="muted">في آخر الشيفت: عدّ الفلوس اللي في الدرج، ودوس "قفّل الدرج" واكتب المبلغ. السيستم بيقارنه باللي المفروض يكون موجود ويبلّغ المدير.</p>
-        <div class="muted small">${d.from ? `آخر تقفيل: ${fmtDate(d.from)}` : 'لسه ماتقفلش الدرج قبل كده'}</div>
+        <div class="muted small">${d.from ? `آخر تقفيل: ${fmtShopTime(d.from)}` : 'لسه ماتقفلش الدرج قبل كده'}</div>
       </div>`;
       return;
     }
@@ -30,7 +30,7 @@ export async function render(el, { query, actions }) {
         <div class="card drawer-hero">
           <div class="muted small">المفروض في الدرج دلوقتي</div>
           <div class="hero-amount">${money(d.expected)}</div>
-          <div class="muted small">${d.from ? `من آخر تقفيل: ${fmtDate(d.from)}` : 'لسه ماتقفلش الدرج قبل كده'}</div>
+          <div class="muted small">${d.from ? `من آخر تقفيل: ${fmtShopTime(d.from)}` : 'لسه ماتقفلش الدرج قبل كده'}</div>
           ${drawerBreakdown(d)}
         </div>
         ${manager ? `<div class="card">
@@ -47,7 +47,7 @@ export async function render(el, { query, actions }) {
         <div class="table-wrap"><table class="table">
           <thead><tr><th>التاريخ</th><th>الموظف</th><th>المفروض</th><th>اتعد</th><th>الفرق</th><th>اتساب في الدرج</th><th>ملاحظة</th></tr></thead>
           <tbody>${d.closings.length ? d.closings.map((c) => `<tr>
-            <td class="small">${fmtDate(c.closed_at)}</td><td>${esc(c.user_name || '')}</td>
+            <td class="small">${fmtShopTime(c.closed_at)}</td><td>${esc(c.user_name || '')}</td>
             <td>${money(c.expected)}</td><td>${money(c.counted)}</td>
             <td>${Math.abs(c.diff) < 0.5 ? '<span class="pill pill-ok">مظبوط</span>' : c.diff < 0 ? `<span class="pill pill-bad">عجز ${n(-c.diff)}</span>` : `<span class="pill pill-warn">زيادة ${n(c.diff)}</span>`}</td>
             <td>${money(c.left_in_drawer)}</td><td class="small">${esc(c.note || '')}</td></tr>`).join('') : emptyRow(7, 'لسه مفيش تقفيلات')}</tbody>
