@@ -9,7 +9,7 @@ const { bad, notFound, str, audit, getSettings, today, setDayEnd } = require('..
 const { DEFAULT_SETTINGS, recountAttendance } = require('../db');
 const { runBackup, listBackups, backupDir, snapshot } = require('../backup');
 const { tx } = require('../db');
-const { TIME } = require('../schedule');
+const { TIME, scheduleOf, regularOn, weekOf } = require('../schedule');
 const hosting = require('../hosting');
 
 /** Same machine or the shop's own network (not coming in through the internet). */
@@ -127,6 +127,57 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
     const n = recountAttendance(db);
     audit(db, req.user.id, 'attendance.recount', { shifts: n });
     res.json({ ok: true, shifts: n });
+  });
+
+  // ---------- one-week day-off swaps ----------
+  const DAY = /^\d{4}-\d{2}-\d{2}$/;
+  const AR_DAYS = ['الأحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة', 'السبت'];
+  const dayName = (d) => `${AR_DAYS[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${Number(d.slice(8))}/${Number(d.slice(5, 7))}`;
+  function swapUser(id) {
+    const u = db.prepare('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL').get(id);
+    if (!u) throw notFound('الموظف غير موجود');
+    const s = scheduleOf(u);
+    if (!s) throw bad('حدد مواعيد شيفت الموظف ده وأيام شغله الأول');
+    return { u, s };
+  }
+  /** For a day the owner wants to give off: their usual days off that same week (one of them becomes a work day). */
+  function swapOptions(u, s, day) {
+    const taken = new Set(db.prepare('SELECT work_day FROM schedule_swaps WHERE user_id = ? AND work_day IS NOT NULL').all(u.id).map((r) => r.work_day));
+    const candidates = weekOf(day).filter((d) => d !== day && !regularOn(s, d) && !taken.has(d)).map((d) => ({ day: d, name: dayName(d) }));
+    // Default: the usual day off closest to the new one
+    const near = [...candidates].sort((a, b) => Math.abs(Date.parse(a.day) - Date.parse(day)) - Math.abs(Date.parse(b.day) - Date.parse(day)))[0];
+    return { day, name: dayName(day), works: regularOn(s, day), candidates, suggested: near?.day || null };
+  }
+  api.get('/users/:id/swaps', manageUsers, (req, res) => {
+    const { u } = swapUser(req.params.id);
+    const rows = db.prepare('SELECT * FROM schedule_swaps WHERE user_id = ? AND off_day >= date(?, \'-60 days\') ORDER BY off_day DESC').all(u.id, today());
+    res.json(rows.map((r) => ({ ...r, off_name: dayName(r.off_day), work_name: r.work_day ? dayName(r.work_day) : null })));
+  });
+  api.get('/users/:id/swap-options', manageUsers, (req, res) => {
+    const { u, s } = swapUser(req.params.id);
+    if (!DAY.test(String(req.query.day || ''))) throw bad('اختار اليوم');
+    res.json(swapOptions(u, s, String(req.query.day)));
+  });
+  api.post('/users/:id/swaps', manageUsers, (req, res) => {
+    const { u, s } = swapUser(req.params.id);
+    const b = req.body || {};
+    const off = String(b.off_day || '');
+    if (!DAY.test(off)) throw bad('اختار يوم الإجازة');
+    const opt = swapOptions(u, s, off);
+    if (!opt.works) throw bad(`${opt.name} أصلاً يوم إجازته`);
+    if (db.prepare('SELECT 1 FROM schedule_swaps WHERE user_id = ? AND (off_day = ? OR work_day = ?)').get(u.id, off, off)) throw bad('اليوم ده عليه تبديل قبل كده — امسحه الأول');
+    let work = b.work_day === undefined ? opt.suggested : (b.work_day || null);
+    if (work && !opt.candidates.some((c) => c.day === work)) throw bad('يوم الشغل البديل لازم يكون يوم إجازته في نفس الأسبوع');
+    const r = db.prepare('INSERT INTO schedule_swaps (user_id, off_day, work_day, note, by_user) VALUES (?, ?, ?, ?, ?)')
+      .run(u.id, off, work, str(b.note, 'الملاحظة', { optional: true, max: 200 }), req.user.id);
+    audit(db, req.user.id, 'schedule.swap', { user: u.id, off, work });
+    res.status(201).json({ id: Number(r.lastInsertRowid), off_day: off, work_day: work, off_name: opt.name, work_name: work ? opt.candidates.find((c) => c.day === work).name : null });
+  });
+  api.delete('/users/:id/swaps/:swapId', manageUsers, (req, res) => {
+    const r = db.prepare('DELETE FROM schedule_swaps WHERE id = ? AND user_id = ?').run(Number(req.params.swapId), Number(req.params.id));
+    if (!r.changes) throw notFound('التبديل ده مش موجود');
+    audit(db, req.user.id, 'schedule.swap.delete', { id: Number(req.params.swapId) });
+    res.json({ ok: true });
   });
 
   // Small list (id + name) used in report filters

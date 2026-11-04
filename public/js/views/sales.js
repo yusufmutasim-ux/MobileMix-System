@@ -139,6 +139,7 @@ export async function openSale(id, onChange) {
       ${sale.returns.length ? `<h4 style="margin:16px 0 8px">المرتجعات</h4>
         ${sale.returns.map((r) => `<div class="small" style="padding:4px 0">${fmtDate(r.created_at)} — ${esc(r.user_name)} — <b>${money(r.amount)}</b> ${r.reason ? `(${esc(r.reason)})` : ''}${r.cash_out != null && r.cash_out < r.amount - 0.004 ? ` <span class="muted">— اترجع كاش ${n(r.cash_out)} والباقي اتخصم من المتبقي</span>` : ''}</div>`).join('')}` : ''}`,
     foot: `${canReturn ? `<button class="btn btn-danger" data-return>${icon('undo')} مرتجع</button>` : ''}
+      ${can('sales.delete') ? `<button class="btn btn-ghost" data-delete style="color:var(--danger)">${icon('trash')} امسح الفاتورة</button>` : ''}
       ${sale.due > 0 && can('customers.pay') ? `<button class="btn btn-outline" data-pay>${icon('wallet')} تحصيل</button>` : ''}
       <span style="flex:1"></span>
       <button class="btn btn-outline" data-print="a4">${icon('print')} A4</button>
@@ -150,6 +151,27 @@ export async function openSale(id, onChange) {
         const next = sale.installments.find((i) => i.state !== 'paid');
         if (await payModal({ title: `تحصيل — فاتورة ${esc(sale.invoice_no)}`, due: sale.due, suggest: next?.left, url: `/sales/${sale.id}/payments` })) onChange?.();
         openSale(id, onChange);
+      });
+      m.querySelector('[data-delete]')?.addEventListener('click', async () => {
+        const ok = await modal({
+          title: `تمسح فاتورة <span class="num">${esc(sale.invoice_no)}</span>؟`,
+          body: `<p style="margin-top:0">الفاتورة هتتمسح كأنها ماحصلتش:</p>
+            <ul class="small" style="margin:0 0 12px;padding-inline-start:18px;line-height:1.9">
+              <li>البضاعة اللي فيها بترجع المخزن${sale.items.some((i) => i.serial) ? ' (والـ IMEI يرجع متاح)' : ''}.</li>
+              <li>فلوسها بتتشال من المبيعات والتقارير والدرج${sale.due > 0 ? '، والمتبقي على العميل بيتشال' : ''}.</li>
+              <li>مش هتقدر ترجعها تاني.</li></ul>
+            <label class="field"><span>السبب (اختياري)</span><input class="input" id="why" placeholder="مثلاً: فاتورة اتعملت غلط"></label>`,
+          foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-danger" data-ok>${icon('trash')} امسح</button>`,
+          onMount: (mm, done) => mm.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+            const why = mm.querySelector('#why').value.trim();
+            await api.del(`/sales/${sale.id}${why ? `?reason=${encodeURIComponent(why)}` : ''}`);
+            done(true);
+          })),
+        });
+        if (!ok) return;
+        close(null);
+        toast('اتمسحت الفاتورة', 'ok');
+        onChange?.();
       });
       m.querySelector('[data-return]')?.addEventListener('click', async () => {
         close(null);

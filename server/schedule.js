@@ -26,14 +26,32 @@ function scheduleOf(user) {
   return { start: user.shift_start, end: user.shift_end, days: String(user.work_days ?? '0123456') };
 }
 
-const worksOn = (sched, dateStr) => sched.days.includes(String(dayOf(dateStr)));
+const regularOn = (sched, dateStr) => sched.days.includes(String(dayOf(dateStr)));
+/**
+ * Does this person work on `dateStr`? Their weekly days, with any one-week swap applied
+ * (a day off given instead of their usual one, which becomes a work day that week).
+ */
+function worksOn(sched, dateStr, db = null, userId = null) {
+  if (db && userId) {
+    const sw = db.prepare('SELECT off_day, work_day FROM schedule_swaps WHERE user_id = ? AND (off_day = ? OR work_day = ?)').get(userId, dateStr, dateStr);
+    if (sw) return sw.work_day === dateStr;
+  }
+  return regularOn(sched, dateStr);
+}
+
+/** The Saturday–Friday week of a day (the shop's week). */
+function weekOf(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 1) % 7)); // back to Saturday
+  return Array.from({ length: 7 }, (_, i) => { const x = new Date(d); x.setUTCDate(d.getUTCDate() + i); return x.toISOString().slice(0, 10); });
+}
 const grace = (db) => Math.max(0, Number(getSettings(db).late_grace) || 0);
 
 /** Minutes late on check-in (0 = on time / within the grace), or null when there's no schedule that day. */
 function lateMinutes(db, user, checkInAt) {
   const s = scheduleOf(user);
   const day = bday(checkInAt);
-  if (!s || !worksOn(s, day)) return null;
+  if (!s || !worksOn(s, day, db, user.id)) return null;
   const late = Math.round((ms(checkInAt) - shiftWindow(s, day).start) / 60000);
   return late > grace(db) ? late : 0;
 }
@@ -42,7 +60,7 @@ function lateMinutes(db, user, checkInAt) {
 function earlyMinutes(db, user, checkInAt, checkOutAt) {
   const s = scheduleOf(user);
   const day = bday(checkInAt);
-  if (!s || !worksOn(s, day)) return null;
+  if (!s || !worksOn(s, day, db, user.id)) return null;
   const early = Math.round((shiftWindow(s, day).end - ms(checkOutAt)) / 60000);
   return early > grace(db) ? early : 0;
 }
@@ -56,7 +74,7 @@ function missingNow(db, now) {
   const cameToday = new Set(db.prepare('SELECT DISTINCT user_id FROM shifts WHERE bday(check_in_at) = ? OR check_out_at IS NULL').all(today).map((r) => r.user_id));
   return users.filter((u) => {
     const s = scheduleOf(u);
-    if (!s || !worksOn(s, today) || cameToday.has(u.id)) return false;
+    if (!s || !worksOn(s, today, db, u.id) || cameToday.has(u.id)) return false;
     const w = shiftWindow(s, today);
     return t >= w.start + g * 60000 && t < w.end;
   }).map((u) => ({ id: u.id, full_name: u.full_name, shift_start: u.shift_start, shift_end: u.shift_end,
@@ -81,10 +99,10 @@ function absences(db, user, from, to, now = new Date()) {
     const day = iso(d);
     if (day > today) break;
     if (now.getTime() < shiftWindow(s, day).end) continue; // that day's shift isn't over yet
-    if (!worksOn(s, day) || came.has(day) || excused.has(day)) continue;
+    if (!worksOn(s, day, db, user.id) || came.has(day) || excused.has(day)) continue;
     out.push(day);
   }
   return out;
 }
 
-module.exports = { TIME, scheduleOf, worksOn, lateMinutes, earlyMinutes, missingNow, absences };
+module.exports = { TIME, scheduleOf, worksOn, regularOn, weekOf, lateMinutes, earlyMinutes, missingNow, absences };

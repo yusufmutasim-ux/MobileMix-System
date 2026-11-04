@@ -325,6 +325,7 @@ export async function render(el, { query } = {}) {
           <label class="sched-time"><span>لحد</span>${timePick('data-f="end"', u.shift_end || '')}</label>
           <div class="toggle-chips sched-days">${DAYS.map(([d, name]) => `<button type="button" data-d="${d}" class="${String(u.work_days ?? '0123456').includes(d) ? 'on' : ''}">${name}</button>`).join('')}</div>
           <button class="btn btn-outline btn-sm" data-save>${icon('check')} حفظ</button>
+          <button class="btn btn-ghost btn-sm" data-swap title="يوم إجازة في أسبوع معيّن بدل إجازته الثابتة">${icon('calendar')} إجازة بدل</button>
         </div>`).join('') : '<div class="empty">ضيف موظفين الأول من صفحة الموظفين</div>'}</div>
       <div class="sched-rules">
         <label class="field"><span>سماحية التأخير (بالدقايق)</span><input class="input num" type="number" min="0" max="120" id="grace" value="${esc(st.late_grace ?? '15')}"></label>
@@ -338,6 +339,10 @@ export async function render(el, { query } = {}) {
         <button class="btn btn-ghost btn-sm" id="recount" title="بعد ما تغيّر المواعيد: التأخير والمشي بدري في كل الأيام اللي فاتت يتحسبوا بالمواعيد الحالية">${icon('clock')} احسب الحضور القديم بالمواعيد دي</button>
         <p class="muted small" style="margin:0;flex-basis:100%">الغياب = يوم شغل الموظف ما سجلش فيه حضور خالص؛ التأخير = حضر بعد السماحية. يوم المرتب = المرتب ÷ 30، وتقدر تعفي أي يوم من صفحة المرتبات. سيب الميعاد فاضي للموظف اللي مالوش شيفت ثابت. الشيفت اللي بيعدّي نص الليل (زي 6 م لحد 2 ص) شغال عادي.</p>
       </div>`;
+    card.querySelectorAll('[data-swap]').forEach((b) => b.addEventListener('click', () => {
+      const id = Number(b.closest('.sched-row').dataset.id);
+      swapModal(staff.find((u) => u.id === id)).catch(toastErrLocal);
+    }));
     card.querySelector('#recount')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
       const r = await api.post('/attendance/recount', {});
       toast(`اتحسب من جديد — ${r.shifts} شيفت`, 'ok');
@@ -598,4 +603,50 @@ function remoteCard(sys) {
         <p class="small muted">🔒 للأمان: كل موظف له كلمة سر، الحساب بيتقفل مؤقتاً بعد محاولات غلط كتير، وتقدر توقف أي موظف من صفحة الموظفين فيخرج من كل الأجهزة فوراً.</p>
       </div>
     </div>`;
+}
+
+
+/**
+ * Give someone a day off in one particular week instead of their usual one: their usual day off that
+ * week becomes a work day, and the week after is back to normal.
+ */
+async function swapModal(u) {
+  const list = await api.get(`/users/${u.id}/swaps`);
+  await modal({
+    title: `إجازة بدل — ${esc(u.full_name)}`,
+    body: `<p class="muted small" style="margin-top:0">اختار اليوم اللي هياخده إجازة. يوم إجازته الثابت في نفس الأسبوع هيبقى يوم شغل بداله، والأسبوع اللي بعده يرجع عادي.</p>
+      <div class="form-grid">
+        <label class="field full"><span>يوم الإجازة الجديد</span><input class="input num" type="date" id="off"></label>
+        <div class="full" id="opts"></div>
+      </div>
+      ${list.length ? `<h4 style="margin:16px 0 6px">التبديلات</h4>${list.map((r) => `<div class="line-row" data-row="${r.id}"><span>إجازة <b>${esc(r.off_name)}</b>${r.work_name ? ` ← شغل <b>${esc(r.work_name)}</b>` : ' (من غير بدل)'}${r.note ? ` <span class="muted small">— ${esc(r.note)}</span>` : ''}</span>
+        <button class="btn btn-ghost btn-sm" data-undo="${r.id}" style="color:var(--danger)">${icon('trash')} إلغاء</button></div>`).join('')}` : ''}`,
+    foot: `<button class="btn btn-outline" data-close>قفل</button><button class="btn btn-primary" data-ok disabled>${icon('check')} حفظ</button>`,
+    onMount: (m, close) => {
+      const off = m.querySelector('#off'), box = m.querySelector('#opts'), ok = m.querySelector('[data-ok]');
+      off.addEventListener('change', async () => {
+        ok.disabled = true; box.innerHTML = '';
+        if (!off.value) return;
+        try {
+          const o = await api.get(`/users/${u.id}/swap-options?day=${off.value}`);
+          if (!o.works) { box.innerHTML = `<div class="note-warn">${esc(o.name)} أصلاً يوم إجازته</div>`; return; }
+          box.innerHTML = o.candidates.length
+            ? `<label class="field"><span>يشتغل بداله يوم</span><select class="input" id="work">${o.candidates.map((c) => `<option value="${c.day}" ${c.day === o.suggested ? 'selected' : ''}>${esc(c.name)} (إجازته الثابتة)</option>`).join('')}<option value="">من غير بدل — إجازة زيادة</option></select></label>`
+            : '<div class="muted small">مالوش يوم إجازة ثابت في الأسبوع ده — هتبقى إجازة زيادة.</div>';
+          ok.disabled = false;
+        } catch (e) { box.innerHTML = `<div class="note-bad">${esc(e.message)}</div>`; }
+      });
+      ok.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        const w = m.querySelector('#work');
+        const r = await api.post(`/users/${u.id}/swaps`, { off_day: off.value, work_day: w ? w.value : null });
+        toast(r.work_name ? `تمام — إجازة ${r.off_name} وشغل ${r.work_name}` : `تمام — إجازة ${r.off_name}`, 'ok');
+        close(true);
+      }));
+      m.querySelectorAll('[data-undo]').forEach((b) => b.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        await api.del(`/users/${u.id}/swaps/${b.dataset.undo}`);
+        b.closest('[data-row]').remove();
+        toast('اتلغى التبديل', 'ok');
+      })));
+    },
+  });
 }

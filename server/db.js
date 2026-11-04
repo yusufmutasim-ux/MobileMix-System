@@ -401,6 +401,18 @@ CREATE TABLE IF NOT EXISTS online_orders (
   updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 -- Days the owner excused (no deduction for being absent or late that day)
+-- A one-week day-off swap: off_day becomes a day off, and work_day (their usual day off that week) a work day
+CREATE TABLE IF NOT EXISTS schedule_swaps (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  off_day TEXT NOT NULL,
+  work_day TEXT,
+  note TEXT,
+  by_user INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  UNIQUE (user_id, off_day)
+);
+
 CREATE TABLE IF NOT EXISTS attendance_excuses (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   day TEXT NOT NULL,

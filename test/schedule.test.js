@@ -201,3 +201,35 @@ test('a manager records or corrects attendance by hand', async () => {
   const c = client(); await c.login('kash', '123456');
   assert.equal((await c.post('/shifts/manual', { user_id: id, check_in_at: '2026-10-25 17:00' })).status, 403);
 });
+
+test('a one-week day-off swap', async () => {
+  const { absences, worksOn, scheduleOf } = require('../server/schedule');
+  const admin = client();
+  await admin.login('admin', 'admin123');
+  // Works every day but Friday (5). Week of Sat 2026-10-24 … Fri 2026-10-30
+  const id = Number(db.prepare("INSERT INTO users (username, full_name, password_hash, role, shift_start, shift_end, work_days, created_at, schedule_since) VALUES ('swap', 'تبديل', '', 'cashier', '10:00', '18:00', '012346', '2026-10-01 09:00:00', '2026-10-01')").run().lastInsertRowid);
+  // Options for Tuesday the 27th: their Friday the 30th
+  const o = (await admin.get(`/users/${id}/swap-options?day=2026-10-27`)).data;
+  assert.equal(o.works, true);
+  assert.equal(o.suggested, '2026-10-30');
+  // Friday is already a day off: refused
+  assert.equal((await admin.post(`/users/${id}/swaps`, { off_day: '2026-10-30' })).status, 400);
+  const r = await admin.post(`/users/${id}/swaps`, { off_day: '2026-10-27' });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.work_day, '2026-10-30');
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const s = scheduleOf(u);
+  assert.equal(worksOn(s, '2026-10-27', db, id), false);
+  assert.equal(worksOn(s, '2026-10-30', db, id), true);
+  // The week after is normal
+  assert.equal(worksOn(s, '2026-11-03', db, id), true);
+  assert.equal(worksOn(s, '2026-11-06', db, id), false);
+  // Came every day that week except Tuesday (off) and Friday (now a work day) → absent only on Friday
+  for (const d of ['2026-10-24', '2026-10-25', '2026-10-26', '2026-10-28', '2026-10-29']) db.prepare('INSERT INTO shifts (user_id, check_in_at, check_out_at) VALUES (?, ?, ?)').run(id, `${d} 10:00:00`, `${d} 18:00:00`);
+  assert.deepEqual(absences(db, u, '2026-10-24', '2026-10-30', new Date('2026-11-01T12:00:00')), ['2026-10-30']);
+  // Undo
+  const list = (await admin.get(`/users/${id}/swaps`)).data;
+  assert.equal(list.length, 1);
+  assert.equal((await admin.del(`/users/${id}/swaps/${list[0].id}`)).status, 200);
+  assert.deepEqual(absences(db, u, '2026-10-24', '2026-10-30', new Date('2026-11-01T12:00:00')), ['2026-10-27']);
+});

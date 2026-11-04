@@ -3,7 +3,7 @@ const { tx } = require('../db');
 const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit, getSettings, dateRange } = require('../util');
 const { requireOpenShift } = require('./shifts');
-const { saleMoney, installmentsOf, rememberCustomer, DUE_SQL } = require('../money');
+const { saleMoney, installmentsOf, rememberCustomer, DUE_SQL, CASH_SALE_METHODS, adjustClosing } = require('../money');
 const { today, t12 } = require('../util');
 
 const PAY_AR = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
@@ -257,6 +257,47 @@ module.exports = function salesRoutes(api, db) {
       body: `${req.user.full_name} • فاتورة ${sale.invoice_no}${last?.reason ? ` • ${last.reason}` : ''}`,
     });
     res.json(sale);
+  });
+
+  // ---------- deleting an invoice (owner only) ----------
+  /**
+   * Remove a sale as if it never happened: what's still out goes back into stock (IMEIs too), its
+   * payments and returns go with it, and a drawer closing it fell in is corrected.
+   */
+  api.delete('/sales/:id', requirePerm('sales.delete'), (req, res) => {
+    const reason = str(req.body?.reason ?? req.query.reason, 'السبب', { optional: true, max: 200 });
+    const snap = tx(db, () => {
+      const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(req.params.id);
+      if (!sale) throw notFound('الفاتورة غير موجودة');
+      const items = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(sale.id);
+      for (const it of items) {
+        const back = it.qty - it.returned_qty; // returned items are already back in stock
+        if (!it.product_id || back <= 0) continue;
+        const p = db.prepare('SELECT qty FROM products WHERE id = ?').get(it.product_id);
+        if (!p) continue;
+        const after = p.qty + back;
+        db.prepare("UPDATE products SET qty = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(after, it.product_id);
+        if (it.serial) db.prepare("UPDATE serials SET status = 'in_stock', sale_id = NULL WHERE serial = ?").run(it.serial);
+        movement.run(it.product_id, 'adjust', back, after, sale.id, `اتمسحت فاتورة ${sale.invoice_no}`, req.user.id);
+      }
+      // Cash already counted in a closed drawer: take it out of that closing
+      if (CASH_SALE_METHODS.includes(sale.payment_method)) adjustClosing(db, sale.created_at, -Math.min(sale.paid, sale.total), 'sales');
+      for (const p of db.prepare("SELECT * FROM sale_payments WHERE sale_id = ? AND method = 'cash'").all(sale.id)) adjustClosing(db, p.created_at, -p.amount, 'collections');
+      if (CASH_SALE_METHODS.includes(sale.payment_method)) {
+        for (const r of db.prepare('SELECT * FROM returns WHERE sale_id = ?').all(sale.id)) adjustClosing(db, r.created_at, r.cash_out ?? r.amount, 'refunds');
+      }
+      db.prepare('DELETE FROM returns WHERE sale_id = ?').run(sale.id);
+      db.prepare('UPDATE serials SET sale_id = NULL WHERE sale_id = ?').run(sale.id);
+      db.prepare('DELETE FROM sales WHERE id = ?').run(sale.id); // items, payments and installments go with it
+      return { invoice_no: sale.invoice_no, total: sale.total, created_at: sale.created_at, items: items.map((i) => `${i.name} × ${i.qty}`) };
+    });
+    audit(db, req.user.id, 'sale.delete', { ...snap, reason });
+    req.app.locals.notifier.notify({
+      type: 'sale_return', actorId: req.user.id, url: '#/sales',
+      title: `اتمسحت فاتورة ${snap.invoice_no} — ${fmtMoney(snap.total, getSettings(db).currency)}`,
+      body: `${req.user.full_name}${reason ? ` • ${reason}` : ''}`,
+    });
+    res.json({ ok: true });
   });
 
   // ---------- collecting money later on a credit / installment sale ----------
