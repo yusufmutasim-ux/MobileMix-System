@@ -98,6 +98,38 @@ export function fmtShopTime(ts) {
   return `${fmtDate(day, false)} — ${time} بعد نص الليل`;
 }
 
+/** '17:05' or '2026-11-03 17:05:00' → '5:05 م' (12-hour). */
+export function t12(v) {
+  const m = String(v || '').match(/(\d{2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return String(v || '');
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'ص' : 'م'}`;
+}
+
+/**
+ * A 12-hour time picker (hour, minute, ص/م). It keeps a hidden input with the 24-hour 'HH:MM' value,
+ * so forms read it like a normal field. attrs: e.g. 'name="x"' or 'data-f="start"'.
+ */
+export function timePick(attrs, value = '', { allowEmpty = true } = {}) {
+  const m = String(value || '').match(/^(\d{2}):(\d{2})/);
+  const h = m ? Number(m[1]) : null, min = m ? m[2] : '';
+  const opt = (v, label, on) => `<option value="${v}" ${on ? 'selected' : ''}>${label}</option>`;
+  return `<span class="tpick" dir="ltr"><input type="hidden" ${attrs} value="${m ? `${m[1]}:${m[2]}` : ''}">
+    <select class="input num" data-tp="h" aria-label="الساعة">${allowEmpty ? opt('', '--', h === null) : ''}${Array.from({ length: 12 }, (_, i) => opt(i + 1, i + 1, h !== null && (h % 12 || 12) === i + 1)).join('')}</select>
+    <b>:</b>
+    <select class="input num" data-tp="m" aria-label="الدقايق">${Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map((x) => opt(x, x, x === (min || '00'))).join('')}</select>
+    <select class="input" data-tp="p" aria-label="ص / م">${opt('am', 'ص', h !== null && h < 12)}${opt('pm', 'م', h === null || h >= 12)}</select></span>`;
+}
+document.addEventListener('change', (e) => {
+  const box = e.target.closest?.('.tpick');
+  if (!box) return;
+  const v = (k) => box.querySelector(`[data-tp=${k}]`).value;
+  const hidden = box.querySelector('input[type=hidden]');
+  if (!v('h')) hidden.value = '';
+  else hidden.value = `${String((Number(v('h')) % 12) + (v('p') === 'pm' ? 12 : 0)).padStart(2, '0')}:${v('m')}`;
+  hidden.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
 export const ROLE_NAMES = { admin: 'مدير', manager: 'مشرف', cashier: 'كاشير', technician: 'فني صيانة' };
 export const PAY_NAMES = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
 export const COLLECT_METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay' };

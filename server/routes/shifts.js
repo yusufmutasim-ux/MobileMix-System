@@ -1,6 +1,6 @@
 'use strict';
 const { requireAuth, requirePerm } = require('../auth');
-const { bad, notFound, str, dateRange, audit, getSettings } = require('../util');
+const { bad, notFound, str, dateRange, audit, getSettings, t12 } = require('../util');
 const hosting = require('../hosting');
 const { lateMinutes, earlyMinutes, missingNow } = require('../schedule');
 
@@ -56,7 +56,7 @@ const placeText = (z) => (z.method === 'gps' ? ` • 📍 من المحل (${z.d
 const minutesBetween = (a, b) => Math.max(0, Math.round((new Date(b.replace(' ', 'T')) - new Date(a.replace(' ', 'T'))) / 60000));
 const nowLocal = (db) => db.prepare("SELECT datetime('now','localtime') AS t").get().t;
 const fmtDuration = (m) => `${Math.floor(m / 60)} س ${m % 60} د`;
-const timeOf = (s) => s.slice(11, 16);
+const timeOf = (s) => t12(s);
 
 /** Attendance: every employee checks in when the shift starts and out when they leave. */
 module.exports = function shiftRoutes(api, db) {
@@ -81,7 +81,7 @@ module.exports = function shiftRoutes(api, db) {
         req.app.locals.notifier.notify({
           type: 'shift_denied', actorId: req.user.id, url: '#/attendance',
           title: `⚠️ ${req.user.full_name} حاول يسجل ${kind === 'in' ? 'حضور' : 'انصراف'} من برة المحل`,
-          body: `${where} • الساعة ${nowLocal(db).slice(11, 16)} • اترفض`,
+          body: `${where} • الساعة ${t12(nowLocal(db))} • اترفض`,
         });
       }
       throw e;
@@ -111,7 +111,7 @@ module.exports = function shiftRoutes(api, db) {
     req.app.locals.notifier.notify({
       type: 'shift_in', actorId: req.user.id, url: '#/attendance',
       title: `${req.user.full_name} بدأ الشيفت${late ? ` — متأخر ${fmtDuration(late)}` : ''}`,
-      body: `تسجيل حضور الساعة ${timeOf(s.check_in_at)}${me.shift_start ? ` (الشيفت من ${me.shift_start})` : ''}${placeText(z)}${note ? ` — ${note}` : ''}`,
+      body: `تسجيل حضور الساعة ${timeOf(s.check_in_at)}${me.shift_start ? ` (الشيفت من ${t12(me.shift_start)})` : ''}${placeText(z)}${note ? ` — ${note}` : ''}`,
     });
     res.status(201).json({ open: s, minutes: 0 });
   });
@@ -132,7 +132,7 @@ module.exports = function shiftRoutes(api, db) {
     req.app.locals.notifier.notify({
       type: 'shift_out', actorId: req.user.id, url: '#/attendance',
       title: `${req.user.full_name} أنهى الشيفت${early ? ` — مشي بدري ${fmtDuration(early)}` : ''}`,
-      body: `انصراف الساعة ${timeOf(out)}${me.shift_end ? ` (الشيفت لحد ${me.shift_end})` : ''} — مدة الشيفت ${fmtDuration(mins)}${placeText(z)}`,
+      body: `انصراف الساعة ${timeOf(out)}${me.shift_end ? ` (الشيفت لحد ${t12(me.shift_end)})` : ''} — مدة الشيفت ${fmtDuration(mins)}${placeText(z)}`,
     });
     res.json({ open: null, minutes: mins });
   });
@@ -195,8 +195,8 @@ module.exports = function shiftRoutes(api, db) {
     const userId = req.query.user_id ? Number(req.query.user_id) : null;
     const now = nowLocal(db);
     const rows = db.prepare(`
-      SELECT s.*, u.full_name, c.full_name AS closed_by_name FROM shifts s JOIN users u ON u.id = s.user_id
-      LEFT JOIN users c ON c.id = s.closed_by
+      SELECT s.*, u.full_name, c.full_name AS closed_by_name, ed.full_name AS edited_by_name FROM shifts s JOIN users u ON u.id = s.user_id
+      LEFT JOIN users c ON c.id = s.closed_by LEFT JOIN users ed ON ed.id = s.edited_by
       WHERE bday(s.check_in_at) BETWEEN ? AND ? ${userId ? 'AND s.user_id = ?' : ''}
       ORDER BY s.check_in_at DESC LIMIT 2000`).all(...(userId ? [from, to, userId] : [from, to]))
       .map((s) => ({ ...s, minutes: minutesBetween(s.check_in_at, s.check_out_at || now) }));
@@ -229,6 +229,71 @@ module.exports = function shiftRoutes(api, db) {
     if (out < s.check_in_at) throw bad('وقت الانصراف قبل وقت الحضور');
     db.prepare('UPDATE shifts SET check_out_at = ?, closed_by = ? WHERE id = ?').run(out, req.user.id, s.id);
     audit(db, req.user.id, 'shift.close', { id: s.id, user_id: s.user_id, at: out });
+    res.json({ ok: true });
+  });
+
+  // ---------- a manager adds or corrects attendance by hand ----------
+  const STAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/;
+  const stamp = (v, label, optional = false) => {
+    if (v === undefined || v === null || v === '') { if (optional) return null; throw bad(`${label} مطلوب`); }
+    const t = String(v).replace('T', ' ');
+    if (!STAMP.test(t)) throw bad(`${label} غير صحيح`);
+    return t.length === 16 ? `${t}:00` : t;
+  };
+  /** Check times, then recount late / early with the person's shift. */
+  function saveTimes(userId, inAt, outAt, skipId) {
+    const now = nowLocal(db);
+    if (inAt > now) throw bad('وقت الحضور لسه ماجاش');
+    if (outAt && outAt > now) throw bad('وقت الانصراف لسه ماجاش');
+    if (outAt && outAt <= inAt) throw bad('وقت الانصراف لازم يكون بعد الحضور');
+    if (outAt && minutesBetween(inAt, outAt) > 20 * 60) throw bad('الشيفت أطول من 20 ساعة — راجع التاريخ');
+    const clash = db.prepare(`SELECT check_in_at, check_out_at FROM shifts WHERE user_id = ? AND id <> ?
+        AND check_in_at < ? AND COALESCE(check_out_at, '9999') > ?`).get(userId, skipId || 0, outAt || '9999', inAt);
+    if (clash) throw bad(`في شيفت متسجل للموظف ده في نفس الوقت (من ${t12(clash.check_in_at)})`);
+    if (!outAt && db.prepare('SELECT 1 FROM shifts WHERE user_id = ? AND check_out_at IS NULL AND id <> ?').get(userId, skipId || 0)) {
+      throw bad('الموظف ده مسجل حضور بالفعل — اكتب وقت الانصراف');
+    }
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    return { late: lateMinutes(db, u, inAt), early: outAt ? earlyMinutes(db, u, inAt, outAt) : null };
+  }
+
+  /** Someone forgot to check in: the manager records their shift. */
+  api.post('/shifts/manual', view, (req, res) => {
+    const b = req.body || {};
+    const u = db.prepare('SELECT id, full_name FROM users WHERE id = ? AND deleted_at IS NULL').get(Number(b.user_id));
+    if (!u) throw notFound('الموظف غير موجود');
+    const inAt = stamp(b.check_in_at, 'وقت الحضور');
+    const outAt = stamp(b.check_out_at, 'وقت الانصراف', true);
+    const t = saveTimes(u.id, inAt, outAt);
+    const r = db.prepare(`INSERT INTO shifts (user_id, check_in_at, check_out_at, note, in_method, out_method, late_minutes, early_minutes, edited_by)
+                          VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?)`)
+      .run(u.id, inAt, outAt, str(b.note, 'الملاحظة', { optional: true, max: 200 }), outAt ? 'manual' : null, t.late, t.early, req.user.id);
+    audit(db, req.user.id, 'shift.manual', { id: Number(r.lastInsertRowid), user_id: u.id, in: inAt, out: outAt });
+    res.status(201).json(db.prepare('SELECT * FROM shifts WHERE id = ?').get(r.lastInsertRowid));
+  });
+
+  /** Correct a shift's times (or note). */
+  api.put('/shifts/:id', view, (req, res) => {
+    const s = db.prepare('SELECT * FROM shifts WHERE id = ?').get(req.params.id);
+    if (!s) throw notFound('الشيفت غير موجود');
+    const b = req.body || {};
+    const inAt = b.check_in_at !== undefined ? stamp(b.check_in_at, 'وقت الحضور') : s.check_in_at;
+    const outAt = b.check_out_at !== undefined ? stamp(b.check_out_at, 'وقت الانصراف', true) : s.check_out_at;
+    const t = saveTimes(s.user_id, inAt, outAt, s.id);
+    const note = b.note !== undefined ? str(b.note, 'الملاحظة', { optional: true, max: 200 }) : s.note;
+    db.prepare(`UPDATE shifts SET check_in_at = ?, check_out_at = ?, note = ?, late_minutes = ?, early_minutes = ?, edited_by = ?,
+                out_method = CASE WHEN ? IS NOT NULL AND check_out_at IS NULL THEN 'manual' ELSE out_method END WHERE id = ?`)
+      .run(inAt, outAt, note, t.late, t.early, req.user.id, outAt, s.id);
+    audit(db, req.user.id, 'shift.edit', { id: s.id, user_id: s.user_id, from: [s.check_in_at, s.check_out_at], to: [inAt, outAt] });
+    res.json(db.prepare('SELECT * FROM shifts WHERE id = ?').get(s.id));
+  });
+
+  /** Remove a shift recorded by mistake. */
+  api.delete('/shifts/:id', view, (req, res) => {
+    const s = db.prepare('SELECT * FROM shifts WHERE id = ?').get(req.params.id);
+    if (!s) throw notFound('الشيفت غير موجود');
+    db.prepare('DELETE FROM shifts WHERE id = ?').run(s.id);
+    audit(db, req.user.id, 'shift.delete', { id: s.id, user_id: s.user_id, in: s.check_in_at, out: s.check_out_at });
     res.json({ ok: true });
   });
 

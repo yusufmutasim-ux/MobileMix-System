@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow, modal } from '../core.js';
+import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow, modal, timePick } from '../core.js';
 import { LABEL_SIZES, printSettings } from '../print.js';
 import { storeSettings } from '../store-settings.js';
 import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition, locationPermission, locationHelp } from '../live.js';
@@ -97,7 +97,7 @@ export async function render(el, { query } = {}) {
         <div class="card-head"><h2>${icon('calendar')} تذكيرات تلقائية</h2></div>
         <form class="form-grid settings-form" onsubmit="return false">
           <label class="field"><span>ملخص اليوم على الموبايل</span>${sel('daily_summary', s.daily_summary === '0' ? '0' : '1', [['1', 'يتبعت كل يوم'], ['0', 'مقفول']])}</label>
-          <label class="field"><span>الساعة كام؟ (ينفع بعد نص الليل)</span><input class="input num" type="time" name="daily_summary_time" value="${esc(s.daily_summary_time || '23:00')}"></label>
+          <label class="field"><span>الساعة كام؟ (ينفع بعد نص الليل)</span>${timePick('name="daily_summary_time"', s.daily_summary_time || '23:00', { allowEmpty: false })}</label>
           <label class="field full"><span>تذكير الأقساط المتأخرة (الساعة 10 الصبح)</span>${sel('installment_reminders', s.installment_reminders === '0' ? '0' : '1', [['1', 'شغال'], ['0', 'مقفول']])}</label>
           ${saveBtn}
         </form>
@@ -321,8 +321,8 @@ export async function render(el, { query } = {}) {
       <div class="sched-list">${staff.length ? staff.map((u) => `
         <div class="sched-row" data-id="${u.id}">
           <div class="sched-who"><span class="avatar">${esc(u.full_name.trim()[0] || '?')}</span><b>${esc(u.full_name)}</b></div>
-          <label class="sched-time"><span>من</span><input class="input num" type="time" data-f="start" value="${esc(u.shift_start || '')}"></label>
-          <label class="sched-time"><span>لحد</span><input class="input num" type="time" data-f="end" value="${esc(u.shift_end || '')}"></label>
+          <label class="sched-time"><span>من</span>${timePick('data-f="start"', u.shift_start || '')}</label>
+          <label class="sched-time"><span>لحد</span>${timePick('data-f="end"', u.shift_end || '')}</label>
           <div class="toggle-chips sched-days">${DAYS.map(([d, name]) => `<button type="button" data-d="${d}" class="${String(u.work_days ?? '0123456').includes(d) ? 'on' : ''}">${name}</button>`).join('')}</div>
           <button class="btn btn-outline btn-sm" data-save>${icon('check')} حفظ</button>
         </div>`).join('') : '<div class="empty">ضيف موظفين الأول من صفحة الموظفين</div>'}</div>

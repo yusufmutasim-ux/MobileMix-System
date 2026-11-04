@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText, modal, toast, shopDay, todayStr } from '../core.js';
+import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText, modal, toast, shopDay, todayStr, t12 } from '../core.js';
 import { currentShift, zoneOn, locationPermission, getPosition, locationHelp } from '../live.js';
 
 export async function render(el, { actions }) {
@@ -37,7 +37,7 @@ export async function render(el, { actions }) {
     side.push(`<div class="kpi drawer-kpi">
       <div class="label">${icon('drawer')} الدرج</div>
       ${d.drawer !== undefined ? `<div class="value">${n(d.drawer)} <small>${cur}</small></div>` : ''}
-      <div class="sub">${lc ? `آخر تقفيلة: ${closedToday ? 'النهارده' : esc(fmtDate(shopDay(lc.at), false))} ${esc(lc.at.slice(11, 16))}${lc.by ? ` — ${esc(lc.by)}` : ''}${lc.diff ? ` <b style="color:${lc.diff < 0 ? 'var(--danger)' : 'inherit'}">(${lc.diff > 0 ? '+' : ''}${n(lc.diff)})</b>` : ''}` : 'لسه متقفلش قبل كده'}
+      <div class="sub">${lc ? `آخر تقفيلة: ${closedToday ? 'النهارده' : esc(fmtDate(shopDay(lc.at), false))} ${esc(t12(lc.at))}${lc.by ? ` — ${esc(lc.by)}` : ''}${lc.diff ? ` <b style="color:${lc.diff < 0 ? 'var(--danger)' : 'inherit'}">(${lc.diff > 0 ? '+' : ''}${n(lc.diff)})</b>` : ''}` : 'لسه متقفلش قبل كده'}
         ${d.expenses_today ? `<br>مصاريف النهارده ${n(d.expenses_today)}` : ''}</div>
       <div class="drawer-acts">${can('drawer.close') ? `<a class="btn btn-primary btn-sm" href="#/drawer?close=1">${icon('check')} قفّل الدرج</a>` : ''}
         ${d.drawer !== undefined ? `<a class="btn btn-ghost btn-sm" href="#/drawer">التفاصيل</a>` : ''}
@@ -180,7 +180,7 @@ async function allowances(box) {
       ${d.list.length ? `<div class="allow-list">${d.list.map((u) => `
         <div class="allow-row ${u.given ? 'done' : ''}" data-id="${u.id}">
           <span class="avatar">${esc(u.full_name.trim()[0] || '?')}</span>
-          <div class="allow-who"><b>${esc(u.full_name)}</b><span class="small muted">${u.came_at ? `حضر ${esc(u.came_at.slice(11, 16))}` : 'لسه مسجلش حضور'}</span></div>
+          <div class="allow-who"><b>${esc(u.full_name)}</b><span class="small muted">${u.came_at ? `حضر ${esc(t12(u.came_at))}` : 'لسه مسجلش حضور'}</span></div>
           ${u.given ? `<span class="allow-given">${icon('check')} اتصرف ${n(u.given)}</span>
             <button class="btn btn-ghost btn-icon btn-sm" data-undo="${u.given_id}" title="إلغاء (غلطة)">${icon('x')}</button>`
             : `<button class="btn btn-primary btn-sm" data-give="${u.id}">اصرف ${n(u.amount)} ${cur}</button>`}

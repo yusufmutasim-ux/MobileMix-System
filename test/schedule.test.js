@@ -23,7 +23,7 @@ function client() {
     return { status: res.status, data: await res.json().catch(() => null) };
   };
   return { get: (p) => call('GET', p), post: (p, b) => call('POST', p, b ?? {}), put: (p, b) => call('PUT', p, b ?? {}),
-    login: (u, pw) => call('POST', '/auth/login', { username: u, password: pw }) };
+    del: (p) => call('DELETE', p), login: (u, pw) => call('POST', '/auth/login', { username: u, password: pw }) };
 }
 
 // 2026-10-21 is a Wednesday (getDay 3)
@@ -167,4 +167,37 @@ test('old shifts are recounted with the shop-day rules', async () => {
   const get = (x) => db.prepare('SELECT late_minutes, early_minutes FROM shifts WHERE id = ?').get(x);
   assert.deepEqual({ ...get(a) }, { late_minutes: 0, early_minutes: 0 });
   assert.deepEqual({ ...get(b) }, { late_minutes: 440, early_minutes: 0 }); // Wednesday 28th's shift, very late
+});
+
+test('a manager records or corrects attendance by hand', async () => {
+  const admin = client();
+  await admin.login('admin', 'admin123');
+  const id = Number(db.prepare("INSERT INTO users (username, full_name, password_hash, role, shift_start, shift_end, work_days) VALUES ('hand', 'يدوي', '', 'cashier', '17:00', '01:00', '0123456')").run().lastInsertRowid);
+  // Forgot to check in: 5:20 PM to 1 AM next morning
+  let r = await admin.post('/shifts/manual', { user_id: id, check_in_at: '2026-10-21 17:20', check_out_at: '2026-10-22 01:00', note: 'نسي' });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.late_minutes, 20);
+  assert.equal(r.data.early_minutes, 0);
+  assert.equal(r.data.in_method, 'manual');
+  const sid = r.data.id;
+  // Overlapping, backwards or future times are refused
+  assert.equal((await admin.post('/shifts/manual', { user_id: id, check_in_at: '2026-10-21 18:00', check_out_at: '2026-10-21 20:00' })).status, 400);
+  assert.equal((await admin.post('/shifts/manual', { user_id: id, check_in_at: '2026-10-23 18:00', check_out_at: '2026-10-23 17:00' })).status, 400);
+  assert.equal((await admin.post('/shifts/manual', { user_id: id, check_in_at: '2099-01-01 18:00' })).status, 400);
+  // Correct it: actually came on time, left at midnight
+  r = await admin.put(`/shifts/${sid}`, { check_in_at: '2026-10-21 17:00', check_out_at: '2026-10-22 00:00' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.late_minutes, 0);
+  assert.equal(r.data.early_minutes, 60);
+  assert.ok(r.data.edited_by);
+  // Shows on the 21st (the shop day), with who edited it
+  const list = (await admin.get(`/shifts?from=2026-10-21&to=2026-10-21&user_id=${id}`)).data.shifts;
+  assert.equal(list.length, 1);
+  assert.ok(list[0].edited_by_name);
+  // Delete
+  assert.equal((await admin.del(`/shifts/${sid}`)).status, 200);
+  // Staff can't
+  await admin.post('/users', { username: 'kash', full_name: 'كاشير', role: 'cashier', password: '123456' });
+  const c = client(); await c.login('kash', '123456');
+  assert.equal((await c.post('/shifts/manual', { user_id: id, check_in_at: '2026-10-25 17:00' })).status, 403);
 });

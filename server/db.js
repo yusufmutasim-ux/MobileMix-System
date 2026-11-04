@@ -623,7 +623,8 @@ function addMissingColumns(db) {
   const wanted = {
     shifts: ['in_method TEXT', 'in_lat REAL', 'in_lng REAL', 'in_accuracy REAL', 'in_distance REAL',
       'out_method TEXT', 'out_lat REAL', 'out_lng REAL', 'out_accuracy REAL', 'out_distance REAL',
-      'late_minutes INTEGER', 'early_minutes INTEGER'],
+      'late_minutes INTEGER', 'early_minutes INTEGER',
+      'edited_by INTEGER REFERENCES users(id)'],              // a manager added or corrected it by hand
     returns: ['cash_out REAL'],                       // cash handed back (old rows: the whole amount)
     // Sales made with no internet: the device's own id for the sale (so it's never saved twice) and when it really happened
     sales: ['client_ref TEXT', 'offline_at TEXT'],

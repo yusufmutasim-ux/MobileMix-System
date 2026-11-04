@@ -131,7 +131,7 @@ module.exports = function adminRoutes(api, db, { dataDir } = {}) {
 
   // Small list (id + name) used in report filters
   api.get('/users/names', requirePerm('reports.view'), (_req, res) => {
-    res.json(db.prepare('SELECT id, full_name FROM users ORDER BY full_name').all());
+    res.json(db.prepare('SELECT id, full_name, deleted_at IS NOT NULL AS removed FROM users ORDER BY removed, full_name').all());
   });
 
   api.post('/users', manageUsers, (req, res) => {

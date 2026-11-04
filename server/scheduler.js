@@ -1,5 +1,5 @@
 'use strict';
-const { getSettings, today, round2, getDayEnd } = require('./util');
+const { getSettings, today, round2, getDayEnd, t12 } = require('./util');
 const { drawerNow, lateInstallments } = require('./money');
 const { missingNow } = require('./schedule');
 
@@ -73,7 +73,7 @@ function startScheduler(db, notifier, { every = 60_000 } = {}) {
           notifier.notify({
             type: 'shift_missing', url: '#/attendance',
             title: `${u.full_name} لسه مسجلش حضور`,
-            body: `شيفته من ${u.shift_start} لحد ${u.shift_end} — عدّى ${u.late} دقيقة`,
+            body: `شيفته من ${t12(u.shift_start)} لحد ${t12(u.shift_end)} — عدّى ${u.late} دقيقة`,
           });
         }
         db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('absence_alerted', ?)").run(JSON.stringify(sent));

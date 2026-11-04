@@ -4,7 +4,7 @@ const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit, getSettings, dateRange } = require('../util');
 const { requireOpenShift } = require('./shifts');
 const { saleMoney, installmentsOf, rememberCustomer, DUE_SQL } = require('../money');
-const { today } = require('../util');
+const { today, t12 } = require('../util');
 
 const PAY_AR = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
 const fmtMoney = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
@@ -154,7 +154,7 @@ module.exports = function salesRoutes(api, db) {
     req.app.locals.notifier.notify({
       type: 'sale', actorId: req.user.id, url: `#/sales?open=${sale.id}`,
       title: `عملية بيع — ${fmtMoney(sale.total, settings.currency)}`,
-      body: `${req.user.full_name} • ${names.slice(0, 2).join('، ')}${names.length > 2 ? ` +${names.length - 2}` : ''} • ${PAY_AR[sale.payment_method] || sale.payment_method}${offlineAt ? ` • اتباعت من غير نت الساعة ${offlineAt.slice(11, 16)}` : ''}`,
+      body: `${req.user.full_name} • ${names.slice(0, 2).join('، ')}${names.length > 2 ? ` +${names.length - 2}` : ''} • ${PAY_AR[sale.payment_method] || sale.payment_method}${offlineAt ? ` • اتباعت من غير نت الساعة ${t12(offlineAt)}` : ''}`,
     });
     res.status(201).json(sale);
   });

@@ -70,6 +70,14 @@ function dateRange(query) {
 
 const pad = (n, len) => String(n).padStart(len, '0');
 
+/** '17:05' or '2026-11-03 17:05:00' → '5:05 م' (12-hour, as people say it). */
+function t12(v) {
+  const m = String(v || '').match(/(\d{2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return String(v || '');
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'ص' : 'م'}`;
+}
+
 function audit(db, userId, action, details) {
   db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
     .run(userId ?? null, action, details == null ? null : JSON.stringify(details));
@@ -81,4 +89,4 @@ function getSettings(db) {
   return out;
 }
 
-module.exports = { HttpError, bad, notFound, round2, num, str, dateRange, today, bday, setDayEnd, getDayEnd, pad, audit, getSettings };
+module.exports = { HttpError, bad, notFound, round2, num, str, dateRange, today, bday, setDayEnd, getDayEnd, t12, pad, audit, getSettings };

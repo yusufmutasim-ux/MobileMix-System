@@ -1,5 +1,5 @@
 // Shift button (check in / out), notification bell, live updates and phone notifications.
-import { api, state, can, icon, esc, modal, toast, toastErr, busy, fmtDate } from './core.js';
+import { api, state, can, icon, esc, modal, toast, toastErr, busy, fmtDate, t12 } from './core.js';
 
 const TYPE_ICON = { shift_denied: 'alert', sale: 'cart', sale_return: 'undo', repair_in: 'wrench', repair_out: 'check', shift_in: 'logout', shift_out: 'logout' };
 const TYPE_BG = { shift_denied: 'bg-peony', sale: 'bg-mint', sale_return: 'bg-peony', repair_in: 'bg-periwinkle', repair_out: 'bg-sky', shift_in: 'bg-aqua', shift_out: 'bg-lavender' };
@@ -12,7 +12,7 @@ export async function initShift() {
   const box = document.getElementById('shift-box');
   if (!box) return;
   const draw = () => {
-    const since = shift ? shift.check_in_at.slice(11, 16) : '';
+    const since = shift ? t12(shift.check_in_at) : '';
     box.innerHTML = shift
       ? `<button class="btn btn-sm shift-on" id="shift-btn" title="إنهاء الشيفت"><span class="dot-live"></span> في الشيفت من <span class="num">${since}</span></button>`
       : `<button class="btn btn-sm btn-outline" id="shift-btn">${icon('logout')} بدء الشيفت</button>`;
@@ -30,7 +30,7 @@ export async function initShift() {
     const zone = await zoneOn();
     const ok = await modal({
       title: 'إنهاء الشيفت',
-      body: `<p style="margin-top:0">بدأت الساعة <b class="num">${shift.check_in_at.slice(11, 16)}</b>. متأكد إنك عايز تسجل انصراف؟</p>
+      body: `<p style="margin-top:0">بدأت الساعة <b class="num">${t12(shift.check_in_at)}</b>. متأكد إنك عايز تسجل انصراف؟</p>
         <label class="field"><span>ملاحظة (اختياري)</span><input class="input" id="out-note" placeholder="مثلاً: سلمت الدرج للمسائي"></label>
         ${zone ? `<div class="card bg-aqua" style="box-shadow:none;padding:12px 14px;margin-top:12px" id="loc-status">
           الانصراف لازم يكون من جوه المحل — لو الموبايل سألك عن الموقع دوس <b>سماح / Allow</b>.</div>` : '<div id="loc-status"></div>'}`,

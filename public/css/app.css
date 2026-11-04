@@ -1825,3 +1825,9 @@ tr.clickable { cursor: pointer; }
 .forgot-opt svg { width: 34px; height: 34px; padding: 7px; border-radius: 10px; background: var(--t-lime-bg, #eef4cf); color: var(--t-lime-fg, #4a5a00); margin-bottom: 4px; }
 .forgot-opt b { font-weight: 600; }
 @media (max-width: 420px) { .forgot-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* 12-hour time picker: hour : minute ص/م */
+.tpick { display: inline-flex; align-items: center; gap: 4px; direction: ltr; }
+.tpick select.input { width: auto; min-width: 0; padding-inline: 8px 22px; }
+.tpick b { font-weight: 600; opacity: .6; }
+.sched-time .tpick select.input { padding-block: 6px; }
