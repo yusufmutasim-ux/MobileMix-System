@@ -58,3 +58,32 @@ test('closing a forgotten day the next day', async () => {
   // Can't close yesterday again
   assert.equal((await admin.post('/drawer/close', { counted: 0, day: y })).status, 400);
 });
+
+test('correcting a closing, and undoing the last one', async () => {
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  let d = (await admin.get('/drawer')).data;
+  const [last, prev] = d.closings; // yesterday (counted 780, 800 expected), two days ago (300)
+  // Two days ago actually counted 280 and left 250 in the drawer
+  let r = await admin.put(`/drawer/closings/${prev.id}`, { counted: 280, left_in_drawer: 250 });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.diff, -20);
+  // Yesterday's opening follows: 250 instead of 300 → expected 750, counted 780 → 30 extra
+  d = (await admin.get('/drawer')).data;
+  assert.equal(d.closings[0].opening, 250);
+  assert.equal(d.closings[0].expected, 750);
+  assert.equal(d.closings[0].diff, 30);
+  // Yesterday: counted 750, everything left in the drawer → exact; today's drawer starts from 750
+  r = await admin.put(`/drawer/closings/${last.id}`, { counted: 750, left_in_drawer: 750, note: 'اتعدّت تاني' });
+  assert.equal(r.data.diff, 0);
+  d = (await admin.get('/drawer')).data;
+  assert.equal(d.expected, 950);
+  // Left more than counted: refused
+  assert.equal((await admin.put(`/drawer/closings/${last.id}`, { counted: 100, left_in_drawer: 200 })).status, 400);
+  // Only the last closing can be undone; then yesterday is open again
+  assert.equal((await admin.del(`/drawer/closings/${prev.id}`)).status, 400);
+  assert.equal((await admin.del(`/drawer/closings/${last.id}`)).status, 200);
+  d = (await admin.get('/drawer')).data;
+  assert.equal(d.open_days.length, 1);
+  assert.equal(d.expected, 250 + 400 - 100 + 200 + 200);
+});

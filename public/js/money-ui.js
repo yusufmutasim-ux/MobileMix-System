@@ -1,5 +1,5 @@
 // Small money windows used from several screens (drawer, expenses, home).
-import { api, state, can, icon, esc, money, n, modal, toast, busy, formData, COLLECT_METHODS } from './core.js';
+import { api, state, can, icon, esc, money, n, modal, toast, busy, formData, confirmBox, COLLECT_METHODS } from './core.js';
 
 export const categories = () => String(state.settings.expense_categories || 'أخرى').split('\n').map((c) => c.trim()).filter(Boolean)
   .filter((c) => (can('payroll') ? true : c !== 'مرتبات' && c !== 'سلفة'));
@@ -169,6 +169,50 @@ export async function closeDrawerModal({ day = null } = {}) {
         toast(Math.abs(r.diff) < 0.5 ? 'اتقفل الدرج — مظبوط ✅' : r.diff < 0 ? `اتقفل الدرج — عجز ${n(-r.diff)}` : `اتقفل الدرج — زيادة ${n(r.diff)}`, Math.abs(r.diff) < 0.5 ? 'ok' : 'err');
         close(true);
       }));
+    },
+  });
+}
+
+/** Correct a closing (counted, left in the drawer, note), or undo the last one to count it again. */
+export function editClosingModal(c, isLast) {
+  let parts = {};
+  try { parts = JSON.parse(c.details || '{}'); } catch { /* none */ }
+  return modal({
+    title: 'تعديل التقفيلة',
+    body: `${drawerBreakdown({ parts, opening: c.opening, expected: c.expected, from: c.opened_at }, 'كان المفروض في الدرج')}
+      <div class="form-grid" style="margin-top:14px">
+        <label class="field"><span>اتعد كام؟</span><input class="input input-lg num" type="number" min="0" step="any" id="counted" value="${c.counted}"></label>
+        <label class="field"><span>اتساب كام في الدرج؟</span><input class="input input-lg num" type="number" min="0" step="any" id="left" value="${c.left_in_drawer}"></label>
+        <div class="full"><button type="button" class="btn btn-ghost btn-sm" id="exact">اعتبره مظبوط (= المفروض)</button></div>
+        <div class="full" id="diff"></div>
+        <label class="field full"><span>ملاحظة</span><input class="input" id="note" value="${esc(c.note || '')}"></label>
+        <p class="muted small full" style="margin:0">لو غيّرت "اتساب في الدرج"، الدرج اللي بعدها بيتعدل معاها.</p>
+      </div>`,
+    foot: `${isLast ? `<button class="btn btn-ghost" data-undo style="color:var(--danger);margin-inline-end:auto">${icon('undo')} الغي التقفيلة دي</button>` : ''}
+      <button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
+    onMount: (m, close) => {
+      const counted = m.querySelector('#counted'), left = m.querySelector('#left');
+      const wasAll = Number(c.left_in_drawer) === Number(c.counted);
+      const show = () => {
+        const diff = Number(counted.value) - c.expected;
+        m.querySelector('#diff').innerHTML = counted.value === '' ? '' : Math.abs(diff) < 0.5 ? '<div class="note-ok">✅ مظبوط</div>'
+          : diff < 0 ? `<div class="note-bad">⚠️ عجز ${money(-diff)}</div>` : `<div class="note-warn">زيادة ${money(diff)}</div>`;
+      };
+      // Left everything in the drawer before: keep it that way when the count changes
+      counted.addEventListener('input', () => { if (wasAll) left.value = counted.value; show(); });
+      m.querySelector('#exact').addEventListener('click', () => { counted.value = c.expected; if (wasAll) left.value = c.expected; show(); });
+      show();
+      m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        await api.put(`/drawer/closings/${c.id}`, { counted: Number(counted.value), left_in_drawer: left.value === '' ? undefined : Number(left.value), note: m.querySelector('#note').value });
+        toast('اتعدلت التقفيلة ✓', 'ok');
+        close(true);
+      }));
+      m.querySelector('[data-undo]')?.addEventListener('click', async () => {
+        if (!(await confirmBox('تلغي التقفيلة دي؟ فلوسها هترجع للدرج المفتوح وتقدر تقفلها تاني من الأول.', { ok: 'الغي', danger: true }))) return;
+        await api.del(`/drawer/closings/${c.id}`);
+        toast('اتلغت التقفيلة — قفّلها تاني لما تعدّ', 'ok');
+        close(true);
+      });
     },
   });
 }

@@ -144,6 +144,42 @@ module.exports = function moneyRoutes(api, db) {
     res.status(201).json(closing);
   });
 
+  /**
+   * Correct a closing: what was counted, what was left in the drawer, the note. What was left is where the
+   * next period starts, so the closing after it (or the open drawer) follows.
+   */
+  api.put('/drawer/closings/:id', requirePerm('drawer.view'), (req, res) => {
+    const c = db.prepare('SELECT * FROM drawer_closings WHERE id = ?').get(req.params.id);
+    if (!c) throw notFound('التقفيلة دي مش موجودة');
+    const b = req.body || {};
+    const counted = b.counted !== undefined ? round2(num(b.counted, 'المبلغ اللي اتعد', { min: 0 })) : c.counted;
+    const left = b.left_in_drawer !== undefined && b.left_in_drawer !== '' ? round2(num(b.left_in_drawer, 'اللي اتساب في الدرج', { min: 0 })) : (b.counted !== undefined && c.left_in_drawer === c.counted ? counted : c.left_in_drawer);
+    if (left > counted) throw bad('اللي اتساب في الدرج أكتر من اللي اتعد');
+    const note = b.note !== undefined ? str(b.note, 'الملاحظة', { optional: true, max: 300 }) : c.note;
+    const out = tx(db, () => {
+      db.prepare('UPDATE drawer_closings SET counted = ?, diff = ?, left_in_drawer = ?, note = ? WHERE id = ?')
+        .run(counted, round2(counted - c.expected), left, note, c.id);
+      const delta = round2(left - c.left_in_drawer);
+      const next = db.prepare('SELECT * FROM drawer_closings WHERE id > ? ORDER BY id LIMIT 1').get(c.id);
+      if (delta && next) {
+        const expected = round2(next.expected + delta);
+        db.prepare('UPDATE drawer_closings SET opening = ?, expected = ?, diff = ? WHERE id = ?').run(left, expected, round2(next.counted - expected), next.id);
+      }
+      return db.prepare('SELECT * FROM drawer_closings WHERE id = ?').get(c.id);
+    });
+    audit(db, req.user.id, 'drawer.close.edit', { id: c.id, from: { counted: c.counted, left: c.left_in_drawer }, to: { counted, left } });
+    res.json(out);
+  });
+
+  /** Undo the last closing: its money goes back into the open drawer, to be counted again. */
+  api.delete('/drawer/closings/:id', requirePerm('drawer.view'), (req, res) => {
+    const last = db.prepare('SELECT * FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
+    if (!last || last.id !== Number(req.params.id)) throw bad('تقدر تلغي آخر تقفيلة بس');
+    db.prepare('DELETE FROM drawer_closings WHERE id = ?').run(last.id);
+    audit(db, req.user.id, 'drawer.close.undo', { id: last.id, closed_at: last.closed_at, counted: last.counted });
+    res.json({ ok: true });
+  });
+
   api.post('/drawer/move', requirePerm('drawer.view'), (req, res) => {
     const b = req.body || {};
     const kind = b.kind === 'in' ? 'in' : b.kind === 'out' ? 'out' : null;

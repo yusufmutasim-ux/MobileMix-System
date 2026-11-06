@@ -1,5 +1,5 @@
 import { api, can, icon, esc, money, n, fmtDate, emptyRow, toast, fmtShopTime } from '../core.js';
-import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal, dayLabel } from '../money-ui.js';
+import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal, dayLabel, editClosingModal } from '../money-ui.js';
 
 /** The cash drawer: what should be in it now, closing (counting) it, and the history. */
 export async function render(el, { query, actions }) {
@@ -54,17 +54,22 @@ export async function render(el, { query, actions }) {
       ${manager ? `<div class="card" style="margin-top:18px">
         <div class="card-head"><h2>التقفيلات السابقة</h2>${d.closings.length ? `<button class="btn btn-outline btn-sm" id="forgot">${icon('plus')} نسيت حاجة قبل آخر تقفيل؟</button>` : ''}</div>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>التاريخ</th><th>الموظف</th><th>المفروض</th><th>اتعد</th><th>الفرق</th><th>اتساب في الدرج</th><th>ملاحظة</th></tr></thead>
+          <thead><tr><th>التاريخ</th><th>الموظف</th><th>المفروض</th><th>اتعد</th><th>الفرق</th><th>اتساب في الدرج</th><th>ملاحظة</th><th></th></tr></thead>
           <tbody>${d.closings.length ? d.closings.map((c) => `<tr>
             <td class="small">${fmtShopTime(c.closed_at)}</td><td>${esc(c.user_name || '')}</td>
             <td>${money(c.expected)}</td><td>${money(c.counted)}</td>
             <td>${Math.abs(c.diff) < 0.5 ? '<span class="pill pill-ok">مظبوط</span>' : c.diff < 0 ? `<span class="pill pill-bad">عجز ${n(-c.diff)}</span>` : `<span class="pill pill-warn">زيادة ${n(c.diff)}</span>`}</td>
-            <td>${money(c.left_in_drawer)}</td><td class="small">${esc(c.note || '')}</td></tr>`).join('') : emptyRow(7, 'لسه مفيش تقفيلات')}</tbody>
+            <td>${money(c.left_in_drawer)}</td><td class="small">${esc(c.note || '')}</td>
+            <td class="end"><button class="btn btn-ghost btn-sm" data-edit-close="${c.id}">${icon('edit')} تعديل</button></td></tr>`).join('') : emptyRow(8, 'لسه مفيش تقفيلات')}</tbody>
         </table></div>
       </div>` : ''}`;
     lastClose = d.closings[0]?.closed_at || null;
     bindMissed(missed);
     el.querySelector('#forgot')?.addEventListener('click', openForgot);
+    el.querySelectorAll('[data-edit-close]').forEach((b) => b.addEventListener('click', async () => {
+      const c = d.closings.find((x) => x.id === Number(b.dataset.editClose));
+      if (await editClosingModal(c, c.id === d.closings[0].id)) load();
+    }));
   }
 
   actions.querySelector('#close').addEventListener('click', async () => { if (await closeDrawerModal()) load(); });
