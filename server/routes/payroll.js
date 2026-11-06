@@ -2,16 +2,10 @@
 const { requirePerm } = require('../auth');
 const { bad, notFound, num, str, round2, audit, today, bday, getSettings } = require('../util');
 const { absences } = require('../schedule');
-const { beforeLastClose, adjustClosing } = require('../money');
+const { lateTime, adjustClosing } = require('../money');
 
-/** "Forgotten before the last drawer closing": the time to file it at, or null for now. */
-function lateAt(db, body) {
-  const b = body?.before_close;
-  if (!(b === true || b === 1 || b === '1')) return null;
-  const at = beforeLastClose(db);
-  if (!at) throw bad('لسه مفيش تقفيلة درج قبل كده');
-  return at;
-}
+/** "Forgotten before a drawer closing": the time to file it at, or null for now. */
+const lateAt = (db, body) => lateTime(db, body);
 
 const monthOf = (v) => (/^\d{4}-\d{2}$/.test(String(v || '')) ? String(v) : today().slice(0, 7));
 

@@ -1839,3 +1839,15 @@ tr.clickable { cursor: pointer; }
 .missed-pill { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 2px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
   background: color-mix(in srgb, var(--yellow, #f5d76e) 45%, transparent); color: var(--ink); text-decoration: none; }
 .missed-pill svg { width: 15px; height: 15px; }
+
+/* Adding forgotten things to a drawer closing */
+.add-to-close { margin: 14px 0 4px; padding: 12px 0; border-block: 1px dashed var(--line, #e5e5e5); }
+.add-to-close > b { display: block; margin-bottom: 10px; }
+.add-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.add-grid .forgot-opt { padding: 10px; align-items: center; text-align: center; }
+.add-grid .forgot-opt svg { margin-bottom: 2px; }
+@media (max-width: 420px) { .add-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.late-sale-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+  background: color-mix(in srgb, var(--yellow, #f5d76e) 35%, var(--snow, #fff)); border: 1.5px solid color-mix(in srgb, var(--yellow, #f5d76e) 70%, transparent); }
+.late-sale-bar > div { flex: 1; min-width: 200px; }
+.late-sale-bar > svg { width: 20px; height: 20px; }

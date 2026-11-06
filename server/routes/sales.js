@@ -3,7 +3,7 @@ const { tx } = require('../db');
 const { requirePerm, can } = require('../auth');
 const { bad, notFound, num, str, round2, pad, audit, getSettings, dateRange } = require('../util');
 const { requireOpenShift } = require('./shifts');
-const { saleMoney, installmentsOf, rememberCustomer, DUE_SQL, CASH_SALE_METHODS, adjustClosing } = require('../money');
+const { saleMoney, installmentsOf, rememberCustomer, DUE_SQL, CASH_SALE_METHODS, adjustClosing, lateTime } = require('../money');
 const { today, t12 } = require('../util');
 
 const PAY_AR = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
@@ -145,15 +145,28 @@ module.exports = function salesRoutes(api, db) {
     // When it was sold, for a sale made with no internet (shown on the invoice; the money counts from when it arrives)
     const offlineAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(body.offline_at || '')) ? body.offline_at : null;
     const settings = getSettings(db);
-    requireOpenShift(db, req.user);
+    // A sale forgotten before a drawer closing (managers): filed just before that closing, which counts its cash
+    const lateAt = body.closing_id ? lateTime(db, { closing_id: body.closing_id }) : null;
+    if (lateAt && !can(req.user, 'drawer.view')) throw bad('تسجيل بيع على تقفيلة فاتت للمدير بس');
+    if (!lateAt) requireOpenShift(db, req.user);
 
-    const saleId = insertSale(req.user, body, { paymentMethod, clientRef, offlineAt, settings });
+    const saleId = tx(db, () => {
+      const id = insertSale(req.user, body, { paymentMethod, clientRef, offlineAt, settings });
+      if (lateAt) {
+        db.prepare('UPDATE sales SET created_at = ? WHERE id = ?').run(lateAt, id);
+        db.prepare("UPDATE stock_movements SET created_at = ? WHERE ref_id = ? AND type = 'sale'").run(lateAt, id);
+        const s = db.prepare('SELECT paid, total FROM sales WHERE id = ?').get(id);
+        if (CASH_SALE_METHODS.includes(paymentMethod)) adjustClosing(db, lateAt, Math.min(s.paid, s.total), 'sales');
+        audit(db, req.user.id, 'sale.late', { id, closing_id: Number(body.closing_id), at: lateAt });
+      }
+      return id;
+    });
 
     const sale = loadSale(saleId, req.user);
     const names = sale.items.map((i) => i.name);
     req.app.locals.notifier.notify({
       type: 'sale', actorId: req.user.id, url: `#/sales?open=${sale.id}`,
-      title: `عملية بيع — ${fmtMoney(sale.total, settings.currency)}`,
+      title: `${lateAt ? 'بيع اتنسى (على تقفيلة فاتت)' : 'عملية بيع'} — ${fmtMoney(sale.total, settings.currency)}`,
       body: `${req.user.full_name} • ${names.slice(0, 2).join('، ')}${names.length > 2 ? ` +${names.length - 2}` : ''} • ${PAY_AR[sale.payment_method] || sale.payment_method}${offlineAt ? ` • اتباعت من غير نت الساعة ${t12(offlineAt)}` : ''}`,
     });
     res.status(201).json(sale);

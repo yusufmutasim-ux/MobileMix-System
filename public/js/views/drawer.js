@@ -77,10 +77,16 @@ export async function render(el, { query, actions }) {
   actions.querySelector('#forgot-top')?.addEventListener('click', openForgot);
   actions.querySelector('#in')?.addEventListener('click', async () => { if (await moveModal('in')) load(); });
   actions.querySelector('#out')?.addEventListener('click', async () => { if (await moveModal('out')) load(); });
-  const onChange = () => load();
+  // After adding something to a closing: reload, then open that closing again with its new numbers
+  const onChange = async (e) => {
+    await load();
+    const id = e?.detail?.reopen;
+    if (id) el.querySelector(`[data-edit-close="${id}"]`)?.click();
+  };
   document.addEventListener('mm:drawer-changed', onChange);
   await load();
   if (query.get('forgot') && manager) openForgot();
+  if (query.get('closing') && manager) setTimeout(() => el.querySelector(`[data-edit-close="${query.get('closing')}"]`)?.click(), 50);
   if (query.get('close')) closeDrawerModal().then((ok) => ok && load());
   return () => document.removeEventListener('mm:drawer-changed', onChange);
 }

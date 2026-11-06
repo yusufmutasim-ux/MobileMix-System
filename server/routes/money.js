@@ -2,7 +2,7 @@
 const { requirePerm, can } = require('../auth');
 const { tx } = require('../db');
 const { bad, notFound, num, str, round2, dateRange, audit, getSettings, bday, today: todayStr, shopDayEnd } = require('../util');
-const { drawerNow, beforeLastClose, adjustClosing, openDays: openDaysOf } = require('../money');
+const { drawerNow, lateTime, adjustClosing, openDays: openDaysOf } = require('../money');
 
 const fmt = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
 
@@ -43,10 +43,9 @@ module.exports = function moneyRoutes(api, db) {
       period = /^\d{4}-\d{2}$/.test(String(b.period || '')) ? String(b.period) : null;
     }
     // Forgotten before the last drawer closing (managers): goes into that closed period and fixes its count
-    const late = b.before_close === true || b.before_close === 1 || b.before_close === '1';
+    const late = !!(b.closing_id || b.before_close);
     if (late && !manager) throw bad('تسجيل مصروف على تقفيلة فاتت للمدير بس');
-    const at = late ? beforeLastClose(db) : null;
-    if (late && !at) throw bad('لسه مفيش تقفيلة درج قبل كده');
+    const at = lateTime(db, b);
     const note = str(b.note, 'الملاحظة', { optional: true, max: 300 });
     const { row, closing } = tx(db, () => {
       const r = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id, created_at)
@@ -185,9 +184,8 @@ module.exports = function moneyRoutes(api, db) {
     const kind = b.kind === 'in' ? 'in' : b.kind === 'out' ? 'out' : null;
     if (!kind) throw bad('اختار إيداع ولا سحب');
     const amount = round2(num(b.amount, 'المبلغ', { min: 0.01 }));
-    const late = b.before_close === true || b.before_close === 1 || b.before_close === '1';
-    const at = late ? beforeLastClose(db) : null;
-    if (late && !at) throw bad('لسه مفيش تقفيلة درج قبل كده');
+    const at = lateTime(db, b);
+    const late = !!at;
     const out = tx(db, () => {
       const r = db.prepare(`INSERT INTO cash_moves (kind, amount, note, user_id, created_at)
                             VALUES (?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`)

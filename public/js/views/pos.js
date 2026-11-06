@@ -4,7 +4,9 @@ import { isOffline, getCatalog, takeFromCatalog, queueSale, newRef, localStamp }
 
 const CART_KEY = 'mm_cart';
 
-export async function render(el) {
+export async function render(el, { query } = {}) {
+  // ?closing=ID: a sale that was forgotten before that drawer closing (filed on that day, fixes its count)
+  const closingId = can('drawer.view') && query?.get('closing') ? Number(query.get('closing')) : null;
   let cart = load();
   let pay = 'cash';
   let products = [];
@@ -36,7 +38,9 @@ export async function render(el) {
     throw Object.assign(new Error(`مفيش منتج بالكود ${code} في القايمة المتخزنة (أو الجهاز اتباع)`), { local: true });
   }
 
-  el.innerHTML = `
+  el.innerHTML = `${closingId ? `<div class="card late-sale-bar">${icon('alert')} <div><b>بيع اتنسى — هيتسجل على التقفيلة اللي اخترتها</b>
+      <div class="small muted">الفاتورة هتتحسب على يوم التقفيلة دي، والبضاعة هتتخصم من المخزن عادي. الدرج المفتوح مش هيتأثر.</div></div>
+      <a class="btn btn-outline btn-sm" href="#/drawer?closing=${closingId}">${icon('check')} خلصت — رجوع للتقفيلة</a></div>` : ''}
   <button class="cart-bar empty" id="cart-toggle"><span><span class="count" id="cart-count">0</span>عرض الفاتورة</span><span id="cart-sum"></span></button>
   <div class="pos">
     <div>
@@ -344,6 +348,7 @@ export async function render(el) {
       customer_name: $('#cname').value,
       customer_phone: $('#cphone').value,
       notes: $('#notes').value,
+      ...(closingId ? { closing_id: closingId } : {}),
     };
     const owed = t.total - (body.paid ?? t.total);
     if (owed > 0.004 && $('#inst-on').checked) {

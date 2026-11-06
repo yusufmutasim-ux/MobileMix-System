@@ -5,7 +5,8 @@ export const categories = () => String(state.settings.expense_categories || 'أ�
   .filter((c) => (can('payroll') ? true : c !== 'مرتبات' && c !== 'سلفة'));
 
 /** Record an expense. Resolves true when saved. */
-export function expenseModal({ beforeClose = false } = {}) {
+export function expenseModal({ beforeClose = false, closingId = null } = {}) {
+  if (closingId) beforeClose = true;
   const manager = can('expenses.view');
   return modal({
     title: beforeClose ? 'مصروف اتنسى قبل التقفيل' : 'تسجيل مصروف',
@@ -21,7 +22,7 @@ export function expenseModal({ beforeClose = false } = {}) {
       const save = (e) => busy(m.querySelector('[data-ok]'), async () => {
         e?.preventDefault?.();
         const f = formData(m.querySelector('form'));
-        if (beforeClose) f.before_close = true;
+        if (closingId) f.closing_id = closingId; else if (beforeClose) f.before_close = true;
         const r = await api.post('/expenses', f);
         toast(r.closing ? lateToast(r.closing) : 'اتسجل المصروف', 'ok');
         close(true);
@@ -32,8 +33,8 @@ export function expenseModal({ beforeClose = false } = {}) {
   });
 }
 
-const LATE_HINT = 'هيتسجل على آخر تقفيلة للدرج، والعجز أو الزيادة بتاعها هيتعدلوا. الدرج الحالي مش هيتأثر.';
-const lateToast = (c) => `اتسجل على التقفيلة اللي فاتت — ${Math.abs(c.diff) < 0.5 ? 'بقت مظبوطة ✅' : c.diff < 0 ? `العجز بقى ${n(-c.diff)}` : `الزيادة بقت ${n(c.diff)}`}`;
+const LATE_HINT = 'هيتسجل على التقفيلة دي، والعجز أو الزيادة بتاعها هيتعدلوا. الدرج الحالي مش هيتأثر.';
+const lateToast = (c) => `اتسجل على التقفيلة — ${Math.abs(c.diff) < 0.5 ? 'بقت مظبوطة ✅' : c.diff < 0 ? `العجز بقى ${n(-c.diff)}` : `الزيادة بقت ${n(c.diff)}`}`;
 
 /** Forgot to record something before the drawer was closed: pick what it was. */
 export function forgotModal(lastClose) {
@@ -60,7 +61,8 @@ export function forgotModal(lastClose) {
 }
 
 /** An employee's daily allowance or advance that was paid before the last drawer closing. */
-async function staffMoneyModal(kind) {
+async function staffMoneyModal(kind, closingId = null) {
+  const late = closingId ? { closing_id: closingId } : { before_close: true };
   const t = await api.get('/allowances/today');
   const isAdv = kind === 'advance';
   return modal({
@@ -77,12 +79,12 @@ async function staffMoneyModal(kind) {
       emp.addEventListener('change', fill); fill();
       m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
         if (!emp.value) throw new Error('اختار الموظف');
-        if (isAdv) await api.post(`/payroll/${emp.value}/advance`, { amount: amount.value, before_close: true });
+        if (isAdv) await api.post(`/payroll/${emp.value}/advance`, { amount: amount.value, ...late });
         else {
-          const r = await api.post('/allowances', { user_id: Number(emp.value), amount: amount.value, before_close: true });
+          const r = await api.post('/allowances', { user_id: Number(emp.value), amount: amount.value, ...late });
           if (!r.count) throw new Error('اليومية دي متسجلة على اليوم ده قبل كده');
         }
-        toast('اتسجل على التقفيلة اللي فاتت ✓', 'ok');
+        toast('اتسجل على التقفيلة ✓', 'ok');
         close(true);
       }));
     },
@@ -180,6 +182,17 @@ export function editClosingModal(c, isLast) {
   return modal({
     title: 'تعديل التقفيلة',
     body: `${drawerBreakdown({ parts, opening: c.opening, expected: c.expected, from: c.opened_at }, 'كان المفروض في الدرج')}
+      <div class="add-to-close">
+        <b>نسيت حاجة في اليوم ده؟ ضيفها على التقفيلة</b>
+        <div class="add-grid">
+          ${can('expenses.view') ? `<button type="button" class="forgot-opt" data-add="expense">${icon('expense')}<b>مصروف</b></button>` : ''}
+          ${can('sales.create') ? `<button type="button" class="forgot-opt" data-add="sale">${icon('cart')}<b>بيع اتنسى</b></button>` : ''}
+          ${can('expenses.view') ? `<button type="button" class="forgot-opt" data-add="allowance">${icon('user')}<b>يومية موظف</b></button>` : ''}
+          ${can('payroll') ? `<button type="button" class="forgot-opt" data-add="advance">${icon('coins')}<b>سلفة</b></button>` : ''}
+          <button type="button" class="forgot-opt" data-add="out">${icon('arrowOut')}<b>فلوس طلعت</b></button>
+          <button type="button" class="forgot-opt" data-add="in">${icon('arrowIn')}<b>فلوس دخلت</b></button>
+        </div>
+      </div>
       <div class="form-grid" style="margin-top:14px">
         <label class="field"><span>اتعد كام؟</span><input class="input input-lg num" type="number" min="0" step="any" id="counted" value="${c.counted}"></label>
         <label class="field"><span>اتساب كام في الدرج؟</span><input class="input input-lg num" type="number" min="0" step="any" id="left" value="${c.left_in_drawer}"></label>
@@ -187,7 +200,8 @@ export function editClosingModal(c, isLast) {
         <div class="full" id="diff"></div>
         <label class="field full"><span>ملاحظة</span><input class="input" id="note" value="${esc(c.note || '')}"></label>
         <p class="muted small full" style="margin:0">لو غيّرت "اتساب في الدرج"، الدرج اللي بعدها بيتعدل معاها.</p>
-      </div>`,
+      </div>
+`,
     foot: `${isLast ? `<button class="btn btn-ghost" data-undo style="color:var(--danger);margin-inline-end:auto">${icon('undo')} الغي التقفيلة دي</button>` : ''}
       <button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
     onMount: (m, close) => {
@@ -207,6 +221,16 @@ export function editClosingModal(c, isLast) {
         toast('اتعدلت التقفيلة ✓', 'ok');
         close(true);
       }));
+      m.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', async () => {
+        const k = b.dataset.add;
+        if (k === 'sale') { close(false); location.hash = `#/pos?closing=${c.id}`; return; }
+        close(false);
+        const ok = k === 'expense' ? await expenseModal({ closingId: c.id })
+          : k === 'out' || k === 'in' ? await moveModal(k, { closingId: c.id })
+          : await staffMoneyModal(k, c.id);
+        // Back to the closing, with its new numbers
+        document.dispatchEvent(new CustomEvent('mm:drawer-changed', { detail: { reopen: c.id, changed: !!ok } }));
+      }));
       m.querySelector('[data-undo]')?.addEventListener('click', async () => {
         if (!(await confirmBox('تلغي التقفيلة دي؟ فلوسها هترجع للدرج المفتوح وتقدر تقفلها تاني من الأول.', { ok: 'الغي', danger: true }))) return;
         await api.del(`/drawer/closings/${c.id}`);
@@ -218,7 +242,8 @@ export function editClosingModal(c, isLast) {
 }
 
 /** Owner puts money into / takes money out of the drawer. */
-export function moveModal(kind, { beforeClose = false } = {}) {
+export function moveModal(kind, { beforeClose = false, closingId = null } = {}) {
+  if (closingId) beforeClose = true;
   return modal({
     title: (kind === 'in' ? 'إيداع في الدرج' : 'سحب من الدرج') + (beforeClose ? ' — اتنسى قبل التقفيل' : ''),
     body: `<div class="form-grid">
@@ -229,7 +254,7 @@ export function moveModal(kind, { beforeClose = false } = {}) {
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
     onMount: (m, close) => {
       m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-        const r = await api.post('/drawer/move', { kind, amount: m.querySelector('#amount').value, note: m.querySelector('#note').value, before_close: beforeClose || undefined });
+        const r = await api.post('/drawer/move', { kind, amount: m.querySelector('#amount').value, note: m.querySelector('#note').value, ...(closingId ? { closing_id: closingId } : { before_close: beforeClose || undefined }) });
         toast(r.closing ? lateToast(r.closing) : 'اتسجل', 'ok');
         close(true);
       }));

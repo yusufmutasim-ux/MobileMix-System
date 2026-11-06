@@ -718,15 +718,22 @@ function backfillBrands(db) {
 }
 
 /** Run fn inside a transaction; rolls back on throw. */
+/** Run fn in a transaction; a tx inside another becomes a savepoint, so it can be nested. */
+const txDepth = new WeakMap();
 function tx(db, fn) {
-  db.exec('BEGIN IMMEDIATE');
+  const depth = txDepth.get(db) || 0;
+  const sp = `sp${depth}`;
+  db.exec(depth ? `SAVEPOINT ${sp}` : 'BEGIN IMMEDIATE');
+  txDepth.set(db, depth + 1);
   try {
     const out = fn();
-    db.exec('COMMIT');
+    db.exec(depth ? `RELEASE ${sp}` : 'COMMIT');
     return out;
   } catch (e) {
-    db.exec('ROLLBACK');
+    db.exec(depth ? `ROLLBACK TO ${sp}; RELEASE ${sp}` : 'ROLLBACK');
     throw e;
+  } finally {
+    txDepth.set(db, depth);
   }
 }
 

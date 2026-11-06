@@ -87,3 +87,32 @@ test('correcting a closing, and undoing the last one', async () => {
   assert.equal(d.open_days.length, 1);
   assert.equal(d.expected, 250 + 400 - 100 + 200 + 200);
 });
+
+test('adding a forgotten sale or expense to a chosen closing', async () => {
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  await admin.post('/drawer/close', { counted: 950 }); // close everything now
+  await new Promise((r) => setTimeout(r, 1100));
+  let d = (await admin.get('/drawer')).data;
+  const [last, older] = d.closings;
+  const before = { last: last.diff, older: older.diff, open: d.expected };
+  const p = (await admin.post('/products', { name: 'Charger', sell_price: 150, initial_qty: 4 })).data;
+  // A cash sale forgotten on the older closing: that one gets +150, the others don't move
+  const s = await admin.post('/sales', { items: [{ product_id: p.id, qty: 1 }], payment_method: 'cash', paid: 150, closing_id: older.id });
+  assert.equal(s.status, 201);
+  assert.ok(s.data.created_at <= older.closed_at && s.data.created_at > (older.opened_at || ''));
+  assert.equal((await admin.get(`/products/${p.id}`)).data.qty, 3);
+  // A card sale changes nothing in the drawer
+  await admin.post('/sales', { items: [{ product_id: p.id, qty: 1 }], payment_method: 'card', closing_id: older.id });
+  // An expense of 40 on the same closing
+  await admin.post('/expenses', { category: 'أخرى', amount: 40, closing_id: older.id });
+  d = (await admin.get('/drawer')).data;
+  const o = d.closings.find((c) => c.id === older.id);
+  assert.equal(o.diff, before.older - 150 + 40);
+  assert.equal(d.closings.find((c) => c.id === last.id).diff, before.last);
+  assert.equal(d.expected, before.open);
+  // Staff can't
+  await admin.post('/users', { username: 'cs2', full_name: 'كاشير', role: 'cashier', password: '123456' });
+  const c = client(); await c.post('/auth/login', { username: 'cs2', password: '123456' });
+  assert.equal((await c.post('/sales', { items: [{ product_id: p.id, qty: 1 }], payment_method: 'cash', closing_id: older.id })).status, 400);
+});

@@ -1,5 +1,5 @@
 'use strict';
-const { round2, today: todayStr } = require('./util');
+const { round2, bad, today: todayStr } = require('./util');
 
 /*
  * Money rules shared by sales, customers, the drawer and reports.
@@ -87,10 +87,26 @@ function drawerNow(db, upTo = null) {
  * Something paid out (or put in) was forgotten before the drawer was closed.
  * Returns the time just before the last closing, so the entry lands inside that closed period.
  */
-function beforeLastClose(db) {
-  const last = db.prepare('SELECT id, closed_at FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
-  if (!last) return null;
-  return db.prepare("SELECT datetime(?, '-1 second') AS t").get(last.closed_at).t;
+function beforeLastClose(db, closingId = null) {
+  const c = closingId
+    ? db.prepare('SELECT id, opened_at, closed_at FROM drawer_closings WHERE id = ?').get(Number(closingId))
+    : db.prepare('SELECT id, opened_at, closed_at FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
+  if (!c) return null;
+  const t = db.prepare("SELECT datetime(?, '-1 second') AS t").get(c.closed_at).t;
+  return c.opened_at && t <= c.opened_at ? c.closed_at : t;
+}
+
+/**
+ * "Forgotten before a closing": body.closing_id (that closing) or body.before_close (the last one).
+ * Returns the time to file it at, or null for now.
+ */
+function lateTime(db, body) {
+  const b = body || {};
+  const yes = (v) => v === true || v === 1 || v === '1';
+  if (!b.closing_id && !yes(b.before_close)) return null;
+  const at = beforeLastClose(db, b.closing_id || null);
+  if (!at) throw bad(b.closing_id ? 'التقفيلة دي مش موجودة' : 'لسه مفيش تقفيلة درج قبل كده');
+  return at;
 }
 
 /**
@@ -141,4 +157,4 @@ function lateInstallments(db) {
     .map((i) => ({ ...i, invoice_no: s.invoice_no, customer_name: s.customer_name, phone: s.phone })));
 }
 
-module.exports = { lateInstallments, CASH_SALE_METHODS, IN_CASH, cleanPhone, RECEIVED_SQL, REFUNDED_SQL, DUE_SQL, saleMoney, installmentsOf, drawerNow, beforeLastClose, adjustClosing, openDays, rememberCustomer };
+module.exports = { lateInstallments, CASH_SALE_METHODS, IN_CASH, cleanPhone, RECEIVED_SQL, REFUNDED_SQL, DUE_SQL, saleMoney, installmentsOf, drawerNow, beforeLastClose, lateTime, adjustClosing, openDays, rememberCustomer };
