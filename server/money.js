@@ -59,10 +59,11 @@ function installmentsOf(db, saleId) {
 }
 
 /** Where the last drawer count ended, and what's expected in the drawer now. */
-function drawerNow(db) {
+function drawerNow(db, upTo = null) {
   const last = db.prepare('SELECT * FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
   const from = last ? last.closed_at : '0000-00-00 00:00:00';
-  const to = db.prepare("SELECT datetime('now','localtime') AS t").get().t;
+  // upTo: count only up to then (closing a day that was forgotten, the next day)
+  const to = upTo || db.prepare("SELECT datetime('now','localtime') AS t").get().t;
   const opening = last ? last.left_in_drawer : 0;
   const one = (sql) => round2(db.prepare(sql).get(from, to).v || 0);
   const range = 'created_at > ? AND created_at <= ?';
@@ -107,6 +108,17 @@ function adjustClosing(db, at, delta, part) {
   return db.prepare('SELECT * FROM drawer_closings WHERE id = ?').get(c.id);
 }
 
+/** Past shop days since the last drawer closing that had cash movement and still aren't closed (newest first). */
+function openDays(db) {
+  const last = db.prepare('SELECT closed_at FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
+  const since = last ? last.closed_at : '0000-00-00 00:00:00';
+  return db.prepare(`SELECT DISTINCT d FROM (
+      SELECT bday(created_at) AS d FROM sales WHERE created_at > ? UNION SELECT bday(created_at) FROM expenses WHERE created_at > ?
+      UNION SELECT bday(created_at) FROM cash_moves WHERE created_at > ? UNION SELECT bday(created_at) FROM repair_payments WHERE created_at > ?
+      UNION SELECT bday(created_at) FROM sale_payments WHERE created_at > ?) WHERE d < ? ORDER BY d DESC LIMIT 14`)
+    .all(since, since, since, since, since, todayStr()).map((r) => r.d);
+}
+
 /** Save the customer (by phone) the first time they buy or bring a device in; keep their latest name. */
 function rememberCustomer(db, name, phone) {
   const p = cleanPhone(phone);
@@ -129,4 +141,4 @@ function lateInstallments(db) {
     .map((i) => ({ ...i, invoice_no: s.invoice_no, customer_name: s.customer_name, phone: s.phone })));
 }
 
-module.exports = { lateInstallments, CASH_SALE_METHODS, IN_CASH, cleanPhone, RECEIVED_SQL, REFUNDED_SQL, DUE_SQL, saleMoney, installmentsOf, drawerNow, beforeLastClose, adjustClosing, rememberCustomer };
+module.exports = { lateInstallments, CASH_SALE_METHODS, IN_CASH, cleanPhone, RECEIVED_SQL, REFUNDED_SQL, DUE_SQL, saleMoney, installmentsOf, drawerNow, beforeLastClose, adjustClosing, openDays, rememberCustomer };

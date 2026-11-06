@@ -1,5 +1,5 @@
 import { api, can, icon, esc, money, n, fmtDate, emptyRow, toast, fmtShopTime } from '../core.js';
-import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal } from '../money-ui.js';
+import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal, dayLabel } from '../money-ui.js';
 
 /** The cash drawer: what should be in it now, closing (counting) it, and the history. */
 export async function render(el, { query, actions }) {
@@ -11,21 +11,30 @@ export async function render(el, { query, actions }) {
     ${manager ? `<button class="btn btn-outline" id="in">${icon('arrowIn')} إيداع</button><button class="btn btn-outline" id="out">${icon('arrowOut')} سحب</button>` : ''}`;
 
   let lastClose = null;
+  // The oldest forgotten day first: each closing covers from the last one to the end of that day
+  const bindMissed = (missed) => el.querySelector('#close-missed')?.addEventListener('click', async () => {
+    if (await closeDrawerModal({ day: missed[missed.length - 1] })) load();
+  });
   const openForgot = () => {
     if (!lastClose) return toast('لسه مفيش تقفيلة درج — سجّلها عادي من زرار "مصروف" أو "سحب" وهتتحسب على الدرج الحالي', 'err');
     forgotModal(fmtShopTime(lastClose));
   };
   async function load() {
     const d = await api.get('/drawer');
+    const missed = d.open_days || [];
+    const banner = missed.length ? `<div class="card missed-close"><div>${icon('alert')} <b>لسه ماتقفلش درج ${missed.length > 1 ? `${missed.length} أيام` : `يوم ${dayLabel(missed[0])}`}</b>
+        <div class="muted small">قفّله دلوقتي عشان فلوس ${missed.length > 1 ? 'الأيام دي' : 'اليوم ده'} ماتتخلطش بفلوس النهارده.</div></div>
+        <button class="btn btn-primary btn-sm" id="close-missed">قفّل يوم ${dayLabel(missed[missed.length - 1])}</button></div>` : '';
     if (d.blind) {
-      el.innerHTML = `<div class="card drawer-hero" style="max-width:560px">
+      el.innerHTML = banner + `<div class="card drawer-hero" style="max-width:560px">
         <h2 style="margin-top:0">${icon('drawer')} تقفيل الدرج</h2>
         <p class="muted">في آخر الشيفت: عدّ الفلوس اللي في الدرج، ودوس "قفّل الدرج" واكتب المبلغ. السيستم بيقارنه باللي المفروض يكون موجود ويبلّغ المدير.</p>
         <div class="muted small">${d.from ? `آخر تقفيل: ${fmtShopTime(d.from)}` : 'لسه ماتقفلش الدرج قبل كده'}</div>
       </div>`;
+      bindMissed(missed);
       return;
     }
-    el.innerHTML = `
+    el.innerHTML = banner + `
       <div class="grid grid-2" style="align-items:start">
         <div class="card drawer-hero">
           <div class="muted small">المفروض في الدرج دلوقتي</div>
@@ -54,6 +63,7 @@ export async function render(el, { query, actions }) {
         </table></div>
       </div>` : ''}`;
     lastClose = d.closings[0]?.closed_at || null;
+    bindMissed(missed);
     el.querySelector('#forgot')?.addEventListener('click', openForgot);
   }
 

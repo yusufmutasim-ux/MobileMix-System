@@ -1,7 +1,7 @@
 'use strict';
 const { requireAuth, requirePerm, can } = require('../auth');
 const { round2, dateRange, today } = require('../util');
-const { DUE_SQL, drawerNow, lateInstallments } = require('../money');
+const { DUE_SQL, drawerNow, lateInstallments, openDays } = require('../money');
 
 /*
  * Money rules used everywhere:
@@ -279,6 +279,7 @@ module.exports = function reportRoutes(api, db) {
     // Last time the drawer was closed (shown on the home page for whoever closes it)
     if (can(req.user, 'drawer.close')) {
       const c = db.prepare(`SELECT d.closed_at, d.counted, d.diff, u.full_name AS by FROM drawer_closings d LEFT JOIN users u ON u.id = d.user_id ORDER BY d.id DESC LIMIT 1`).get();
+      out.open_days = openDays(db);
       out.last_close = c ? { at: c.closed_at, by: c.by, ...(can(req.user, 'drawer.view') ? { counted: round2(c.counted), diff: round2(c.diff) } : {}) } : null;
     }
     if (can(req.user, 'customers.view')) {

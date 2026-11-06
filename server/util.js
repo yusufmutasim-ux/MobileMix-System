@@ -55,6 +55,14 @@ function bday(ts) {
   return d.toISOString().slice(0, 10);
 }
 
+/** The last second of shop day `day` ('YYYY-MM-DD'): 23:59:59, or the next morning just before the day-end hour. */
+function shopDayEnd(day) {
+  if (!dayEnd) return `${day} 23:59:59`;
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return `${d.toISOString().slice(0, 10)} ${String(dayEnd - 1).padStart(2, '0')}:59:59`;
+}
+
 function today() {
   const d = new Date(Date.now() - dayEnd * 3600e3);
   const p = (n) => String(n).padStart(2, '0');
@@ -89,4 +97,4 @@ function getSettings(db) {
   return out;
 }
 
-module.exports = { HttpError, bad, notFound, round2, num, str, dateRange, today, bday, setDayEnd, getDayEnd, t12, pad, audit, getSettings };
+module.exports = { HttpError, bad, notFound, round2, num, str, dateRange, today, bday, setDayEnd, getDayEnd, shopDayEnd, t12, pad, audit, getSettings };

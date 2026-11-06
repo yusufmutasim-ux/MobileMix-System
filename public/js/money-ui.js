@@ -101,31 +101,50 @@ const PARTS = {
 };
 
 /** What should be in the drawer, line by line. */
-export function drawerBreakdown(d) {
+export function drawerBreakdown(d, totalLabel = 'المفروض في الدرج دلوقتي') {
   const rows = Object.entries(PARTS).filter(([k]) => d.parts[k]).map(([k, label]) =>
     `<div class="line-row"><span>${label}</span><b class="num ${d.parts[k] < 0 ? 'neg' : ''}">${d.parts[k] > 0 ? '+' : ''}${n(d.parts[k])}</b></div>`).join('');
   return `<div class="breakdown">
     <div class="line-row"><span>اللي كان في الدرج${d.from ? '' : ' (أول مرة)'}</span><b class="num">${n(d.opening)}</b></div>
     ${rows || '<div class="muted small" style="padding:6px 0">مفيش حركة كاش من آخر تقفيل</div>'}
-    <div class="line-row total"><span>المفروض في الدرج دلوقتي</span><b>${money(d.expected)}</b></div>
+    <div class="line-row total"><span>${totalLabel}</span><b>${money(d.expected)}</b></div>
   </div>`;
 }
 
-/** Count the drawer and close it. */
-export async function closeDrawerModal() {
-  const d = await api.get('/drawer');
+/** A shop day as people say it: "الأربع 5/11". */
+const AR_DAYS = ['الأحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة', 'السبت'];
+export const dayLabel = (d) => `${AR_DAYS[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${Number(d.slice(8))}/${Number(d.slice(5, 7))}`;
+
+/**
+ * Count the drawer and close it. With { day }: close a past day that was forgotten, counting only
+ * that day's money (today's sales stay in today's drawer).
+ */
+export async function closeDrawerModal({ day = null } = {}) {
+  let d = await api.get('/drawer' + (day ? `?day=${day}` : ''));
+  const days = d.open_days || [];
   return modal({
     title: 'تقفيل الدرج',
-    body: `${d.blind ? '<p class="muted" style="margin-top:0">عدّ الفلوس اللي في الدرج كلها واكتب المبلغ — السيستم هيقارنه باللي المفروض يكون موجود.</p>' : drawerBreakdown(d)}
+    body: `${days.length ? `<label class="field" style="margin-bottom:12px"><span>هتقفل درج يوم</span><select class="input" id="day">
+        <option value="">النهارده — لحد دلوقتي</option>
+        ${[...days].reverse().map((x) => `<option value="${x}" ${x === day ? 'selected' : ''}>${dayLabel(x)} (اتنسى)</option>`).join('')}</select></label>
+        <p class="note-warn small" style="margin:0 0 12px" id="day-hint" ${day ? '' : 'hidden'}>هيتحسب فلوس اليوم ده بس (من آخر تقفيلة لحد آخر اليوم). مبيعات النهارده هتفضل في درج النهارده.</p>` : ''}
+      <div id="sum"></div>
       <div class="form-grid" style="margin-top:14px">
-        <label class="field"><span>عدّيت كام في الدرج؟ *</span><input class="input input-lg num" type="number" min="0" step="any" id="counted" inputmode="decimal" autofocus></label>
+        <label class="field"><span id="counted-label">${day ? 'كان في الدرج كام آخر اليوم ده؟' : 'عدّيت كام في الدرج؟'} *</span><input class="input input-lg num" type="number" min="0" step="any" id="counted" inputmode="decimal" autofocus></label>
         <label class="field"><span>هتسيب كام في الدرج للي بعدك؟</span><input class="input input-lg num" type="number" min="0" step="any" id="left" inputmode="decimal" placeholder="= كله"></label>
+        ${d.blind ? '' : '<div class="full"><button type="button" class="btn btn-ghost btn-sm" id="exact">اعتبره مظبوط (= المفروض)</button></div>'}
         <div class="full" id="diff"></div>
         <label class="field full"><span>ملاحظة</span><input class="input" id="note" placeholder="اختياري"></label>
       </div>`,
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} قفّل الدرج</button>`,
     onMount: (m, close) => {
       const counted = m.querySelector('#counted');
+      const daySel = m.querySelector('#day');
+      const drawSum = () => {
+        m.querySelector('#sum').innerHTML = d.blind
+          ? '<p class="muted" style="margin-top:0">عدّ الفلوس اللي في الدرج كلها واكتب المبلغ — السيستم هيقارنه باللي المفروض يكون موجود.</p>'
+          : drawerBreakdown(d, daySel?.value ? `المفروض في الدرج آخر يوم ${dayLabel(daySel.value)}` : undefined);
+      };
       const show = () => {
         const box = m.querySelector('#diff');
         if (counted.value === '' || d.blind) { box.innerHTML = ''; return; }
@@ -134,11 +153,19 @@ export async function closeDrawerModal() {
           ? '<div class="note-ok">✅ الدرج مظبوط</div>'
           : diff < 0 ? `<div class="note-bad">⚠️ عجز ${money(-diff)}</div>` : `<div class="note-warn">زيادة ${money(diff)}</div>`;
       };
+      drawSum();
       counted.addEventListener('input', show);
+      m.querySelector('#exact')?.addEventListener('click', () => { counted.value = d.expected; show(); });
+      daySel?.addEventListener('change', async () => {
+        d = await api.get('/drawer' + (daySel.value ? `?day=${daySel.value}` : ''));
+        m.querySelector('#day-hint').hidden = !daySel.value;
+        m.querySelector('#counted-label').textContent = (daySel.value ? 'كان في الدرج كام آخر اليوم ده؟' : 'عدّيت كام في الدرج؟') + ' *';
+        drawSum(); show();
+      });
       m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
         if (counted.value === '') throw new Error('اكتب المبلغ اللي عدّيته');
         const left = m.querySelector('#left').value;
-        const r = await api.post('/drawer/close', { counted: Number(counted.value), left_in_drawer: left === '' ? undefined : Number(left), note: m.querySelector('#note').value });
+        const r = await api.post('/drawer/close', { counted: Number(counted.value), left_in_drawer: left === '' ? undefined : Number(left), note: m.querySelector('#note').value, day: daySel?.value || undefined });
         toast(Math.abs(r.diff) < 0.5 ? 'اتقفل الدرج — مظبوط ✅' : r.diff < 0 ? `اتقفل الدرج — عجز ${n(-r.diff)}` : `اتقفل الدرج — زيادة ${n(r.diff)}`, Math.abs(r.diff) < 0.5 ? 'ok' : 'err');
         close(true);
       }));

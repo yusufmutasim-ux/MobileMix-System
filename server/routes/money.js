@@ -1,8 +1,8 @@
 'use strict';
 const { requirePerm, can } = require('../auth');
 const { tx } = require('../db');
-const { bad, notFound, num, str, round2, dateRange, audit, getSettings, bday, today: todayStr } = require('../util');
-const { drawerNow, beforeLastClose, adjustClosing } = require('../money');
+const { bad, notFound, num, str, round2, dateRange, audit, getSettings, bday, today: todayStr, shopDayEnd } = require('../util');
+const { drawerNow, beforeLastClose, adjustClosing, openDays: openDaysOf } = require('../money');
 
 const fmt = (v, cur) => `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cur || 'ج.م'}`;
 
@@ -84,8 +84,23 @@ module.exports = function moneyRoutes(api, db) {
   });
 
   // ---------- the drawer ----------
+  /**
+   * ?day=YYYY-MM-DD: a past shop day whose drawer wasn't closed — count only up to the end of that day,
+   * so it can be closed on its own and today's sales stay in today's drawer.
+   */
+  function pastDayEnd(day) {
+    if (day === undefined || day === null || day === '') return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) throw bad('اليوم غير صحيح');
+    if (String(day) >= todayStr()) throw bad('النهارده بيتقفل عادي — اختار يوم فات');
+    const end = shopDayEnd(String(day));
+    const last = db.prepare('SELECT closed_at FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
+    if (last && last.closed_at >= end) throw bad('اليوم ده اتقفل قبل كده');
+    return end;
+  }
+  const openDays = () => openDaysOf(db);
+
   api.get('/drawer', requirePerm('drawer.close'), (req, res) => {
-    const now = drawerNow(db);
+    const now = drawerNow(db, pastDayEnd(req.query.day));
     const out = { ...now };
     // Managers see the expected amount, what moved, and the history
     if (can(req.user, 'drawer.view')) {
@@ -96,10 +111,11 @@ module.exports = function moneyRoutes(api, db) {
                               WHERE m.created_at > ? AND m.created_at <= ? ORDER BY m.id DESC`).all(from, now.to);
       out.expenses = db.prepare(`SELECT e.*, u.full_name AS user_name FROM expenses e LEFT JOIN users u ON u.id = e.user_id
                                  WHERE e.from_drawer = 1 AND e.created_at > ? AND e.created_at <= ? ORDER BY e.id DESC`).all(from, now.to);
+      out.open_days = openDays();
       return res.json(out);
     }
     // Staff count the drawer blind: they don't see what should be there until they've counted
-    res.json({ blind: true, from: now.from });
+    res.json({ blind: true, from: now.from, open_days: openDays() });
   });
 
   api.post('/drawer/close', requirePerm('drawer.close'), (req, res) => {
@@ -108,20 +124,21 @@ module.exports = function moneyRoutes(api, db) {
     const left = round2(num(b.left_in_drawer ?? counted, 'المبلغ اللي هيفضل في الدرج', { min: 0 }));
     if (left > counted) throw bad('اللي هيفضل في الدرج أكتر من اللي اتعد');
     const note = str(b.note, 'الملاحظة', { optional: true, max: 300 });
+    const upTo = pastDayEnd(b.day);
     const closing = tx(db, () => {
-      const now = drawerNow(db);
+      const now = drawerNow(db, upTo);
       const diff = round2(counted - now.expected);
       const r = db.prepare(`INSERT INTO drawer_closings (user_id, opened_at, closed_at, opening, expected, counted, diff, left_in_drawer, details, note)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(req.user.id, now.from, now.to, now.opening, now.expected, counted, diff, left, JSON.stringify(now.parts), note);
       return db.prepare('SELECT * FROM drawer_closings WHERE id = ?').get(r.lastInsertRowid);
     });
-    audit(db, req.user.id, 'drawer.close', { id: closing.id, expected: closing.expected, counted, diff: closing.diff });
+    audit(db, req.user.id, 'drawer.close', { id: closing.id, expected: closing.expected, counted, diff: closing.diff, day: b.day || undefined });
     const cur = getSettings(db).currency;
     const state = Math.abs(closing.diff) < 0.5 ? '✅ مظبوط' : closing.diff < 0 ? `⚠️ عجز ${fmt(-closing.diff, cur)}` : `زيادة ${fmt(closing.diff, cur)}`;
     req.app.locals.notifier.notify({
       type: 'drawer_close', actorId: req.user.id, url: '#/drawer',
-      title: `تقفيل الدرج — ${state}`,
+      title: `تقفيل الدرج${b.day ? ` (يوم ${b.day})` : ''} — ${state}`,
       body: `${req.user.full_name} • المفروض ${fmt(closing.expected, cur)} • اتعد ${fmt(counted, cur)}${left < counted ? ` • اتشال ${fmt(counted - left, cur)}` : ''}`,
     });
     res.status(201).json(closing);

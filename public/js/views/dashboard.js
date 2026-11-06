@@ -39,6 +39,7 @@ export async function render(el, { actions }) {
       ${d.drawer !== undefined ? `<div class="value">${n(d.drawer)} <small>${cur}</small></div>` : ''}
       <div class="sub">${lc ? `آخر تقفيلة: ${closedToday ? 'النهارده' : esc(fmtDate(shopDay(lc.at), false))} ${esc(t12(lc.at))}${lc.by ? ` — ${esc(lc.by)}` : ''}${lc.diff ? ` <b style="color:${lc.diff < 0 ? 'var(--danger)' : 'inherit'}">(${lc.diff > 0 ? '+' : ''}${n(lc.diff)})</b>` : ''}` : 'لسه متقفلش قبل كده'}
         ${d.expenses_today ? `<br>مصاريف النهارده ${n(d.expenses_today)}` : ''}</div>
+      ${d.open_days?.length ? `<a class="missed-pill" href="#/drawer">${icon('alert')} لسه ماتقفلش درج ${d.open_days.length > 1 ? `${d.open_days.length} أيام` : d.open_days[0] === todayStr(-1) ? 'امبارح' : `يوم ${Number(d.open_days[0].slice(8))}/${Number(d.open_days[0].slice(5, 7))}`} — قفّله</a>` : ''}
       <div class="drawer-acts">${can('drawer.close') ? `<a class="btn btn-primary btn-sm" href="#/drawer?close=1">${icon('check')} قفّل الدرج</a>` : ''}
         ${d.drawer !== undefined ? `<a class="btn btn-ghost btn-sm" href="#/drawer">التفاصيل</a>` : ''}
         ${can('drawer.view') ? `<a class="btn btn-ghost btn-sm" href="#/drawer?forgot=1" title="سجّل مصروف أو يومية أو سحب اتنسى قبل آخر تقفيل">نسيت حاجة؟</a>` : ''}</div>
