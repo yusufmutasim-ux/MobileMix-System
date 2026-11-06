@@ -170,6 +170,32 @@ module.exports = function moneyRoutes(api, db) {
     res.json(out);
   });
 
+  /** What went in / out of the drawer during a closing's period (expenses from the drawer, cash in / out). */
+  api.get('/drawer/closings/:id/items', requirePerm('drawer.view'), (req, res) => {
+    const c = db.prepare('SELECT * FROM drawer_closings WHERE id = ?').get(req.params.id);
+    if (!c) throw notFound('التقفيلة دي مش موجودة');
+    const from = c.opened_at || '0000-00-00 00:00:00';
+    res.json({
+      expenses: db.prepare(`SELECT e.id, e.category, e.amount, e.note, e.created_at, e.employee_id, u.full_name AS user_name, emp.full_name AS employee_name
+        FROM expenses e LEFT JOIN users u ON u.id = e.user_id LEFT JOIN users emp ON emp.id = e.employee_id
+        WHERE e.from_drawer = 1 AND e.created_at > ? AND e.created_at <= ? ORDER BY e.created_at`).all(from, c.closed_at),
+      moves: db.prepare(`SELECT m.id, m.kind, m.amount, m.note, m.created_at, u.full_name AS user_name FROM cash_moves m
+        LEFT JOIN users u ON u.id = m.user_id WHERE m.created_at > ? AND m.created_at <= ? ORDER BY m.created_at`).all(from, c.closed_at),
+    });
+  });
+
+  /** Remove a cash in / out entered by mistake; a closing it fell in is corrected. */
+  api.delete('/drawer/moves/:id', requirePerm('drawer.view'), (req, res) => {
+    const m = db.prepare('SELECT * FROM cash_moves WHERE id = ?').get(req.params.id);
+    if (!m) throw notFound('الحركة دي مش موجودة');
+    tx(db, () => {
+      db.prepare('DELETE FROM cash_moves WHERE id = ?').run(m.id);
+      adjustClosing(db, m.created_at, m.kind === 'in' ? -m.amount : m.amount, m.kind === 'in' ? 'moves_in' : 'moves_out');
+    });
+    audit(db, req.user.id, 'drawer.move.delete', { id: m.id, kind: m.kind, amount: m.amount });
+    res.json({ ok: true });
+  });
+
   /** Undo the last closing: its money goes back into the open drawer, to be counted again. */
   api.delete('/drawer/closings/:id', requirePerm('drawer.view'), (req, res) => {
     const last = db.prepare('SELECT * FROM drawer_closings ORDER BY id DESC LIMIT 1').get();

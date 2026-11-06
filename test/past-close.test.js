@@ -116,3 +116,24 @@ test('adding a forgotten sale or expense to a chosen closing', async () => {
   const c = client(); await c.post('/auth/login', { username: 'cs2', password: '123456' });
   assert.equal((await c.post('/sales', { items: [{ product_id: p.id, qty: 1 }], payment_method: 'cash', closing_id: older.id })).status, 400);
 });
+
+test('removing an expense or a cash move from a closing', async () => {
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  let d = (await admin.get('/drawer')).data;
+  const c = d.closings[0];
+  await admin.post('/expenses', { category: 'أخرى', amount: 70, note: 'غلط', closing_id: c.id });
+  await admin.post('/drawer/move', { kind: 'out', amount: 30, closing_id: c.id });
+  let it = (await admin.get(`/drawer/closings/${c.id}/items`)).data;
+  const e = it.expenses.find((x) => x.note === 'غلط');
+  const m = it.moves.find((x) => x.kind === 'out' && x.amount === 30);
+  assert.ok(e && m);
+  d = (await admin.get('/drawer')).data;
+  assert.equal(d.closings[0].diff, c.diff + 100);
+  assert.equal((await admin.del(`/expenses/${e.id}`)).status, 200);
+  assert.equal((await admin.del(`/drawer/moves/${m.id}`)).status, 200);
+  d = (await admin.get('/drawer')).data;
+  assert.equal(d.closings[0].diff, c.diff);
+  it = (await admin.get(`/drawer/closings/${c.id}/items`)).data;
+  assert.ok(!it.expenses.some((x) => x.id === e.id) && !it.moves.some((x) => x.id === m.id));
+});

@@ -1,4 +1,4 @@
-import { api, can, icon, esc, money, n, fmtDate, emptyRow, toast, fmtShopTime } from '../core.js';
+import { api, can, icon, esc, money, n, fmtDate, emptyRow, toast, fmtShopTime, confirmBox } from '../core.js';
 import { drawerBreakdown, closeDrawerModal, expenseModal, moveModal, forgotModal, dayLabel, editClosingModal } from '../money-ui.js';
 
 /** The cash drawer: what should be in it now, closing (counting) it, and the history. */
@@ -44,10 +44,12 @@ export async function render(el, { query, actions }) {
         </div>
         ${manager ? `<div class="card">
           <div class="card-head"><h2>حركة الدرج من آخر تقفيل</h2></div>
-          ${[...d.expenses.map((e) => ({ at: e.created_at, text: `مصروف — ${esc(e.category)}${e.note ? ` (${esc(e.note)})` : ''}`, by: e.user_name, amount: -e.amount })),
-            ...d.moves.map((m) => ({ at: m.created_at, text: m.kind === 'in' ? `إيداع${m.note ? ` — ${esc(m.note)}` : ''}` : `سحب${m.note ? ` — ${esc(m.note)}` : ''}`, by: m.user_name, amount: m.kind === 'in' ? m.amount : -m.amount }))]
+          ${[...d.expenses.map((e) => ({ rm: `/expenses/${e.id}`, payroll: !!e.employee_id, at: e.created_at, text: `مصروف — ${esc(e.category)}${e.note ? ` (${esc(e.note)})` : ''}`, by: e.user_name, amount: -e.amount })),
+            ...d.moves.map((m) => ({ rm: `/drawer/moves/${m.id}`, at: m.created_at, text: m.kind === 'in' ? `إيداع${m.note ? ` — ${esc(m.note)}` : ''}` : `سحب${m.note ? ` — ${esc(m.note)}` : ''}`, by: m.user_name, amount: m.kind === 'in' ? m.amount : -m.amount }))]
             .sort((a, b) => b.at.localeCompare(a.at))
-            .map((x) => `<div class="line-row"><span>${x.text}<div class="muted small">${fmtDate(x.at)} • ${esc(x.by || '')}</div></span><b class="num ${x.amount < 0 ? 'neg' : ''}">${x.amount > 0 ? '+' : ''}${n(x.amount)}</b></div>`).join('')
+            .map((x) => `<div class="line-row"><span>${x.text}<div class="muted small">${fmtDate(x.at)} • ${esc(x.by || '')}</div></span>
+              <span class="ci-end"><b class="num ${x.amount < 0 ? 'neg' : ''}">${x.amount > 0 ? '+' : ''}${n(x.amount)}</b>
+              ${x.payroll && !can('payroll') ? '' : `<button class="btn btn-ghost btn-sm" data-rm="${x.rm}" title="امسح" style="color:var(--danger)">${icon('trash')}</button>`}</span></div>`).join('')
             || '<div class="empty">مفيش مصروفات أو سحب من آخر تقفيل</div>'}
         </div>` : ''}
       </div>
@@ -66,6 +68,10 @@ export async function render(el, { query, actions }) {
     lastClose = d.closings[0]?.closed_at || null;
     bindMissed(missed);
     el.querySelector('#forgot')?.addEventListener('click', openForgot);
+    el.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', async () => {
+      if (!(await confirmBox('تمسح دي؟ هترجع للدرج.', { ok: 'امسح', danger: true }))) return;
+      try { await api.del(b.dataset.rm); toast('اتمسح', 'ok'); load(); } catch (e) { toast(e.message, 'err'); }
+    }));
     el.querySelectorAll('[data-edit-close]').forEach((b) => b.addEventListener('click', async () => {
       const c = d.closings.find((x) => x.id === Number(b.dataset.editClose));
       if (await editClosingModal(c, c.id === d.closings[0].id)) load();

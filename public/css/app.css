@@ -1851,3 +1851,7 @@ tr.clickable { cursor: pointer; }
   background: color-mix(in srgb, var(--yellow, #f5d76e) 35%, var(--snow, #fff)); border: 1.5px solid color-mix(in srgb, var(--yellow, #f5d76e) 70%, transparent); }
 .late-sale-bar > div { flex: 1; min-width: 200px; }
 .late-sale-bar > svg { width: 20px; height: 20px; }
+.close-items { margin-top: 10px; }
+.close-items > b { display: block; margin-bottom: 6px; }
+.ci-end { display: inline-flex; align-items: center; gap: 4px; }
+.ci-end .btn svg { width: 16px; height: 16px; }

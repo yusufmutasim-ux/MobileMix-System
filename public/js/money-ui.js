@@ -1,5 +1,5 @@
 // Small money windows used from several screens (drawer, expenses, home).
-import { api, state, can, icon, esc, money, n, modal, toast, busy, formData, confirmBox, COLLECT_METHODS } from './core.js';
+import { api, state, can, icon, esc, money, n, modal, toast, busy, formData, confirmBox, fmtDate, COLLECT_METHODS } from './core.js';
 
 export const categories = () => String(state.settings.expense_categories || 'أخرى').split('\n').map((c) => c.trim()).filter(Boolean)
   .filter((c) => (can('payroll') ? true : c !== 'مرتبات' && c !== 'سلفة'));
@@ -193,6 +193,7 @@ export function editClosingModal(c, isLast) {
           <button type="button" class="forgot-opt" data-add="in">${icon('arrowIn')}<b>فلوس دخلت</b></button>
         </div>
       </div>
+      <div class="close-items" id="items"><div class="muted small">بيحمّل اللي اتسجل في التقفيلة دي…</div></div>
       <div class="form-grid" style="margin-top:14px">
         <label class="field"><span>اتعد كام؟</span><input class="input input-lg num" type="number" min="0" step="any" id="counted" value="${c.counted}"></label>
         <label class="field"><span>اتساب كام في الدرج؟</span><input class="input input-lg num" type="number" min="0" step="any" id="left" value="${c.left_in_drawer}"></label>
@@ -221,6 +222,30 @@ export function editClosingModal(c, isLast) {
         toast('اتعدلت التقفيلة ✓', 'ok');
         close(true);
       }));
+      // Everything that went in / out in this closing, each removable
+      api.get(`/drawer/closings/${c.id}/items`).then((it) => {
+        const rows = [
+          ...it.expenses.map((e) => ({ kind: 'exp', id: e.id, at: e.created_at, amount: -e.amount, payroll: !!e.employee_id,
+            text: `${esc(e.category)}${e.employee_name ? ` — ${esc(e.employee_name)}` : ''}${e.note ? ` <span class="muted">(${esc(e.note)})</span>` : ''}` })),
+          ...it.moves.map((mv) => ({ kind: 'move', id: mv.id, at: mv.created_at, amount: mv.kind === 'in' ? mv.amount : -mv.amount,
+            text: `${mv.kind === 'in' ? 'إيداع' : 'سحب'}${mv.note ? ` <span class="muted">(${esc(mv.note)})</span>` : ''}` })),
+        ].sort((a, b) => a.at.localeCompare(b.at));
+        m.querySelector('#items').innerHTML = rows.length ? `<b>المصروفات والسحب والإيداع في التقفيلة دي</b>
+          ${rows.map((r) => `<div class="line-row"><span>${r.text}<div class="muted small">${fmtDate(r.at)}</div></span>
+            <span class="ci-end"><b class="num ${r.amount < 0 ? 'neg' : ''}">${r.amount > 0 ? '+' : ''}${n(r.amount)}</b>
+            ${r.payroll && !can('payroll') ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-rm="${r.kind}:${r.id}" title="امسح" style="color:var(--danger)">${icon('trash')}</button>`}</span></div>`).join('')}` : '';
+        m.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', async () => {
+          const [kind, id] = b.dataset.rm.split(':');
+          close(false);
+          if (await confirmBox('تمسح دي؟ المفروض في الدرج والعجز بتوع التقفيلة هيتحسبوا من جديد.', { ok: 'امسح', danger: true })) {
+            try {
+              await api.del(kind === 'exp' ? `/expenses/${id}` : `/drawer/moves/${id}`);
+              toast('اتمسح — والتقفيلة اتعدلت', 'ok');
+            } catch (e) { toast(e.message, 'err'); }
+          }
+          document.dispatchEvent(new CustomEvent('mm:drawer-changed', { detail: { reopen: c.id } }));
+        }));
+      }).catch(() => { m.querySelector('#items').innerHTML = ''; });
       m.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', async () => {
         const k = b.dataset.add;
         if (k === 'sale') { close(false); location.hash = `#/pos?closing=${c.id}`; return; }
