@@ -264,14 +264,14 @@ function simpleReport(d, from, to) {
       </div>
     </div>
     ${d.money_left ? `<div class="card money-left">
-      <div class="card-head"><h2>${icon('wallet')} الفلوس اللي معاك</h2><span class="muted small">بعد المصاريف</span></div>
+      <div class="card-head"><h2>${icon('wallet')} الفلوس اللي معاك</h2><span class="muted small">المصاريف بتتدفع من الفيزا الأول، والباقي من الكاش</span></div>
       <div class="ml-grid">
+        <div class="ml total"><span>الباقي معاك كله</span><b>${n(d.money_left.total)} <small>${cur}</small></b>
+          <small>كاش ${n(d.money_left.cash_in)} + فيزا ${n(d.money_left.card_in)} − مصاريف ${n(d.money_left.spent)}</small></div>
         <div class="ml cash"><span>كاش باقي</span><b>${n(d.money_left.cash)} <small>${cur}</small></b>
-          <small>كاش الأيام ${n(d.money_left.cash_in)}${d.money_left.cash_out ? ` − مصاريف كاش ${n(d.money_left.cash_out)}` : ''}</small></div>
-        <div class="ml card"><span>فيزا معاك</span><b>${n(d.money_left.card)} <small>${cur}</small></b>
-          <small>فيزا ${n(d.money_left.card_in)}${d.money_left.card_out ? ` − اتصرف منها ${n(d.money_left.card_out)}` : ''}</small></div>
-        ${d.money_left.instapay_in || d.money_left.instapay_out ? `<div class="ml insta"><span>InstaPay معاك</span><b>${n(d.money_left.instapay)} <small>${cur}</small></b>
-          <small>InstaPay ${n(d.money_left.instapay_in)}${d.money_left.instapay_out ? ` − اتصرف منها ${n(d.money_left.instapay_out)}` : ''}</small></div>` : ''}
+          <small>${d.money_left.from_cash ? `اتصرف من الكاش ${n(d.money_left.from_cash)}` : 'مااتصرفش من الكاش حاجة'}</small></div>
+        <div class="ml card"><span>فيزا باقي</span><b>${n(d.money_left.card)} <small>${cur}</small></b>
+          <small>${d.money_left.from_card ? `اتصرف من الفيزا ${n(d.money_left.from_card)}` : 'مااتصرفش من الفيزا حاجة'}</small></div>
       </div>
     </div>` : ''}
     <div class="card">

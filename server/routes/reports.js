@@ -256,8 +256,14 @@ module.exports = function reportRoutes(api, db) {
       card_in: sumDays('card'), card_out: outside.card || 0,
       instapay_in: round2(sumDays('instapay') + sumDays('wallet')), instapay_out: outside.instapay || 0,
     };
-    moneyLeft.cash = round2(moneyLeft.cash_in - moneyLeft.cash_out);
-    moneyLeft.card = round2(moneyLeft.card_in - moneyLeft.card_out);
+    // Month expenses are paid from the Visa money first, the rest from the cash
+    const spent = round2(moneyLeft.cash_out + moneyLeft.card_out);
+    moneyLeft.spent = spent;
+    moneyLeft.from_card = round2(Math.min(Math.max(0, moneyLeft.card_in), spent));
+    moneyLeft.from_cash = round2(spent - moneyLeft.from_card);
+    moneyLeft.card = round2(moneyLeft.card_in - moneyLeft.from_card);
+    moneyLeft.cash = round2(moneyLeft.cash_in - moneyLeft.from_cash);
+    moneyLeft.total = round2(moneyLeft.cash + moneyLeft.card);
     moneyLeft.instapay = round2(moneyLeft.instapay_in - moneyLeft.instapay_out);
     res.json({
       from, to,

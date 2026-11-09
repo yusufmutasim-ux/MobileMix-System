@@ -68,9 +68,11 @@ test('report: cash left after month expenses, and the Visa money kept apart', as
   assert.equal(e.data.paid_with, 'card');
   db.prepare("UPDATE expenses SET created_at = '2026-11-20 16:00:00' WHERE id IN (?, ?)").run(a.data.id, e.data.id);
   const r = (await admin.get('/reports/finance?from=2026-11-20&to=2026-11-20')).data.money_left;
-  assert.equal(r.cash, 4000);
-  assert.equal(r.card, 2150);
-  assert.equal(r.card_out, 850);
+  // 1,850 of expenses: all from the 3,000 Visa first; the cash stays whole
+  assert.equal(r.from_card, 1850);
+  assert.equal(r.card, 1150);
+  assert.equal(r.cash, 5000);
+  assert.equal(r.total, 6150);
 });
 
 test('InstaPay becomes cash; reconciled days still match the book; the Visa line is not an expense', () => {

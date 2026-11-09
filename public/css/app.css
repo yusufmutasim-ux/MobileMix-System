@@ -2084,3 +2084,5 @@ body {
 .ml.cash { background: var(--neon, #D4F04A); color: #141414; }
 .ml.card { background: #161617; color: #fff; }
 :root[data-theme="dark"] .ml.insta { background: rgba(255,255,255,.06); }
+.ml.total { background: rgba(255,255,255,.85); color: #141414; }
+:root[data-theme="dark"] .ml.total { background: rgba(255,255,255,.08); color: #fff; }
