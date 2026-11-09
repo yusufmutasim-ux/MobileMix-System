@@ -1878,3 +1878,19 @@ tr.clickable { cursor: pointer; }
 .more-rep > summary { list-style: none; cursor: pointer; display: flex; align-items: center; }
 .more-rep > summary h2 { margin: 0; font-size: 16px; }
 .more-rep[open] > summary { margin-bottom: 14px; }
+
+/* Settings: the extra sections fold away */
+.settings-nav .adv { display: none; }
+.settings-nav.show-adv .adv { display: flex; }
+.settings-nav .adv-toggle { opacity: .75; border-top: 1px dashed var(--line, #e5e5e5); border-radius: 0; margin-top: 4px; padding-top: 12px; }
+.mod-list { display: grid; gap: 8px; }
+
+/* A small "more" menu next to the main buttons */
+.more-menu { position: relative; }
+.more-menu > summary { list-style: none; cursor: pointer; }
+.more-menu > summary::-webkit-details-marker { display: none; }
+.more-pop { position: absolute; inset-inline-end: 0; top: calc(100% + 6px); z-index: 30; min-width: 230px; padding: 6px; border-radius: 16px;
+  background: var(--snow, #fff); box-shadow: 0 12px 40px rgba(0,0,0,.14); border: 1px solid var(--line, #eee); display: grid; gap: 2px; }
+.more-pop button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: none; border: 0; color: var(--ink); font: inherit; text-align: start; cursor: pointer; }
+.more-pop button:hover { background: var(--cloud, #f3f3f3); }
+.more-pop button svg { width: 18px; height: 18px; }

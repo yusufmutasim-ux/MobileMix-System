@@ -12,6 +12,11 @@ const { shopDayEnd } = require('./util');
 
 const FIXES = [
   {
+    // The owner doesn't use customers / installments, purchases or stocktake: hide them (Settings → الأقسام brings them back)
+    id: '2026-11-simple-modules',
+    settings: { hidden_modules: 'customers,purchases,stocktake' },
+  },
+  {
     id: '2026-11-month-1-8',
     // الكاش في الدرج آخر كل يوم (from the owner's sheet)
     days: {
@@ -68,6 +73,9 @@ function applyOwnerFixes(db, fixes = FIXES) {
           .run(kind, Math.abs(diff), `تعديل — حسب الدفتر ${target}`, admin.id, at);
         adjustClosing(db, at, diff, kind === 'in' ? 'moves_in' : 'moves_out');
         report.push({ day, system: have, book: target, diff });
+      }
+      for (const [k, v] of Object.entries(f.settings || {})) {
+        db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, v);
       }
       for (const e of f.expenses || []) {
         db.prepare('INSERT INTO expenses (category, amount, from_drawer, note, user_id, period, created_at) VALUES (?, ?, 0, ?, ?, ?, ?)')

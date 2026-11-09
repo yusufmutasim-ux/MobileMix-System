@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow, modal, timePick } from '../core.js';
+import { api, state, can, icon, esc, fmtDate, toast, busy, formData, emptyRow, modal, timePick, MODULES, modOn } from '../core.js';
 import { LABEL_SIZES, printSettings } from '../print.js';
 import { storeSettings } from '../store-settings.js';
 import { pushSupported, pushHint, subscribePush, unsubscribePush, getPosition, locationPermission, locationHelp } from '../live.js';
@@ -19,6 +19,13 @@ export async function render(el, { query } = {}) {
 
   // Each section: id, menu label, icon, one-line description, and its content (empty = hidden for this user)
   const SECTIONS = [
+    { id: 'modules', label: 'أقسام السيستم', icon: 'layers', desc: 'اختار اللي بتستخدمه بس — الباقي يختفي من القوايم', html: admin ? `
+      <div class="card">
+        <div class="card-head"><h2>${icon('layers')} الأقسام اللي بتظهر</h2></div>
+        <p class="muted small" style="margin-top:0">شيل العلامة من أي قسم مش بتستخدمه — هيختفي من القوايم والصفحة الرئيسية وشاشة البيع. بياناته مش بتتمسح، وتقدر ترجعه في أي وقت.</p>
+        <div class="mod-list">${Object.entries(MODULES).map(([k, v]) => `<label class="rule ${modOn(k) ? 'on' : ''}"><input type="checkbox" data-mod="${k}" ${modOn(k) ? 'checked' : ''}><span class="switch"></span><span><b>${v}</b></span></label>`).join('')}</div>
+        <button class="btn btn-primary" id="save-mods" style="margin-top:12px">${icon('check')} حفظ</button>
+      </div>` : '', simple: true },
     { id: 'shop', label: 'المحل والفواتير', icon: 'home', desc: 'اسم المحل وبياناته، والفاتورة والليبل', html: admin ? `
       <div class="card">
         <div class="card-head"><h2>${icon('home')} بيانات المحل</h2></div>
@@ -45,7 +52,7 @@ export async function render(el, { query } = {}) {
         </form>
       </div>` : '' },
 
-    { id: 'sales', label: 'البيع والصيانة', icon: 'cart', desc: 'الخصم، تذاكر الصيانة، وأنواع المصروفات', html: admin ? `
+    { id: 'sales', label: 'البيع والمصروفات', icon: 'cart', desc: 'الخصم، أنواع المصروفات، وتذاكر الصيانة', html: admin ? `
       <div class="card">
         <div class="card-head"><h2>${icon('cart')} البيع</h2></div>
         <form class="form-grid settings-form" onsubmit="return false">
@@ -91,7 +98,7 @@ export async function render(el, { query } = {}) {
         <div id="loc-test-out" style="margin-top:12px"></div>
       </div>` },
 
-    { id: 'notify', label: 'الإشعارات', icon: 'bell', desc: 'إشعارات الموبايل، ملخص اليوم، وتذكير الأقساط', html: `
+    { adv: true, id: 'notify', label: 'الإشعارات', icon: 'bell', desc: 'إشعارات الموبايل، ملخص اليوم، وتذكير الأقساط', html: `
       ${can('notifications.receive') ? '<div class="card" id="notif-card"><div class="empty">…</div></div>' : ''}
       ${admin ? `<div class="card">
         <div class="card-head"><h2>${icon('calendar')} تذكيرات تلقائية</h2></div>
@@ -103,9 +110,9 @@ export async function render(el, { query } = {}) {
         </form>
       </div>` : ''}` },
 
-    { id: 'store', label: 'المتجر الأونلاين', icon: 'globe', desc: 'الموقع، الدفع والتوصيل', html: admin ? '<div id="store-card"><div class="card"><div class="empty">…</div></div></div>' : '' },
-    { id: 'print', label: 'الطباعة', icon: 'print', desc: 'الطباعة من الموبايل على طابعة الكمبيوتر', html: '<div class="card" id="print-card"><div class="empty">…</div></div>' },
-    { id: 'account', label: 'حسابي', icon: 'key', desc: 'كلمة السر والأجهزة المتصلة', html: `
+    { adv: true, id: 'store', label: 'المتجر الأونلاين', icon: 'globe', desc: 'الموقع، الدفع والتوصيل', html: admin && modOn('orders') ? '<div id="store-card"><div class="card"><div class="empty">…</div></div></div>' : '' },
+    { adv: true, id: 'print', label: 'الطباعة', icon: 'print', desc: 'الطباعة من الموبايل على طابعة الكمبيوتر', html: '<div class="card" id="print-card"><div class="empty">…</div></div>' },
+    { adv: true, id: 'account', label: 'حسابي', icon: 'key', desc: 'كلمة السر والأجهزة المتصلة', html: `
       <div class="card">
         <div class="card-head"><h2>${icon('key', '')} تغيير كلمة السر</h2></div>
         <form class="form-grid" id="pw" onsubmit="return false">
@@ -121,7 +128,7 @@ export async function render(el, { query } = {}) {
         <button class="btn btn-outline" id="logout-others">تسجيل خروج من كل الأجهزة التانية</button>
       </div>` },
 
-    { id: 'data', label: 'النسخ الاحتياطي والبيانات', icon: 'download', desc: 'النسخ التلقائية، الاسترجاع، الدخول من برة، والبدء من جديد', html: `
+    { adv: true, id: 'data', label: 'النسخ الاحتياطي والبيانات', icon: 'download', desc: 'النسخ التلقائية، الاسترجاع، الدخول من برة، والبدء من جديد', html: `
       ${can('backup') ? `
       <div class="card">
         <div class="card-head"><h2>${icon('download', '')} النسخ الاحتياطي</h2></div>
@@ -148,7 +155,7 @@ export async function render(el, { query } = {}) {
         <div id="backup-list"><div class="muted small">…</div></div>
       </div>` : ''}` },
 
-    { id: 'log', label: 'سجل العمليات', icon: 'history', desc: 'مين عمل إيه وإمتى', html: can('audit.view') ? `
+    { adv: true, id: 'log', label: 'سجل العمليات', icon: 'history', desc: 'مين عمل إيه وإمتى', html: can('audit.view') ? `
       <div class="card">
         <div class="card-head"><h2>${icon('history', '')} سجل العمليات</h2><span class="muted small">آخر 300 عملية</span></div>
         <div class="table-wrap" style="max-height:620px;overflow:auto"><table class="table">
@@ -159,11 +166,17 @@ export async function render(el, { query } = {}) {
   let tab = query?.get('tab');
   try { tab ||= localStorage.getItem('mm_settings_tab'); } catch { /* ignore */ }
   if (!SECTIONS.some((x) => x.id === tab)) tab = SECTIONS[0].id;
+  // The extra sections stay folded unless opened (or one of them is the open tab)
+  let showAdv = SECTIONS.find((x) => x.id === tab)?.adv || false;
+  try { showAdv ||= localStorage.getItem('mm_settings_adv') === '1'; } catch { /* ignore */ }
+  const navBtn = (x, cls = '') => `<button type="button" data-tab="${x.id}" class="${cls} ${x.id === tab ? 'on' : ''}">${icon(x.icon)}<span><b>${x.label}</b><small>${x.desc}</small></span></button>`;
 
   el.innerHTML = `
     <div class="settings-layout">
-      <nav class="settings-nav" aria-label="أقسام الإعدادات">
-        ${SECTIONS.map((x) => `<button type="button" data-tab="${x.id}" class="${x.id === tab ? 'on' : ''}">${icon(x.icon)}<span><b>${x.label}</b><small>${x.desc}</small></span></button>`).join('')}
+      <nav class="settings-nav ${showAdv ? 'show-adv' : ''}" aria-label="أقسام الإعدادات">
+        ${SECTIONS.filter((x) => !x.adv).map(navBtn).join('')}
+        <button type="button" class="adv-toggle" id="adv-toggle">${icon('settings')}<span><b>${showAdv ? 'إخفاء الإعدادات الإضافية' : 'إعدادات أكتر'}</b><small>الإشعارات، الطباعة، النسخ الاحتياطي…</small></span></button>
+        ${SECTIONS.filter((x) => x.adv).map((x) => navBtn(x, 'adv')).join('')}
       </nav>
       <div class="settings-panes">
         ${SECTIONS.map((x) => `<section class="settings-pane ${x.id === tab ? '' : 'hidden'}" data-pane="${x.id}">
@@ -183,6 +196,20 @@ export async function render(el, { query } = {}) {
     if (matchMedia('(max-width: 860px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   el.querySelector('.settings-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab); });
+  el.querySelector('#adv-toggle').addEventListener('click', (e) => {
+    const nav = el.querySelector('.settings-nav');
+    const on = nav.classList.toggle('show-adv');
+    e.currentTarget.querySelector('b').textContent = on ? 'إخفاء الإعدادات الإضافية' : 'إعدادات أكتر';
+    try { localStorage.setItem('mm_settings_adv', on ? '1' : '0'); } catch { /* ignore */ }
+  });
+  // Which parts of the system show
+  el.querySelectorAll('[data-mod]').forEach((c) => c.addEventListener('change', () => c.closest('.rule').classList.toggle('on', c.checked)));
+  el.querySelector('#save-mods')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    const off = [...el.querySelectorAll('[data-mod]')].filter((c) => !c.checked).map((c) => c.dataset.mod).join(',');
+    state.settings = await api.put('/settings', { hidden_modules: off });
+    toast('تم — القوايم اتحدثت', 'ok');
+    setTimeout(() => location.reload(), 600);
+  }));
 
   // Every small settings form saves just its own fields
   el.querySelectorAll('.settings-form .save-settings').forEach((btn) => btn.addEventListener('click', (e) => busy(e.currentTarget, async () => {

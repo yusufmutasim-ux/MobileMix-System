@@ -7,8 +7,15 @@ export async function render(el, { query, actions }) {
   actions.innerHTML = `
     <button class="btn btn-primary" id="close">${icon('check')} قفّل الدرج</button>
     ${can('expenses.create') ? `<button class="btn btn-outline" id="exp">${icon('expense')} مصروف</button>` : ''}
-    ${manager ? `<button class="btn btn-outline" id="forgot-top">${icon('plus')} نسيت حاجة؟</button>` : ''}
-    ${manager ? `<button class="btn btn-outline" id="in">${icon('arrowIn')} إيداع</button><button class="btn btn-outline" id="out">${icon('arrowOut')} سحب</button>` : ''}`;
+    ${manager ? `<details class="more-menu"><summary class="btn btn-outline">المزيد ▾</summary><div class="more-pop">
+      <button type="button" id="out">${icon('arrowOut')} سحب فلوس من الدرج</button>
+      <button type="button" id="in">${icon('arrowIn')} إيداع فلوس في الدرج</button>
+      <button type="button" id="forgot-top">${icon('plus')} نسيت حاجة قبل آخر تقفيل؟</button></div></details>` : ''}`;
+  // The little menu closes after a choice or a click elsewhere
+  const closeMenu = () => actions.querySelector('.more-menu')?.removeAttribute('open');
+  actions.querySelector('.more-pop')?.addEventListener('click', closeMenu);
+  const outside = (e) => { if (!e.target.closest('.more-menu')) closeMenu(); };
+  document.addEventListener('click', outside);
 
   let lastClose = null;
   // The oldest forgotten day first: each closing covers from the last one to the end of that day
@@ -56,13 +63,12 @@ export async function render(el, { query, actions }) {
       ${manager ? `<div class="card" style="margin-top:18px">
         <div class="card-head"><h2>التقفيلات السابقة</h2>${d.closings.length ? `<button class="btn btn-outline btn-sm" id="forgot">${icon('plus')} نسيت حاجة قبل آخر تقفيل؟</button>` : ''}</div>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>التاريخ</th><th>الموظف</th><th>المفروض</th><th>اتعد</th><th>الفرق</th><th>اتساب في الدرج</th><th>ملاحظة</th><th></th></tr></thead>
+          <thead><tr><th>اليوم</th><th>قفلها</th><th>اتعد</th><th>الفرق</th><th></th></tr></thead>
           <tbody>${d.closings.length ? d.closings.map((c) => `<tr>
             <td class="small">${fmtShopTime(c.closed_at)}</td><td>${esc(c.user_name || '')}</td>
-            <td>${money(c.expected)}</td><td>${money(c.counted)}</td>
-            <td>${Math.abs(c.diff) < 0.5 ? '<span class="pill pill-ok">مظبوط</span>' : c.diff < 0 ? `<span class="pill pill-bad">عجز ${n(-c.diff)}</span>` : `<span class="pill pill-warn">زيادة ${n(c.diff)}</span>`}</td>
-            <td>${money(c.left_in_drawer)}</td><td class="small">${esc(c.note || '')}</td>
-            <td class="end"><button class="btn btn-ghost btn-sm" data-edit-close="${c.id}">${icon('edit')} تعديل</button></td></tr>`).join('') : emptyRow(8, 'لسه مفيش تقفيلات')}</tbody>
+            <td>${money(c.counted)}</td>
+            <td>${Math.abs(c.diff) < 0.5 ? '<span class="pill pill-ok">مظبوط</span>' : c.diff < 0 ? `<span class="pill pill-bad">عجز ${n(-c.diff)}</span>` : `<span class="pill pill-warn">زيادة ${n(c.diff)}</span>`}${c.note ? `<div class="muted small">${esc(c.note)}</div>` : ''}</td>
+            <td class="end"><button class="btn btn-ghost btn-sm" data-edit-close="${c.id}">${icon('edit')} تعديل</button></td></tr>`).join('') : emptyRow(5, 'لسه مفيش تقفيلات')}</tbody>
         </table></div>
       </div>` : ''}`;
     lastClose = d.closings[0]?.closed_at || null;
@@ -94,5 +100,5 @@ export async function render(el, { query, actions }) {
   if (query.get('forgot') && manager) openForgot();
   if (query.get('closing') && manager) setTimeout(() => el.querySelector(`[data-edit-close="${query.get('closing')}"]`)?.click(), 50);
   if (query.get('close')) closeDrawerModal().then((ok) => ok && load());
-  return () => document.removeEventListener('mm:drawer-changed', onChange);
+  return () => { document.removeEventListener('mm:drawer-changed', onChange); document.removeEventListener('click', outside); };
 }

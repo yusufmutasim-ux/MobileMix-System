@@ -130,6 +130,10 @@ document.addEventListener('change', (e) => {
   hidden.dispatchEvent(new Event('input', { bubbles: true }));
 });
 
+/** Parts of the system the owner turned off (hidden from menus and the home page; still there if turned back on). */
+export const MODULES = { repairs: 'الصيانة', orders: 'طلبات الموقع (المتجر)', customers: 'العملاء والتقسيط', purchases: 'المشتريات والموردين', stocktake: 'الجرد' };
+export const modOn = (m) => !String(state.settings?.hidden_modules || '').split(',').map((x) => x.trim()).includes(m);
+
 export const ROLE_NAMES = { admin: 'مدير', manager: 'مشرف', cashier: 'كاشير', technician: 'فني صيانة' };
 export const PAY_NAMES = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
 export const COLLECT_METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay' };

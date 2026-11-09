@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, money, n, modal, toast, toastErr, busy, debounce, PAY_NAMES, moneyText, todayStr, waLink } from '../core.js';
+import { api, state, can, icon, esc, money, n, modal, toast, toastErr, busy, debounce, PAY_NAMES, moneyText, todayStr, waLink, modOn } from '../core.js';
 import { printInvoice } from '../print.js';
 import { isOffline, getCatalog, takeFromCatalog, queueSale, newRef, localStamp } from '../offline.js';
 
@@ -61,16 +61,14 @@ export async function render(el, { query } = {}) {
         <button class="btn btn-ghost btn-icon cart-close" id="cart-close" title="رجوع للمنتجات">${icon('x')}</button></div>
       <div class="lines" id="lines"></div>
       <div class="totals">
-        <div class="form-grid" style="gap:10px;margin-bottom:10px">
-          <label class="field"><span>خصم (مبلغ)</span><input class="input num" id="discount" type="number" min="0" step="any" value="0"></label>
-          <label class="field"><span>المدفوع</span><input class="input num" id="paid" type="number" min="0" step="any" placeholder="= الإجمالي"></label>
-        </div>
         <div class="pay-methods" id="pay">
-          ${Object.entries(PAY_NAMES).map(([k, v]) => `<button data-p="${k}" class="${k === 'cash' ? 'on' : ''}">${v}</button>`).join('')}
+          ${Object.entries(PAY_NAMES).filter(([k]) => k !== 'installment' || modOn('customers')).map(([k, v]) => `<button data-p="${k}" class="${k === 'cash' ? 'on' : ''}">${v}</button>`).join('')}
         </div>
         <details style="margin-top:10px" id="cust-box">
-          <summary class="muted small" style="cursor:pointer">بيانات العميل وملاحظات</summary>
+          <summary class="muted small" style="cursor:pointer">خصم، المدفوع، وبيانات العميل</summary>
           <div class="form-grid" style="gap:10px;margin-top:10px">
+            <label class="field"><span>خصم (مبلغ)</span><input class="input num" id="discount" type="number" min="0" step="any" value="0"></label>
+            <label class="field"><span>المدفوع (عشان يحسب الباقي)</span><input class="input num" id="paid" type="number" min="0" step="any" placeholder="= الإجمالي"></label>
             <label class="field"><span>التليفون</span><input class="input ltr" id="cphone" inputmode="tel"></label>
             <label class="field"><span>اسم العميل</span><input class="input" id="cname"></label>
             <div class="full small" id="cust-info"></div>
@@ -275,6 +273,7 @@ export async function render(el, { query } = {}) {
       if ($('#paid').value === '') $('#paid').value = 0;
       $('#inst-on').checked = true;
       $('#inst').classList.remove('hidden');
+      $('#cust-box').open = true;
       $('#paid').focus();
     }
     draw();

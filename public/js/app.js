@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, LOGO_FULL, ROLE_NAMES, toastErr, modal, busy, toast, currentTheme, setTheme, confirmBox, money, fmtDate } from './core.js';
+import { api, state, can, icon, esc, LOGO_FULL, ROLE_NAMES, toastErr, modal, busy, toast, currentTheme, setTheme, confirmBox, money, fmtDate, modOn } from './core.js';
 import { enterView, softly } from './motion.js';
 import { initShift, initNotifications } from './live.js';
 import { openSearch, initSearchKeys } from './search.js';
@@ -10,13 +10,13 @@ const NAV = [
   { path: '/', title: 'الرئيسية', icon: 'home', view: 'dashboard' },
   { path: '/pos', title: 'نقطة البيع', short: 'البيع', icon: 'cart', view: 'pos', perm: 'sales.create' },
   { path: '/sales', title: 'الفواتير', icon: 'receipt', view: 'sales', perm: 'sales.create' },
-  { path: '/repairs', title: 'الصيانة', icon: 'wrench', view: 'repairs', perm: 'repairs.view' },
-  { path: '/customers', title: 'العملاء', icon: 'user', view: 'customers', perm: 'customers.view' },
-  { path: '/orders', title: 'طلبات الموقع', short: 'الطلبات', icon: 'globe', view: 'orders', perm: 'orders.manage' },
+  { path: '/repairs', title: 'الصيانة', icon: 'wrench', view: 'repairs', perm: 'repairs.view', mod: 'repairs' },
+  { path: '/customers', title: 'العملاء', icon: 'user', view: 'customers', perm: 'customers.view', mod: 'customers' },
+  { path: '/orders', title: 'طلبات الموقع', short: 'الطلبات', icon: 'globe', view: 'orders', perm: 'orders.manage', mod: 'orders' },
   { sep: 'المخزن' },
   { path: '/products', title: 'المنتجات', icon: 'box', view: 'products', perm: 'products.view' },
-  { path: '/purchases', title: 'المشتريات والموردين', short: 'المشتريات', icon: 'truck', view: 'purchases', perm: 'purchases.manage' },
-  { path: '/stocktake', title: 'الجرد', icon: 'clipboard', view: 'stocktake', perm: 'stocktake' },
+  { path: '/purchases', title: 'المشتريات والموردين', short: 'المشتريات', icon: 'truck', view: 'purchases', perm: 'purchases.manage', mod: 'purchases' },
+  { path: '/stocktake', title: 'الجرد', icon: 'clipboard', view: 'stocktake', perm: 'stocktake', mod: 'stocktake' },
   { path: '/labels', title: 'ليبلات الأسعار', icon: 'tag', view: 'labels', perm: 'labels.print' },
   { sep: 'الحسابات' },
   { path: '/drawer', title: 'الدرج (الخزنة)', short: 'الدرج', icon: 'drawer', view: 'drawer', perm: 'drawer.close' },
@@ -170,7 +170,7 @@ async function route() {
 
 function shell() {
   const u = state.user;
-  const links = NAV.filter((n) => n.sep || !n.perm || can(n.perm));
+  const links = NAV.filter((n) => n.sep || ((!n.perm || can(n.perm)) && (!n.mod || modOn(n.mod))));
   // Drop section titles that have no links under them
   const visible = links.filter((n, i) => !n.sep || (links[i + 1] && !links[i + 1].sep));
   document.getElementById('app').innerHTML = `
@@ -401,7 +401,7 @@ async function lockedOut() {
 /** The 4 most-used screens this person can open, for the phone's bottom bar. */
 function tabs() {
   const order = ['/', '/pos', '/repairs', '/sales', '/products', '/reports'];
-  return order.map((p) => NAV.find((n) => n.path === p && (!n.perm || can(n.perm)))).filter(Boolean).slice(0, 4);
+  return order.map((p) => NAV.find((n) => n.path === p && (!n.perm || can(n.perm)) && (!n.mod || modOn(n.mod)))).filter(Boolean).slice(0, 4);
 }
 
 /**

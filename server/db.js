@@ -517,6 +517,7 @@ const DEFAULT_SETTINGS = {
   store_strip: '',                 // offers line across the top of the store
   store_strip_color: '#141414',
   installment_reminders: '1',
+  hidden_modules: '',      // parts of the system turned off: repairs,orders,customers,purchases,stocktake
   day_end_hour: '3',       // the shop's day ends at 3 AM: sales / expenses / closing after midnight count on the day before
   late_grace: '15',        // minutes after the shift start before someone counts as late
   absence_alert: '1',

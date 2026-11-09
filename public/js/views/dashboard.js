@@ -1,4 +1,4 @@
-import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText, modal, toast, shopDay, todayStr, t12 } from '../core.js';
+import { api, state, can, icon, esc, money, n, fmtDate, STATUS_PILLS, PAY_NAMES, emptyRow, moneyText, modal, toast, shopDay, todayStr, t12, modOn } from '../core.js';
 import { currentShift, zoneOn, locationPermission, getPosition, locationHelp } from '../live.js';
 
 export async function render(el, { actions }) {
@@ -25,7 +25,7 @@ export async function render(el, { actions }) {
         const v = methods[m] || { total: 0, count: 0 };
         return `<a href="#/sales?method=${m}" class="dm ${METHOD_STYLE[m]}"><span>${PAY_NAMES[m]}</span><b>${n(v.total)}</b><small>${v.count} فاتورة</small></a>`;
       }).join('')}</div>
-      ${methods.card || methods.instapay || methods.wallet ? '<p class="muted small" style="margin:10px 0 0">الفيزا وInstaPay والمحفظة مش في الدرج — في البنك / الحساب.</p>' : ''}
+
     </div>` : '';
 
   // 2) Drawer and profit
@@ -42,7 +42,7 @@ export async function render(el, { actions }) {
       ${d.open_days?.length ? `<a class="missed-pill" href="#/drawer">${icon('alert')} لسه ماتقفلش درج ${d.open_days.length > 1 ? `${d.open_days.length} أيام` : d.open_days[0] === todayStr(-1) ? 'امبارح' : `يوم ${Number(d.open_days[0].slice(8))}/${Number(d.open_days[0].slice(5, 7))}`} — قفّله</a>` : ''}
       <div class="drawer-acts">${can('drawer.close') ? `<a class="btn btn-primary btn-sm" href="#/drawer?close=1">${icon('check')} قفّل الدرج</a>` : ''}
         ${d.drawer !== undefined ? `<a class="btn btn-ghost btn-sm" href="#/drawer">التفاصيل</a>` : ''}
-        ${can('drawer.view') ? `<a class="btn btn-ghost btn-sm" href="#/drawer?forgot=1" title="سجّل مصروف أو يومية أو سحب اتنسى قبل آخر تقفيل">نسيت حاجة؟</a>` : ''}</div>
+</div>
     </div>`);
   }
   if (d.today.profit !== undefined) side.push(`<a href="#/reports" class="kpi bg-lavender" style="color:inherit"><div class="label">${icon('trend')} ربح النهارده</div>
@@ -59,10 +59,10 @@ export async function render(el, { actions }) {
 
   // 4) Four quick actions
   const quick = [
-    can('repairs.create') && `<a href="#/repairs?new=1" class="bg-aqua">${icon('wrench')}استلام صيانة</a>`,
+    can('repairs.create') && modOn('repairs') && `<a href="#/repairs?new=1" class="bg-aqua">${icon('wrench')}استلام صيانة</a>`,
     can('expenses.create') && `<a href="#/expenses?new=1" class="bg-peony">${icon('expense')}مصروف</a>`,
     can('products.edit') && `<a href="#/products?new=1" class="bg-sky">${icon('box')}إضافة منتج</a>`,
-    can('purchases.manage') && `<a href="#/purchases?new=1" class="bg-mint">${icon('truck')}شراء بضاعة</a>`,
+    can('purchases.manage') && modOn('purchases') && `<a href="#/purchases?new=1" class="bg-mint">${icon('truck')}شراء بضاعة</a>`,
     can('labels.print') && `<a href="#/labels" class="bg-sky">${icon('tag')}ليبلات</a>`,
     !can('reports.view') && can('sales.create') && `<a href="#/sales" class="bg-lavender">${icon('receipt')}فواتيري</a>`,
   ].filter(Boolean).slice(0, 4).join('');
