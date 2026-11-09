@@ -1855,3 +1855,5 @@ tr.clickable { cursor: pointer; }
 .close-items > b { display: block; margin-bottom: 6px; }
 .ci-end { display: inline-flex; align-items: center; gap: 4px; }
 .ci-end .btn svg { width: 16px; height: 16px; }
+.non-cash { margin-top: 10px; padding: 8px 12px; border-radius: 12px; background: var(--cloud, #f3f3f3); }
+.non-cash .line-row { padding: 4px 0; border: 0; }

@@ -80,7 +80,15 @@ function drawerNow(db, upTo = null) {
     moves_out: -one(`SELECT SUM(amount) AS v FROM cash_moves WHERE kind = 'out' AND ${range}`),
   };
   const expected = round2(opening + Object.values(parts).reduce((a, b) => a + b, 0));
-  return { from: last ? from : null, to, opening: round2(opening), parts, expected, last: last || null };
+  // Money that came in the same period but not as cash (on the card machine / InstaPay / wallet): shown, not counted
+  const nonCash = {};
+  for (const r of db.prepare(`SELECT method, SUM(amount) AS v, COUNT(*) AS n FROM (
+        SELECT payment_method AS method, MIN(paid, total) AS amount FROM sales WHERE payment_method NOT IN ${IN_CASH} AND ${range}
+        UNION ALL SELECT method, amount FROM sale_payments WHERE method <> 'cash' AND ${range}
+        UNION ALL SELECT method, amount FROM repair_payments WHERE method <> 'cash' AND ${range})
+      GROUP BY method`).all(from, to, from, to, from, to)) if (r.v) nonCash[r.method] = round2(r.v);
+  const salesTotal = round2(db.prepare(`SELECT SUM(total) AS v FROM sales WHERE ${range}`).get(from, to).v || 0);
+  return { from: last ? from : null, to, opening: round2(opening), parts, expected, non_cash: nonCash, sales_total: salesTotal, last: last || null };
 }
 
 /**

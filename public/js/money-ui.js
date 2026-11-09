@@ -110,6 +110,11 @@ export function drawerBreakdown(d, totalLabel = 'المفروض في الدرج 
     <div class="line-row"><span>اللي كان في الدرج${d.from ? '' : ' (أول مرة)'}</span><b class="num">${n(d.opening)}</b></div>
     ${rows || '<div class="muted small" style="padding:6px 0">مفيش حركة كاش من آخر تقفيل</div>'}
     <div class="line-row total"><span>${totalLabel}</span><b>${money(d.expected)}</b></div>
+    ${d.non_cash && Object.keys(d.non_cash).length ? `<div class="non-cash">
+      <div class="muted small">مش في الدرج (اتدفعت من غير كاش):</div>
+      ${Object.entries(d.non_cash).map(([k, v]) => `<div class="line-row"><span>${COLLECT_METHODS[k] || k}</span><b class="num">${n(v)}</b></div>`).join('')}
+      ${d.sales_total ? `<div class="line-row"><span class="muted">إجمالي المبيعات (كاش + غيره)</span><b class="num muted">${n(d.sales_total)}</b></div>` : ''}
+    </div>` : ''}
   </div>`;
 }
 
