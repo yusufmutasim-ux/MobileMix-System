@@ -103,3 +103,18 @@ test('InstaPay becomes cash; reconciled days still match the book; the Visa line
   assert.equal(c.diff, 0);
   assert.ok(!db.prepare("SELECT 1 FROM expenses WHERE note = 'فيزا' AND amount = 850").get());
 });
+
+test('the month money matches what the owner counted (1,100 cash, 875 Visa)', async () => {
+  const { matchMonthMoney } = require('../server/owner-fixes');
+  const { today } = require('../server/util');
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  const from = today().slice(0, 8) + '01';
+  const before = (await admin.get(`/reports/finance?from=${from}&to=${today()}`)).data.money_left;
+  const r = matchMonthMoney(db, 1, { from, cash: 1100, card: 875 });
+  assert.equal(r.cash_system, before.cash);
+  assert.equal(r.card_system, before.card);
+  const after = (await admin.get(`/reports/finance?from=${from}&to=${today()}`)).data.money_left;
+  assert.equal(after.cash, 1100);
+  assert.equal(after.card, 875);
+});

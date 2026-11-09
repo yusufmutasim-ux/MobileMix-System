@@ -68,6 +68,11 @@ const FIXES = [
         .run(adminId, rent?.created_at || '2026-11-09 12:00:00');
     },
   },
+  {
+    // The owner counted the month's money (today included): 1,100 cash in hand and 875 still on the Visa machine
+    id: '2026-11-counted-1100-875',
+    run(db, adminId) { matchMonthMoney(db, adminId, { from: '2026-11-01', cash: 1100, card: 875 }); },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -137,6 +142,44 @@ function instapayToCash(db) {
   db.prepare("UPDATE expenses SET paid_with = 'cash' WHERE paid_with = 'instapay'").run();
 }
 
+/**
+ * Make the report's "money with you" equal what the owner counted, from `from` up to today: the difference
+ * is added as "تعديل" (an expense from the month's money if there's less than the system says,
+ * cash put in if there's more; for Visa, an adjustment out of the Visa money).
+ */
+function matchMonthMoney(db, adminId, { from, cash, card }) {
+  const { today } = require('./util');
+  const to = today();
+  const one = (sql, ...a) => Number(db.prepare(sql).get(...a).v || 0);
+  const days = db.prepare(`SELECT DISTINCT d FROM (SELECT bday(created_at) AS d FROM sales UNION SELECT bday(created_at) FROM sale_payments
+      UNION SELECT bday(created_at) FROM repair_payments UNION SELECT bday(created_at) FROM expenses UNION SELECT bday(created_at) FROM cash_moves)
+      WHERE d BETWEEN ? AND ?`).all(from, to).map((r) => r.d);
+  const adjust = (day) => one("SELECT SUM(CASE WHEN kind = 'in' THEN amount ELSE -amount END) AS v FROM cash_moves WHERE note LIKE 'تعديل%' AND bday(created_at) = ?", day);
+  const cashIn = round2(days.reduce((a, d) => a + dayCash(db, d) + adjust(d), 0));
+  const cashOut = one("SELECT SUM(amount) AS v FROM expenses WHERE from_drawer = 0 AND COALESCE(paid_with, 'cash') = 'cash' AND bday(created_at) BETWEEN ? AND ?", from, to);
+  const cardIn = one(`SELECT SUM(a) AS v FROM (SELECT MIN(paid, total) AS a FROM sales WHERE payment_method = 'card' AND bday(created_at) BETWEEN ? AND ?
+      UNION ALL SELECT amount FROM sale_payments WHERE method = 'card' AND bday(created_at) BETWEEN ? AND ?
+      UNION ALL SELECT amount FROM repair_payments WHERE method = 'card' AND bday(created_at) BETWEEN ? AND ?)`, from, to, from, to, from, to);
+  const cardOut = one("SELECT SUM(amount) AS v FROM expenses WHERE from_drawer = 0 AND paid_with = 'card' AND bday(created_at) BETWEEN ? AND ?", from, to);
+  const at = db.prepare("SELECT datetime('now','localtime') AS t").get().t;
+  const out = { cash_system: round2(cashIn - cashOut), card_system: round2(cardIn - cardOut) };
+  const cashDiff = round2(out.cash_system - cash);
+  if (cashDiff > 0.5) {
+    db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                VALUES ('تعديل', ?, 0, 'cash', ?, ?, ?, ?)`).run(cashDiff, `تعديل — الكاش اللي معايا ${cash}`, adminId, at.slice(0, 7), at);
+  } else if (cashDiff < -0.5) {
+    db.prepare('INSERT INTO cash_moves (kind, amount, note, user_id, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run('in', -cashDiff, `تعديل — الكاش اللي معايا ${cash}`, adminId, at);
+  }
+  const cardDiff = round2(out.card_system - card);
+  if (Math.abs(cardDiff) > 0.5) {
+    // More on the books than on the machine: out of the Visa money; less: a negative entry brings it up
+    db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                VALUES ('تعديل', ?, 0, 'card', ?, ?, ?, ?)`).run(cardDiff, `تعديل — الفيزا على الماكينة ${card}`, adminId, at.slice(0, 7), at);
+  }
+  return { ...out, cash_diff: cashDiff, card_diff: cardDiff };
+}
+
 function applyOwnerFixes(db, fixes = FIXES) {
   const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
   if (!admin) return [];
@@ -166,4 +209,4 @@ function applyOwnerFixes(db, fixes = FIXES) {
   return report;
 }
 
-module.exports = { applyOwnerFixes, dayCash, reconcileDays, instapayToCash, FIXES };
+module.exports = { applyOwnerFixes, dayCash, reconcileDays, instapayToCash, matchMonthMoney, FIXES };
