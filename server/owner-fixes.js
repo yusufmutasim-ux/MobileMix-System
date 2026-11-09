@@ -148,6 +148,23 @@ const FIXES = [
       add.run('إيجار', 8050, 'تكملة إيجار', adminId);
     },
   },
+  {
+    // The owner's final expenses for days 1–8 money: 850 of the 16,750 is still on the Visa machine (not an
+    // expense); the owner took 300; rent 13,500 + 1,100; VIDVIE cables 600 bought today (unless already recorded today).
+    id: '2026-11-sheet-final',
+    run(db, adminId) {
+      db.prepare(`DELETE FROM expenses WHERE from_drawer = 0 AND created_at = '2026-11-08 12:00:00'
+                  AND note IN ('فلوس الفيزا اتسحبت من الماكينة', 'محمد عزت — صاحب المحل خدهم', 'تكملة إيجار')`).run();
+      db.prepare("UPDATE day_book SET card = CASE WHEN day = '2026-11-08' THEN 850 ELSE 0 END").run();
+      const add = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                              VALUES (?, ?, 0, 'cash', ?, ?, '2026-11', ?)`);
+      add.run('سحب صاحب المحل', 300, 'محمد عزت — صاحب المحل خدهم', adminId, '2026-11-08 12:00:00');
+      add.run('إيجار', 13500, 'تكملة إيجار الشهر اللي فات', adminId, '2026-11-08 12:00:00');
+      add.run('إيجار', 1100, 'تكملة إيجار الشهر اللي فات', adminId, '2026-11-08 12:00:00');
+      const cablesToday = db.prepare("SELECT 1 FROM expenses WHERE amount = 600 AND bday(created_at) = '2026-11-09'").get();
+      if (!cablesToday) add.run('بضاعة', 600, 'وصلات VIDVIE — اتشرت النهارده', adminId, '2026-11-09 12:00:00');
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;
