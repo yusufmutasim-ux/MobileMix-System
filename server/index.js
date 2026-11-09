@@ -6,6 +6,7 @@ const dbFile = hosting.dbFile();
 const dataDir = path.dirname(dbFile);
 const db = require('./db').open(dbFile);
 require('./stock-batches').applyStockBatches(db); // goods entered for the owner (once)
+require('./owner-fixes').applyOwnerFixes(db); // corrections from the owner's books (once)
 const { createApp } = require('./app');
 const { scheduleBackups } = require('./backup');
 const { startScheduler } = require('./scheduler');
