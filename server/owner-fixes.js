@@ -165,6 +165,26 @@ const FIXES = [
       if (!cablesToday) add.run('بضاعة', 600, 'وصلات VIDVIE — اتشرت النهارده', adminId, '2026-11-09 12:00:00');
     },
   },
+  {
+    // The VIDVIE cables (600) were paid from the days 1–8 money, not from today's drawer
+    id: '2026-11-cables-month-money',
+    run(db, adminId) {
+      const rows = db.prepare(`SELECT * FROM expenses WHERE amount = 600 AND bday(created_at) = '2026-11-09'
+                               AND (note LIKE '%وصلات%' OR note LIKE '%VIDVIE%' OR note LIKE '%vidvie%' OR from_drawer = 1)`).all();
+      for (const e of rows) {
+        if (e.from_drawer) adjustClosing(db, e.created_at, e.amount, 'expenses'); // give it back to a closing it was counted in
+        db.prepare(`UPDATE expenses SET from_drawer = 0, paid_with = 'cash', created_at = '2026-11-08 12:00:00',
+                    note = 'وصلات VIDVIE — من فلوس الشهر' WHERE id = ?`).run(e.id);
+      }
+      // Only one of them
+      const all = db.prepare("SELECT id FROM expenses WHERE note = 'وصلات VIDVIE — من فلوس الشهر' ORDER BY id").all();
+      for (const x of all.slice(1)) db.prepare('DELETE FROM expenses WHERE id = ?').run(x.id);
+      if (!all.length) {
+        db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                    VALUES ('بضاعة', 600, 0, 'cash', 'وصلات VIDVIE — من فلوس الشهر', ?, '2026-11', '2026-11-08 12:00:00')`).run(adminId);
+      }
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;

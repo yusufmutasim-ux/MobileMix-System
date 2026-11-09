@@ -29,4 +29,7 @@ test('final sheet: 16,750 in (850 on the Visa machine); out 300 + 13,500 + 1,100
   assert.equal(r.money_left.cash, 400);
   assert.equal(r.money_left.card, 850);
   assert.ok(!db.prepare("SELECT 1 FROM expenses WHERE amount IN (6300, 8050)").get());
+  // The cables come out of the days 1–8 money, not today's
+  assert.equal(r.simple_days.find((d) => d.day === '2026-11-08').expenses, 15500);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM expenses WHERE amount = 600").get().n, 1);
 });
