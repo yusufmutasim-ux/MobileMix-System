@@ -48,9 +48,11 @@ module.exports = function moneyRoutes(api, db) {
     const at = lateTime(db, b);
     const note = str(b.note, 'الملاحظة', { optional: true, max: 300 });
     const { row, closing } = tx(db, () => {
-      const r = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`)
-        .run(category, amount, fromDrawer, note, employeeId, period, req.user.id, at);
+      // Not from the drawer: paid from the month's cash, or from the card / InstaPay money
+    const paidWith = !fromDrawer && ['card', 'instapay'].includes(b.paid_with) ? b.paid_with : 'cash';
+    const r = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, note, employee_id, period, user_id, created_at, paid_with)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')), ?)`)
+        .run(category, amount, fromDrawer, note, employeeId, period, req.user.id, at, paidWith);
       const row = db.prepare('SELECT * FROM expenses WHERE id = ?').get(r.lastInsertRowid);
       return { row, closing: at && fromDrawer ? adjustClosing(db, at, -amount, 'expenses') : null };
     });

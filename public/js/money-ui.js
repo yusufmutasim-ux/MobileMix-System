@@ -14,7 +14,11 @@ export function expenseModal({ beforeClose = false, closingId = null } = {}) {
       <label class="field"><span>المبلغ *</span><input class="input num" type="number" min="0" step="any" name="amount" inputmode="decimal" autofocus></label>
       <label class="field"><span>النوع *</span><select class="input" name="category">${categories().map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label class="field full"><span>تفاصيل</span><input class="input" name="note" placeholder="مثلاً: فاتورة الكهربا شهر 10"></label>
-      ${manager ? `<label class="check full"><input type="checkbox" name="from_drawer" checked> اتدفع كاش من الدرج</label>` : '<p class="muted small full" style="margin:0">المبلغ هيتخصم من الدرج.</p>'}
+      ${manager ? `<label class="field full"><span>اتدفع منين؟</span><select class="input" name="source">
+          <option value="drawer">من الدرج (كاش النهارده)</option>
+          <option value="cash">كاش من فلوس الشهر (مش من الدرج)</option>
+          <option value="card">من فلوس الفيزا</option>
+          <option value="instapay">من فلوس InstaPay</option></select></label>` : '<p class="muted small full" style="margin:0">المبلغ هيتخصم من الدرج.</p>'}
       ${beforeClose ? `<p class="note-warn full" style="margin:0">${LATE_HINT}</p>` : ''}
     </form>`,
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
@@ -22,6 +26,7 @@ export function expenseModal({ beforeClose = false, closingId = null } = {}) {
       const save = (e) => busy(m.querySelector('[data-ok]'), async () => {
         e?.preventDefault?.();
         const f = formData(m.querySelector('form'));
+        if (f.source) { f.from_drawer = f.source === 'drawer'; if (!f.from_drawer) f.paid_with = f.source; delete f.source; }
         if (closingId) f.closing_id = closingId; else if (beforeClose) f.before_close = true;
         const r = await api.post('/expenses', f);
         toast(r.closing ? lateToast(r.closing) : 'اتسجل المصروف', 'ok');

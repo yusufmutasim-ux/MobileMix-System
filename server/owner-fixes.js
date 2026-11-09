@@ -29,6 +29,22 @@ const FIXES = [
       { category: 'أخرى', amount: 300, note: 'محمد عزت', at: '2026-11-08 12:00:00' },
     ],
   },
+  {
+    // The month's expenses as in the owner's sheet: the rent is 13,500 (not 8,050) plus 1,100; the Visa one
+    // was paid from the card money (it stays out of the cash); the rest from the month's cash
+    id: '2026-11-month-expenses-2',
+    run(db, adminId) {
+      const rent = db.prepare("SELECT id FROM expenses WHERE note = 'تكملة إيجار' AND amount = 8050 AND from_drawer = 0").get();
+      if (rent) db.prepare('UPDATE expenses SET amount = 13500 WHERE id = ?').run(rent.id);
+      const add = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                              VALUES (?, ?, 0, ?, ?, ?, '2026-11', '2026-11-09 12:00:00')`);
+      if (!rent) add.run('إيجار', 13500, 'cash', 'تكملة إيجار', adminId);
+      if (!db.prepare("SELECT 1 FROM expenses WHERE note = 'محمد عزت' AND amount = 300").get()) add.run('أخرى', 300, 'cash', 'محمد عزت', adminId);
+      add.run('إيجار', 1100, 'cash', 'تكمله ايجار', adminId);
+      add.run('أخرى', 600, 'cash', 'وصلات vidvie', adminId);
+      add.run('أخرى', 850, 'card', 'فيزا', adminId);
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -74,6 +90,7 @@ function applyOwnerFixes(db, fixes = FIXES) {
         adjustClosing(db, at, diff, kind === 'in' ? 'moves_in' : 'moves_out');
         report.push({ day, system: have, book: target, diff });
       }
+      if (f.run) f.run(db, admin.id);
       for (const [k, v] of Object.entries(f.settings || {})) {
         db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, v);
       }

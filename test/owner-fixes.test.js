@@ -54,3 +54,21 @@ test('month reconciliation: each day brought to the owner\'s figure with a "تع
   // Runs once
   assert.deepEqual(applyOwnerFixes(db, [{ id: 't1', days: { '2026-11-01': 5 } }]), []);
 });
+
+test('report: cash left after month expenses, and the Visa money kept apart', async () => {
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  const ins = (sql, ...a) => db.prepare(sql).run(...a);
+  ins("INSERT INTO sales (user_id, subtotal, total, paid, payment_method, created_at) VALUES (1, 3000, 3000, 3000, 'card', '2026-11-20 14:00:00')");
+  ins("INSERT INTO sales (user_id, subtotal, total, paid, payment_method, created_at) VALUES (1, 5000, 5000, 5000, 'cash', '2026-11-20 15:00:00')");
+  // Month expenses through the API: one from the month's cash, one from the Visa money
+  const a = await admin.post('/expenses', { category: 'إيجار', amount: 1000, from_drawer: false, paid_with: 'cash' });
+  assert.equal(a.status, 201);
+  const e = await admin.post('/expenses', { category: 'أخرى', amount: 850, from_drawer: false, paid_with: 'card' });
+  assert.equal(e.data.paid_with, 'card');
+  db.prepare("UPDATE expenses SET created_at = '2026-11-20 16:00:00' WHERE id IN (?, ?)").run(a.data.id, e.data.id);
+  const r = (await admin.get('/reports/finance?from=2026-11-20&to=2026-11-20')).data.money_left;
+  assert.equal(r.cash, 4000);
+  assert.equal(r.card, 2150);
+  assert.equal(r.card_out, 850);
+});

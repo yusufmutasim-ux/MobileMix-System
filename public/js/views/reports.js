@@ -263,6 +263,17 @@ function simpleReport(d, from, to) {
         ${tile('الكاش الصافي', tot.cash_net, 'net', 'الكاش ناقص مصاريف الدرج')}
       </div>
     </div>
+    ${d.money_left ? `<div class="card money-left">
+      <div class="card-head"><h2>${icon('wallet')} الفلوس اللي معاك</h2><span class="muted small">بعد المصاريف</span></div>
+      <div class="ml-grid">
+        <div class="ml cash"><span>كاش باقي</span><b>${n(d.money_left.cash)} <small>${cur}</small></b>
+          <small>كاش الأيام ${n(d.money_left.cash_in)}${d.money_left.cash_out ? ` − مصاريف كاش ${n(d.money_left.cash_out)}` : ''}</small></div>
+        <div class="ml card"><span>فيزا معاك</span><b>${n(d.money_left.card)} <small>${cur}</small></b>
+          <small>فيزا ${n(d.money_left.card_in)}${d.money_left.card_out ? ` − اتصرف منها ${n(d.money_left.card_out)}` : ''}</small></div>
+        ${d.money_left.instapay_in || d.money_left.instapay_out ? `<div class="ml insta"><span>InstaPay معاك</span><b>${n(d.money_left.instapay)} <small>${cur}</small></b>
+          <small>InstaPay ${n(d.money_left.instapay_in)}${d.money_left.instapay_out ? ` − اتصرف منها ${n(d.money_left.instapay_out)}` : ''}</small></div>` : ''}
+      </div>
+    </div>` : ''}
     <div class="card">
       <div class="card-head"><h2>${icon('chart')} يوم بيوم</h2><span class="muted small">زي الدفتر</span></div>
       <div class="table-wrap"><table class="table sr-table">

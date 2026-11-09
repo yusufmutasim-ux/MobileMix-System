@@ -638,7 +638,9 @@ function addMissingColumns(db) {
       'out_method TEXT', 'out_lat REAL', 'out_lng REAL', 'out_accuracy REAL', 'out_distance REAL',
       'late_minutes INTEGER', 'early_minutes INTEGER',
       'edited_by INTEGER REFERENCES users(id)'],              // a manager added or corrected it by hand
-    returns: ['cash_out REAL'],                       // cash handed back (old rows: the whole amount)
+    returns: ['cash_out REAL'],
+    // Paid outside the drawer: from the month's cash, or from the card (Visa) money
+    expenses: ["paid_with TEXT NOT NULL DEFAULT 'cash'"],                       // cash handed back (old rows: the whole amount)
     // Sales made with no internet: the device's own id for the sale (so it's never saved twice) and when it really happened
     sales: ['client_ref TEXT', 'offline_at TEXT'],
     categories: ['image TEXT'],

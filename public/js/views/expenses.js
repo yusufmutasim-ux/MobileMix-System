@@ -44,7 +44,7 @@ export async function render(el, { query, actions }) {
         <td><span class="pill pill-gray">${esc(r.category)}</span></td>
         <td>${esc(r.note || '')}${r.employee_name ? `<div class="muted small">${esc(r.employee_name)}${r.period ? ` — ${esc(r.period)}` : ''}</div>` : ''}</td>
         <td class="small">${esc(r.user_name || '')}</td>
-        <td>${r.from_drawer ? '<span class="pill pill-info">من الدرج</span>' : '<span class="muted small">من برة</span>'}</td>
+        <td>${r.from_drawer ? '<span class="pill pill-info">من الدرج</span>' : r.paid_with === 'card' ? '<span class="pill pill-violet">من الفيزا</span>' : r.paid_with === 'instapay' ? '<span class="pill pill-violet">من InstaPay</span>' : '<span class="muted small">كاش من فلوس الشهر</span>'}</td>
         <td class="end"><b>${money(r.amount)}</b></td>
         <td class="end">${manager || (r.user_id === state.user.id && r.created_at.slice(0, 10) === today)
           ? `<button class="btn btn-ghost btn-sm" data-del title="مسح">${icon('trash')}</button>` : ''}</td>

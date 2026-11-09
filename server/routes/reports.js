@@ -246,6 +246,19 @@ module.exports = function reportRoutes(api, db) {
     }
     const simpleDays = Object.values(simple).sort((a, b) => a.day.localeCompare(b.day))
       .map((r) => ({ ...r, cash_net: round2(r.cash - r.drawer_out + r.adjust) }));
+    // What's left with the owner for the period: the cash the days left, minus month expenses paid in cash;
+    // the card (Visa) and InstaPay money, minus what was paid out of them
+    const outside = Object.fromEntries(db.prepare(`SELECT paid_with AS w, SUM(amount) AS t FROM expenses WHERE from_drawer = 0 AND bday(created_at) BETWEEN ? AND ? GROUP BY paid_with`)
+      .all(from, to).map((r) => [r.w || 'cash', round2(r.t)]));
+    const sumDays = (k) => round2(simpleDays.reduce((a, x) => a + (x[k] || 0), 0));
+    const moneyLeft = {
+      cash_in: sumDays('cash_net'), cash_out: outside.cash || 0,
+      card_in: sumDays('card'), card_out: outside.card || 0,
+      instapay_in: round2(sumDays('instapay') + sumDays('wallet')), instapay_out: outside.instapay || 0,
+    };
+    moneyLeft.cash = round2(moneyLeft.cash_in - moneyLeft.cash_out);
+    moneyLeft.card = round2(moneyLeft.card_in - moneyLeft.card_out);
+    moneyLeft.instapay = round2(moneyLeft.instapay_in - moneyLeft.instapay_out);
     res.json({
       from, to,
       totals: {
@@ -258,7 +271,7 @@ module.exports = function reportRoutes(api, db) {
         late_installments: round2(lateInstallments(db).reduce((a, i) => a + i.left, 0)),
       },
       expenses: expenses.map((e) => ({ ...e, total: round2(e.total) })),
-      payments, method_days: methodDays, simple_days: simpleDays,
+      payments, method_days: methodDays, simple_days: simpleDays, money_left: moneyLeft,
       by_day: byDay,
     });
   });
