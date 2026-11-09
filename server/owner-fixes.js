@@ -73,6 +73,31 @@ const FIXES = [
     id: '2026-11-counted-1100-875',
     run(db, adminId) { matchMonthMoney(db, adminId, { from: '2026-11-01', cash: 1100, card: 875 }); },
   },
+  {
+    // The owner's final word on the month: days 1–8 brought in 16,750 in all (cash and Visa together) and the
+    // month's expenses are 16,350; everything else is just the days' own money (today's included).
+    id: '2026-11-book-total',
+    run(db, adminId) {
+      // Undo the "counted 1,100 / 875" adjustment
+      for (const m of db.prepare("SELECT * FROM cash_moves WHERE note LIKE 'تعديل — الكاش اللي معايا%'").all()) {
+        db.prepare('DELETE FROM cash_moves WHERE id = ?').run(m.id);
+        adjustClosing(db, m.created_at, -m.amount, 'moves_in');
+      }
+      db.prepare("DELETE FROM expenses WHERE note LIKE 'تعديل — الكاش اللي معايا%' OR note LIKE 'تعديل — الفيزا على الماكينة%'").run();
+      // Each day's book figure is cash + Visa: the cash part is the book minus that day's Visa
+      const book = FIXES.find((x) => x.id === '2026-11-month-1-8').days;
+      dropAdjustments(db, Object.keys(book));
+      const cardOf = (day) => Number(db.prepare(`SELECT SUM(a) AS v FROM (SELECT MIN(paid, total) AS a FROM sales WHERE payment_method = 'card' AND bday(created_at) = ?
+          UNION ALL SELECT amount FROM sale_payments WHERE method = 'card' AND bday(created_at) = ?
+          UNION ALL SELECT amount FROM repair_payments WHERE method = 'card' AND bday(created_at) = ?)`).get(day, day, day).v || 0);
+      reconcileDays(db, Object.fromEntries(Object.entries(book).map(([d, t]) => [d, round2(t - cardOf(d))])), adminId);
+      // The sheet's expenses come to 16,350: the 850 line is one of them (paid in cash)
+      if (!db.prepare("SELECT 1 FROM expenses WHERE note = 'فيزا' AND amount = 850").get()) {
+        db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                    VALUES ('أخرى', 850, 0, 'cash', 'فيزا', ?, '2026-11', '2026-11-09 12:00:00')`).run(adminId);
+      }
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;
