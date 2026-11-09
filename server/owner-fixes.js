@@ -126,6 +126,12 @@ const FIXES = [
       oldNotes: ['تكملة إيجار', 'تكمله ايجار', 'تكملة إيجار (اتسحبت من الفيزا)', 'وصلات vidvie', 'فيزا', 'محمد عزت'],
     }); },
   },
+  {
+    // Start the money over: only today (Nov 9) stays — its own sales and expenses as the shop recorded them.
+    // Everything before it (and the book / sheet entries made for the owner) is cleared. Stock stays.
+    id: '2026-11-only-today',
+    run(db) { keepOnlyFrom(db, '2026-11-09'); },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -269,6 +275,33 @@ function resetDaysToBook(db, adminId, { from, to, days, card, expenses, oldNotes
   for (const e of expenses) add.run(e.category, e.amount, e.note, adminId, e.at.slice(0, 7), e.at);
 }
 
+/** Clear every money record before shop day `day` (and the book entries made for the owner); stock stays. */
+function keepOnlyFrom(db, day) {
+  const before = 'bday(created_at) < ?';
+  for (const { id } of db.prepare(`SELECT id FROM sales WHERE ${before}`).all(day)) {
+    db.prepare('DELETE FROM returns WHERE sale_id = ?').run(id);
+    db.prepare('UPDATE serials SET sale_id = NULL WHERE sale_id = ?').run(id);
+    db.prepare('DELETE FROM sales WHERE id = ?').run(id);
+  }
+  for (const t of ['sale_payments', 'repair_payments', 'expenses', 'cash_moves', 'supplier_payments']) {
+    db.prepare(`DELETE FROM ${t} WHERE ${before}`).run(day);
+  }
+  for (const { id } of db.prepare(`SELECT id FROM purchases WHERE ${before}`).all(day)) {
+    db.prepare('DELETE FROM supplier_payments WHERE purchase_id = ?').run(id);
+    db.prepare('DELETE FROM purchases WHERE id = ?').run(id);
+  }
+  db.prepare('DELETE FROM drawer_closings WHERE bday(closed_at) < ?').run(day);
+  db.prepare('DELETE FROM day_book').run();
+  // Entries made earlier from the owner's sheet, whatever their date
+  db.prepare(`DELETE FROM expenses WHERE from_drawer = 0 AND (note IN ('وصلات VIDVIE — اتشرت النهارده', 'تكملة إيجار الشهر اللي فات',
+    'محمد عزت — صاحب المحل خدهم', 'تكملة إيجار', 'تكمله ايجار', 'تكملة إيجار (اتسحبت من الفيزا)', 'وصلات vidvie', 'فيزا', 'محمد عزت')
+    OR note LIKE 'تعديل%' OR category = 'تعديل')`).run();
+  for (const m of db.prepare("SELECT * FROM cash_moves WHERE note LIKE 'تعديل%'").all()) {
+    db.prepare('DELETE FROM cash_moves WHERE id = ?').run(m.id);
+    adjustClosing(db, m.created_at, m.kind === 'in' ? -m.amount : m.amount, m.kind === 'in' ? 'moves_in' : 'moves_out');
+  }
+}
+
 function applyOwnerFixes(db, fixes = FIXES) {
   const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
   if (!admin) return [];
@@ -298,4 +331,4 @@ function applyOwnerFixes(db, fixes = FIXES) {
   return report;
 }
 
-module.exports = { applyOwnerFixes, dayCash, reconcileDays, instapayToCash, matchMonthMoney, resetDaysToBook, FIXES };
+module.exports = { applyOwnerFixes, dayCash, reconcileDays, instapayToCash, matchMonthMoney, resetDaysToBook, keepOnlyFrom, FIXES };
