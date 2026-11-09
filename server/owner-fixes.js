@@ -107,6 +107,25 @@ const FIXES = [
       for (const [d, t] of Object.entries(book)) put.run(d, t);
     },
   },
+  {
+    // The owner's reset: days 1–8 hold only the book (what each day brought in; 850 of it is still on the Visa
+    // machine) and what was paid out of that money. Everything the system had for those days is cleared —
+    // stock stays as it is (the goods were really sold). Today's own sales and expenses stay.
+    id: '2026-11-reset-1-8',
+    run(db, adminId) { resetDaysToBook(db, adminId, {
+      from: '2026-11-01', to: '2026-11-08',
+      days: FIXES.find((x) => x.id === '2026-11-month-1-8').days,
+      card: { day: '2026-11-08', amount: 850 },
+      expenses: [
+        { category: 'إيجار', amount: 13500, note: 'تكملة إيجار الشهر اللي فات', at: '2026-11-08 12:00:00' },
+        { category: 'إيجار', amount: 1100, note: 'تكملة إيجار الشهر اللي فات', at: '2026-11-08 12:00:00' },
+        { category: 'سحب صاحب المحل', amount: 300, note: 'محمد عزت — صاحب المحل خدهم', at: '2026-11-08 12:00:00' },
+        { category: 'بضاعة', amount: 600, note: 'وصلات VIDVIE — اتشرت النهارده', at: '2026-11-09 12:00:00' },
+      ],
+      // Entries made earlier for the owner's sheet (replaced by the ones above)
+      oldNotes: ['تكملة إيجار', 'تكمله ايجار', 'تكملة إيجار (اتسحبت من الفيزا)', 'وصلات vidvie', 'فيزا', 'محمد عزت'],
+    }); },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -214,6 +233,42 @@ function matchMonthMoney(db, adminId, { from, cash, card }) {
   return { ...out, cash_diff: cashDiff, card_diff: cardDiff };
 }
 
+/**
+ * Clear what the system recorded for [from, to] (shop days) — invoices, repair payments, expenses, cash in/out,
+ * drawer closings — and put in the owner's book instead. Stock is left alone.
+ */
+function resetDaysToBook(db, adminId, { from, to, days, card, expenses, oldNotes = [] }) {
+  const inRange = 'bday(created_at) BETWEEN ? AND ?';
+  // Invoices of those days (their items, payments and installments go with them); returns first
+  const sales = db.prepare(`SELECT id FROM sales WHERE ${inRange}`).all(from, to).map((r) => r.id);
+  for (const id of sales) {
+    db.prepare('DELETE FROM returns WHERE sale_id = ?').run(id);
+    db.prepare('UPDATE serials SET sale_id = NULL WHERE sale_id = ?').run(id);
+    db.prepare('DELETE FROM sales WHERE id = ?').run(id);
+  }
+  db.prepare(`DELETE FROM sale_payments WHERE ${inRange}`).run(from, to);
+  db.prepare(`DELETE FROM repair_payments WHERE ${inRange}`).run(from, to);
+  db.prepare(`DELETE FROM expenses WHERE ${inRange}`).run(from, to);
+  db.prepare(`DELETE FROM supplier_payments WHERE from_drawer = 1 AND ${inRange}`).run(from, to);
+  db.prepare(`DELETE FROM cash_moves WHERE ${inRange}`).run(from, to);
+  // Earlier adjustments and sheet entries on later days too
+  for (const m of db.prepare("SELECT * FROM cash_moves WHERE note LIKE 'تعديل%'").all()) {
+    db.prepare('DELETE FROM cash_moves WHERE id = ?').run(m.id);
+    adjustClosing(db, m.created_at, m.kind === 'in' ? -m.amount : m.amount, m.kind === 'in' ? 'moves_in' : 'moves_out');
+  }
+  db.prepare("DELETE FROM expenses WHERE from_drawer = 0 AND (note LIKE 'تعديل%' OR category = 'تعديل')").run();
+  for (const n of oldNotes) db.prepare('DELETE FROM expenses WHERE note = ? AND from_drawer = 0').run(n);
+  // Drawer closings up to the end of those days: the open drawer starts again from today's money
+  db.prepare('DELETE FROM drawer_closings WHERE closed_at <= ?').run(shopDayEnd(to));
+  // The book
+  db.prepare('DELETE FROM day_book WHERE day BETWEEN ? AND ?').run(from, to);
+  const put = db.prepare("INSERT INTO day_book (day, total, card, note) VALUES (?, ?, ?, 'من الدفتر')");
+  for (const [d, t] of Object.entries(days)) put.run(d, t, card && card.day === d ? card.amount : 0);
+  const add = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                          VALUES (?, ?, 0, 'cash', ?, ?, ?, ?)`);
+  for (const e of expenses) add.run(e.category, e.amount, e.note, adminId, e.at.slice(0, 7), e.at);
+}
+
 function applyOwnerFixes(db, fixes = FIXES) {
   const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
   if (!admin) return [];
@@ -243,4 +298,4 @@ function applyOwnerFixes(db, fixes = FIXES) {
   return report;
 }
 
-module.exports = { applyOwnerFixes, dayCash, reconcileDays, instapayToCash, matchMonthMoney, FIXES };
+module.exports = { applyOwnerFixes, dayCash, reconcileDays, instapayToCash, matchMonthMoney, resetDaysToBook, FIXES };

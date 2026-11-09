@@ -139,9 +139,9 @@ function openDays(db) {
   const last = db.prepare('SELECT closed_at FROM drawer_closings ORDER BY id DESC LIMIT 1').get();
   const since = last ? last.closed_at : '0000-00-00 00:00:00';
   return db.prepare(`SELECT DISTINCT d FROM (
-      SELECT bday(created_at) AS d FROM sales WHERE created_at > ? UNION SELECT bday(created_at) FROM expenses WHERE created_at > ?
+      SELECT bday(created_at) AS d FROM sales WHERE created_at > ? UNION SELECT bday(created_at) FROM expenses WHERE from_drawer = 1 AND created_at > ?
       UNION SELECT bday(created_at) FROM cash_moves WHERE created_at > ? UNION SELECT bday(created_at) FROM repair_payments WHERE created_at > ?
-      UNION SELECT bday(created_at) FROM sale_payments WHERE created_at > ?) WHERE d < ? ORDER BY d DESC LIMIT 14`)
+      UNION SELECT bday(created_at) FROM sale_payments WHERE created_at > ?) WHERE d < ? AND d NOT IN (SELECT day FROM day_book) ORDER BY d DESC LIMIT 14`)
     .all(since, since, since, since, since, todayStr()).map((r) => r.d);
 }
 

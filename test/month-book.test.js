@@ -18,21 +18,20 @@ before(async () => {
 });
 after(() => server.close());
 
-test('month: days 1–8 bring 16,750 in all, expenses 16,350 → 400 left before the next days', async () => {
-  let cookie = '';
+test('month reset: days 1–8 are the book, 850 of it on the Visa machine; 400 cash + 850 Visa left', async () => {
   const res = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'admin123' }) });
-  cookie = res.headers.get('set-cookie').split(';')[0];
+  const cookie = res.headers.get('set-cookie').split(';')[0];
   const r = await (await fetch(base + '/reports/finance?from=2026-11-01&to=2026-11-09', { headers: { cookie } })).json();
-  const days = r.simple_days.filter((d) => d.day <= '2026-11-08');
-  assert.equal(days.reduce((a, d) => a + d.cash_net + d.card, 0), 16750);
-  assert.equal(days.find((d) => d.day === '2026-11-03').cash_net + days.find((d) => d.day === '2026-11-03').card, 1150);
-  assert.equal(r.money_left.spent, 16350);
-  assert.equal(r.money_left.total, 400);
-  // The top numbers follow the book for days 1–8
   const sum = (k) => r.simple_days.reduce((a, d) => a + d[k], 0);
+  // The system's own invoices of those days are gone; the book is what counts
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sales WHERE bday(created_at) BETWEEN '2026-11-01' AND '2026-11-08'").get().n, 0);
   assert.equal(sum('sales'), 16750);
-  assert.equal(sum('card'), 500);
-  assert.equal(sum('cash'), 16250);
-  assert.equal(sum('expenses'), 16350);
-  assert.equal(sum('cash_net'), 16250);
+  assert.equal(sum('card'), 850);
+  assert.equal(sum('cash'), 15900);
+  assert.equal(sum('expenses'), 15500);
+  assert.equal(r.money_left.cash, 400);
+  assert.equal(r.money_left.card, 850);
+  assert.equal(r.money_left.total, 1250);
+  // No leftover adjustments
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cash_moves WHERE note LIKE 'تعديل%'").get().n, 0);
 });

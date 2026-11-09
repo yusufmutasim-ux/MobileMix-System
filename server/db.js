@@ -406,6 +406,7 @@ CREATE TABLE IF NOT EXISTS online_orders (
 CREATE TABLE IF NOT EXISTS day_book (
   day TEXT PRIMARY KEY,
   total REAL NOT NULL,
+  card REAL NOT NULL DEFAULT 0,             -- of the total, what's on the Visa machine
   note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -649,7 +650,8 @@ function addMissingColumns(db) {
       'edited_by INTEGER REFERENCES users(id)'],              // a manager added or corrected it by hand
     returns: ['cash_out REAL'],
     // Paid outside the drawer: from the month's cash, or from the card (Visa) money
-    expenses: ["paid_with TEXT NOT NULL DEFAULT 'cash'"],                       // cash handed back (old rows: the whole amount)
+    expenses: ["paid_with TEXT NOT NULL DEFAULT 'cash'"],
+    day_book: ['card REAL NOT NULL DEFAULT 0'],                       // cash handed back (old rows: the whole amount)
     // Sales made with no internet: the device's own id for the sale (so it's never saved twice) and when it really happened
     sales: ['client_ref TEXT', 'offline_at TEXT'],
     categories: ['image TEXT'],
