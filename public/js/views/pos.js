@@ -4,6 +4,20 @@ import { isOffline, getCatalog, takeFromCatalog, queueSale, newRef, localStamp }
 
 const CART_KEY = 'mm_cart';
 
+const PAY_EMOJI = { cash: '💵', card: '💳', instapay: '📲', wallet: '👛', installment: '🗓️' };
+/** A picture for a category (or a product with no photo), from its name. */
+function catEmoji(name) {
+  const n = String(name || '');
+  if (/موبايل|هاتف|phone/i.test(n)) return '📱';
+  if (/شاحن|كابل|charg|cable/i.test(n)) return '🔌';
+  if (/سماع|سبيكر|head|audio|speaker/i.test(n)) return '🎧';
+  if (/جراب|اسكرين|إسكرين|case|glass/i.test(n)) return '🛡️';
+  if (/قطع|غيار|part/i.test(n)) return '🔧';
+  if (/باور|power/i.test(n)) return '🔋';
+  if (/إكسسوار|اكسسوار|access/i.test(n)) return '🎒';
+  return '📦';
+}
+
 export async function render(el, { query } = {}) {
   // ?closing=ID: a sale that was forgotten before that drawer closing (filed on that day, fixes its count)
   const closingId = can('drawer.view') && query?.get('closing') ? Number(query.get('closing')) : null;
@@ -48,21 +62,22 @@ export async function render(el, { query } = {}) {
         <div class="search">${icon('barcode')}<input class="input input-lg" id="scan" placeholder="امسح الباركود / IMEI أو اكتب اسم المنتج…" autocomplete="off"></div>
         <div class="scan-hint">${icon('search', '')} Enter لإضافة المنتج — <span class="num">F9</span> لإتمام البيع
           <button type="button" class="btn btn-outline btn-sm" id="custom-add" style="margin-inline-start:auto">${icon('plus')} منتج مش متسجل</button></div>
-        <div class="seg" style="margin-top:12px" id="cats">
-          <button class="on" data-c="">الكل</button>
-          ${cats.map((c) => `<button data-c="${c.id}">${esc(c.name)}</button>`).join('')}
+        <div class="cat-tiles" id="cats">
+          <button class="on" data-c=""><i>✨</i><span>الكل</span></button>
+          ${cats.map((c) => `<button data-c="${c.id}">${c.image ? `<img src="${esc(c.image)}" alt="">` : `<i>${catEmoji(c.name)}</i>`}<span>${esc(c.name)}</span></button>`).join('')}
         </div>
       </div>
       <div class="products-grid" id="grid" style="margin-top:16px"></div>
     </div>
 
     <div class="card pos-cart">
-      <div class="card-head" style="margin-bottom:4px"><h2>الفاتورة</h2><button class="btn btn-ghost btn-sm" id="clear">${icon('trash')} تفريغ</button>
+      <div class="card-head" style="margin-bottom:4px"><h2>تفاصيل الفاتورة</h2><button class="btn btn-ghost btn-sm" id="clear">${icon('trash')} تفريغ</button>
         <button class="btn btn-ghost btn-icon cart-close" id="cart-close" title="رجوع للمنتجات">${icon('x')}</button></div>
       <div class="lines" id="lines"></div>
       <div class="totals">
-        <div class="pay-methods" id="pay">
-          ${Object.entries(PAY_NAMES).filter(([k]) => k !== 'installment' || modOn('customers')).map(([k, v]) => `<button data-p="${k}" class="${k === 'cash' ? 'on' : ''}">${v}</button>`).join('')}
+        <div class="pay-title">طريقة الدفع</div>
+        <div class="pay-methods pay-cards" id="pay">
+          ${Object.entries(PAY_NAMES).filter(([k]) => k !== 'installment' || modOn('customers')).map(([k, v]) => `<button data-p="${k}" class="${k === 'cash' ? 'on' : ''}"><i>${PAY_EMOJI[k] || '💰'}</i><span>${v}</span></button>`).join('')}
         </div>
         <details style="margin-top:10px" id="cust-box">
           <summary class="muted small" style="cursor:pointer">خصم، المدفوع، وبيانات العميل</summary>
@@ -113,12 +128,13 @@ export async function render(el, { query } = {}) {
     else products = await api.get('/products?' + params).catch((e) => (e.offline ? localProducts(q) : Promise.reject(e)));
     $('#grid').innerHTML = products.length ? products.map((p) => `
       <button class="pcard ${p.qty <= 0 ? 'out' : ''}" data-id="${p.id}">
-        <span class="t">${esc(p.name)}</span>
-        <span class="muted small">${esc(p.brand || p.category_name || '')}</span>
-        <span style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-          <span class="p">${money(p.sell_price)}</span>
-          <span class="pill ${p.qty <= 0 ? 'pill-bad' : p.qty <= p.min_qty ? 'pill-warn' : 'pill-gray'}">${p.has_serial ? icon('phone', '') : ''} ${p.qty}</span>
+        <span class="pc-top">
+          <span class="pc-img">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : `<i>${catEmoji(p.category_name || '')}</i>`}</span>
+          <span class="pc-info"><span class="t">${esc(p.name)}</span>
+            <span class="pc-meta">${p.qty <= 0 ? '<b class="bad">خلص</b>' : `${p.qty} متاح`}${p.brand ? ` • ${esc(p.brand)}` : ''}</span>
+            <span class="p">${money(p.sell_price)}</span></span>
         </span>
+        <span class="pc-add">${p.qty <= 0 ? 'مش متاح' : `${icon('plus')} أضف للفاتورة`}</span>
       </button>`).join('') : '<div class="card empty" style="grid-column:1/-1">مفيش منتجات مطابقة</div>';
   }
 
