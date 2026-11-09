@@ -139,6 +139,7 @@ export async function openSale(id, onChange) {
       ${sale.returns.length ? `<h4 style="margin:16px 0 8px">المرتجعات</h4>
         ${sale.returns.map((r) => `<div class="small" style="padding:4px 0">${fmtDate(r.created_at)} — ${esc(r.user_name)} — <b>${money(r.amount)}</b> ${r.reason ? `(${esc(r.reason)})` : ''}${r.cash_out != null && r.cash_out < r.amount - 0.004 ? ` <span class="muted">— اترجع كاش ${n(r.cash_out)} والباقي اتخصم من المتبقي</span>` : ''}</div>`).join('')}` : ''}`,
     foot: `${canReturn ? `<button class="btn btn-danger" data-return>${icon('undo')} مرتجع</button>` : ''}
+      ${can('sales.return') ? `<button class="btn btn-outline" data-edit>${icon('edit')} تعديل</button>` : ''}
       ${can('sales.delete') ? `<button class="btn btn-ghost" data-delete style="color:var(--danger)">${icon('trash')} امسح الفاتورة</button>` : ''}
       ${sale.due > 0 && can('customers.pay') ? `<button class="btn btn-outline" data-pay>${icon('wallet')} تحصيل</button>` : ''}
       <span style="flex:1"></span>
@@ -150,6 +151,11 @@ export async function openSale(id, onChange) {
         close(null);
         const next = sale.installments.find((i) => i.state !== 'paid');
         if (await payModal({ title: `تحصيل — فاتورة ${esc(sale.invoice_no)}`, due: sale.due, suggest: next?.left, url: `/sales/${sale.id}/payments` })) onChange?.();
+        openSale(id, onChange);
+      });
+      m.querySelector('[data-edit]')?.addEventListener('click', async () => {
+        close(null);
+        if (await editSaleModal(sale)) { toast('اتعدلت الفاتورة ✓', 'ok'); onChange?.(); }
         openSale(id, onChange);
       });
       m.querySelector('[data-delete]')?.addEventListener('click', async () => {
@@ -177,6 +183,46 @@ export async function openSale(id, onChange) {
         close(null);
         if (await returnModal(sale)) { onChange?.(); openSale(id, onChange); }
       });
+    },
+  });
+}
+
+/** Fix how an invoice was paid, and its customer / notes. */
+function editSaleModal(sale) {
+  const inst = sale.payment_method === 'installment';
+  let method = sale.payment_method;
+  return modal({
+    title: `تعديل فاتورة <span class="num">${esc(sale.invoice_no)}</span>`,
+    body: `<div class="form-grid">
+      <div class="field full"><span>اتدفعت إزاي؟</span>
+        ${inst ? '<p class="muted small" style="margin:4px 0 0">فاتورة تقسيط — طريقة الدفع مش بتتغير.</p>'
+          : `<div class="pay-methods" id="pm">${Object.entries(COLLECT_METHODS).map(([k, v]) => `<button type="button" data-p="${k}" class="${k === method ? 'on' : ''}">${v}</button>`).join('')}</div>`}
+      </div>
+      <label class="field"><span>اسم العميل</span><input class="input" id="cname" value="${esc(sale.customer_name || '')}"></label>
+      <label class="field"><span>التليفون</span><input class="input ltr" id="cphone" inputmode="tel" value="${esc(sale.customer_phone || '')}"></label>
+      <label class="field full"><span>ملاحظات</span><input class="input" id="notes" value="${esc(sale.notes || '')}"></label>
+      <p class="muted small full" style="margin:0" id="pm-hint"></p>
+    </div>`,
+    foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,
+    onMount: (m, close) => {
+      const hint = () => {
+        const cash = (x) => x === 'cash';
+        m.querySelector('#pm-hint').textContent = cash(method) !== cash(sale.payment_method)
+          ? (cash(method) ? `هيتضاف ${n(Math.min(sale.paid, sale.total))} على الدرج (أو على التقفيلة اللي الفاتورة فيها).` : `هيتشال ${n(Math.min(sale.paid, sale.total))} من الدرج (أو من التقفيلة اللي الفاتورة فيها).`)
+          : '';
+      };
+      m.querySelector('#pm')?.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-p]');
+        if (!b) return;
+        method = b.dataset.p;
+        m.querySelectorAll('#pm [data-p]').forEach((x) => x.classList.toggle('on', x === b));
+        hint();
+      });
+      m.querySelector('[data-ok]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        await api.put(`/sales/${sale.id}`, { ...(inst ? {} : { payment_method: method }), customer_name: m.querySelector('#cname').value,
+          customer_phone: m.querySelector('#cphone').value, notes: m.querySelector('#notes').value });
+        close(true);
+      }));
     },
   });
 }

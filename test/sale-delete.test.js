@@ -58,3 +58,28 @@ test('deleting an invoice puts stock back and takes its money out', async () => 
   assert.equal(d.expected, 400);
   assert.ok(s2);
 });
+
+test('fixing how an invoice was paid moves its money in or out of the drawer', async () => {
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  const p = (await admin.post('/products', { name: 'Glass', sell_price: 80, initial_qty: 10 })).data;
+  const a = (await admin.post('/sales', { items: [{ product_id: p.id, qty: 1 }], payment_method: 'instapay' })).data;
+  const b = (await admin.post('/sales', { items: [{ product_id: p.id, qty: 2 }], payment_method: 'cash' })).data;
+  const open0 = (await admin.get('/drawer')).data.expected;
+  // Open drawer: InstaPay → cash adds 80
+  let r = await admin.put(`/sales/${a.id}`, { payment_method: 'cash', customer_name: 'سيد' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.payment_method, 'cash');
+  assert.equal(r.data.customer_name, 'سيد');
+  assert.equal((await admin.get('/drawer')).data.expected, open0 + 80);
+  // After closing: cash → InstaPay takes 160 off that closing, the new drawer doesn't move
+  await admin.post('/drawer/close', { counted: open0 + 80 });
+  await tick();
+  const c0 = (await admin.get('/drawer')).data;
+  r = await admin.put(`/sales/${b.id}`, { payment_method: 'instapay' });
+  const c1 = (await admin.get('/drawer')).data;
+  assert.equal(c1.closings[0].expected, c0.closings[0].expected - 160);
+  assert.equal(c1.closings[0].diff, c0.closings[0].diff + 160);
+  assert.equal(c1.expected, c0.expected);
+  assert.equal((await admin.put(`/sales/${b.id}`, { payment_method: 'bitcoin' })).status, 400);
+});

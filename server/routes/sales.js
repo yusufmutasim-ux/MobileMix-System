@@ -272,6 +272,44 @@ module.exports = function salesRoutes(api, db) {
     res.json(sale);
   });
 
+  // ---------- correcting an invoice ----------
+  /**
+   * Fix how it was paid (cash / card / InstaPay / wallet) and the customer and notes. Moving money between
+   * cash and not-cash also fixes the drawer: a closing it fell in is recounted, the open drawer follows by itself.
+   */
+  api.put('/sales/:id', requirePerm('sales.return'), (req, res) => {
+    const b = req.body || {};
+    const out = tx(db, () => {
+      const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(req.params.id);
+      if (!sale) throw notFound('الفاتورة غير موجودة');
+      let method = sale.payment_method;
+      if (b.payment_method !== undefined && b.payment_method !== sale.payment_method) {
+        method = String(b.payment_method);
+        if (!['cash', 'card', 'wallet', 'instapay'].includes(method)) throw bad('طريقة الدفع غير صحيحة');
+        if (sale.payment_method === 'installment') throw bad('فاتورة التقسيط مينفعش تتغير طريقة دفعها');
+        const wasCash = CASH_SALE_METHODS.includes(sale.payment_method), isCash = CASH_SALE_METHODS.includes(method);
+        if (wasCash !== isCash) {
+          const amount = Math.min(sale.paid, sale.total);
+          adjustClosing(db, sale.created_at, isCash ? amount : -amount, 'sales');
+          // Cash handed back on its returns only counts for a cash sale
+          for (const r of db.prepare('SELECT * FROM returns WHERE sale_id = ?').all(sale.id)) {
+            const back = r.cash_out ?? r.amount;
+            adjustClosing(db, r.created_at, isCash ? -back : back, 'refunds');
+          }
+        }
+      }
+      const name = b.customer_name !== undefined ? str(b.customer_name, 'اسم العميل', { optional: true, max: 80 }) : sale.customer_name;
+      const phone = b.customer_phone !== undefined ? str(b.customer_phone, 'التليفون', { optional: true, max: 30 }) : sale.customer_phone;
+      const notes = b.notes !== undefined ? str(b.notes, 'الملاحظات', { optional: true, max: 300 }) : sale.notes;
+      db.prepare('UPDATE sales SET payment_method = ?, customer_name = ?, customer_phone = ?, notes = ? WHERE id = ?')
+        .run(method, name, phone, notes, sale.id);
+      if (phone && phone !== sale.customer_phone) rememberCustomer(db, name, phone);
+      audit(db, req.user.id, 'sale.edit', { id: sale.id, invoice: sale.invoice_no, method: [sale.payment_method, method] });
+      return sale.id;
+    });
+    res.json(loadSale(out, req.user));
+  });
+
   // ---------- deleting an invoice (owner only) ----------
   /**
    * Remove a sale as if it never happened: what's still out goes back into stock (IMEIs too), its
