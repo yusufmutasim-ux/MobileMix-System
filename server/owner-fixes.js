@@ -132,6 +132,22 @@ const FIXES = [
     id: '2026-11-only-today',
     run(db) { keepOnlyFrom(db, '2026-11-09'); },
   },
+  {
+    // The owner's sheet again, after starting over: days 1–8 = 16,750; paid out of it 14,650 (the Visa money
+    // withdrawn from the machine 6,300, the owner took 300, rent 8,050) → 2,100 left. Today stays as recorded.
+    id: '2026-11-sheet-1-8',
+    run(db, adminId) {
+      const days = { '2026-11-01': 1200, '2026-11-02': 3050, '2026-11-03': 1150, '2026-11-04': 850,
+        '2026-11-05': 3400, '2026-11-06': 1700, '2026-11-07': 3150, '2026-11-08': 2250 };
+      const put = db.prepare("INSERT INTO day_book (day, total, card, note) VALUES (?, ?, 0, 'من الدفتر') ON CONFLICT(day) DO UPDATE SET total = excluded.total, card = 0");
+      for (const [d, t] of Object.entries(days)) put.run(d, t);
+      const add = db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                              VALUES (?, ?, 0, 'cash', ?, ?, '2026-11', '2026-11-08 12:00:00')`);
+      add.run('فيزا', 6300, 'فلوس الفيزا اتسحبت من الماكينة', adminId);
+      add.run('سحب صاحب المحل', 300, 'محمد عزت — صاحب المحل خدهم', adminId);
+      add.run('إيجار', 8050, 'تكملة إيجار', adminId);
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;

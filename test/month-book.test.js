@@ -18,13 +18,15 @@ before(async () => {
 });
 after(() => server.close());
 
-test('money starts over: nothing before Nov 9 is left, not even the book', async () => {
+test('the sheet again: days 1–8 = 16,750, expenses 14,650 → 2,100 left; nothing else before Nov 9', async () => {
   const res = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'admin123' }) });
   const cookie = res.headers.get('set-cookie').split(';')[0];
   const r = await (await fetch(base + '/reports/finance?from=2026-11-01&to=2026-11-08', { headers: { cookie } })).json();
-  assert.equal(r.simple_days.length, 0);
-  assert.equal(r.money_left.total, 0);
-  for (const t of ['sales', 'expenses', 'cash_moves', 'day_book', 'drawer_closings']) {
-    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n, 0, t);
-  }
+  const sum = (k) => r.simple_days.reduce((a, d) => a + d[k], 0);
+  assert.equal(sum('sales'), 16750);
+  assert.equal(sum('expenses'), 14650);
+  assert.equal(r.money_left.total, 2100);
+  assert.equal(r.money_left.cash, 2100);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sales WHERE bday(created_at) < '2026-11-09'").get().n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cash_moves").get().n, 0);
 });
