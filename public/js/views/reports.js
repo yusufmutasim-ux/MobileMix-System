@@ -33,7 +33,7 @@ export async function render(el, { query, actions }) {
     if (tab === 'finance') {
       $('#mtype').classList.add('hidden');
       last = await api.get(`/reports/finance?from=${from}&to=${to}`);
-      $('#out').innerHTML = financeReport(last, from, to);
+      $('#out').innerHTML = simpleReport(last, from, to);
       return;
     }
     if (tab === 'repairs') {
@@ -91,6 +91,8 @@ export async function render(el, { query, actions }) {
   actions.querySelector('#pdf').addEventListener('click', async () => {
     if (!last) return;
     const body = $('#out').cloneNode(true);
+    // The PDF stays simple too: the folded "more details" is left out unless it's open on screen
+    body.querySelectorAll('.more-rep:not([open])').forEach((x) => x.remove());
     body.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
     body.querySelectorAll('a').forEach((x) => x.removeAttribute('href'));
     body.querySelectorAll('table.cardify').forEach((t) => t.classList.remove('cardify'));
@@ -235,6 +237,51 @@ function repairsReport(d) {
 
 /** The summary: what came in and how (to match the card machine), and an income statement. */
 const METHOD_COLORS = { cash: '#8aa324', card: '#2b3a9e', instapay: '#7b2ff7', wallet: '#e5383b', installment: '#d4a20c' };
+/**
+ * The simple report, like the owner's own sheet: a few big numbers, then one row per day
+ * (sales, cash / Visa / InstaPay, expenses, and the cash the day left). The full statement is folded below.
+ */
+function simpleReport(d, from, to) {
+  const cur = esc(state.settings.currency || 'ج.م');
+  const days = d.simple_days || [];
+  const sum = (k) => days.reduce((a, x) => a + (x[k] || 0), 0);
+  const tot = { sales: sum('sales'), cash: sum('cash'), card: sum('card'), instapay: sum('instapay'), wallet: sum('wallet'), expenses: sum('expenses'), cash_net: sum('cash_net'), invoices: sum('invoices') };
+  const fmtDay = (x) => new Date(`${x}T12:00:00`).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', day: 'numeric', month: 'numeric' });
+  const period = from === to ? fmtDay(from) : `${fmtDay(from)} — ${fmtDay(to)}`;
+  const tile = (label, v, cls = '', sub = '') => `<div class="sr-tile ${cls}"><span>${label}</span><b>${n(v)} <small>${cur}</small></b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const cell = (v) => (v ? n(v) : '<span class="muted">—</span>');
+  return `
+    <div class="card simple-rep">
+      <div class="rep-period">${icon('calendar')} ${esc(period)}</div>
+      <div class="sr-tiles">
+        ${tile('المبيعات', tot.sales, 'main', `${tot.invoices} فاتورة`)}
+        ${tile('كاش', tot.cash, 'cash')}
+        ${tile('فيزا', tot.card, 'card', 'طابقها مع الماكينة')}
+        ${tile('InstaPay', tot.instapay, 'insta')}
+        ${tot.wallet ? tile('محفظة', tot.wallet, 'wallet') : ''}
+        ${tile('المصاريف', tot.expenses, 'exp')}
+        ${tile('الكاش الصافي', tot.cash_net, 'net', 'الكاش ناقص مصاريف الدرج')}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>${icon('chart')} يوم بيوم</h2><span class="muted small">زي الدفتر</span></div>
+      <div class="table-wrap"><table class="table sr-table">
+        <thead><tr><th>اليوم</th><th>المبيعات</th><th>كاش</th><th>فيزا</th><th>InstaPay</th><th>المصاريف</th><th class="end">الكاش الصافي</th></tr></thead>
+        <tbody>${days.length ? days.slice().reverse().map((x) => `<tr>
+          <td><b style="font-weight:500">${esc(fmtDay(x.day))}</b></td>
+          <td class="num">${cell(x.sales)}</td><td class="num">${cell(x.cash)}</td><td class="num">${cell(x.card)}</td>
+          <td class="num">${cell(x.instapay + x.wallet)}</td><td class="num">${x.expenses ? `<span style="color:var(--danger)">${n(x.expenses)}</span>` : cell(0)}</td>
+          <td class="end num"><b>${n(x.cash_net)}</b>${x.adjust ? `<div class="muted small">فيها تعديل ${x.adjust > 0 ? '+' : ''}${n(x.adjust)}</div>` : ''}</td></tr>`).join('')
+          : emptyRow(7, 'مفيش حركة في الفترة دي')}</tbody>
+        ${days.length > 1 ? `<tfoot><tr><td>الإجمالي</td><td class="num">${n(tot.sales)}</td><td class="num">${n(tot.cash)}</td><td class="num">${n(tot.card)}</td>
+          <td class="num">${n(tot.instapay + tot.wallet)}</td><td class="num">${n(tot.expenses)}</td><td class="end num"><b>${n(tot.cash_net)}</b></td></tr></tfoot>` : ''}
+      </table></div>
+    </div>
+    <details class="card more-rep"><summary><h2>${icon('receipt')} تفاصيل أكتر (الربح، الموردين، العملاء)</h2></summary>
+      ${financeReport(d, from, to)}
+    </details>`;
+}
+
 function financeReport(d, from, to) {
   const t = d.totals;
   const cur = esc(state.settings.currency || 'ج.م');

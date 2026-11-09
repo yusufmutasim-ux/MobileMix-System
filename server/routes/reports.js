@@ -217,6 +217,32 @@ module.exports = function reportRoutes(api, db) {
     const refunds = round2(db.prepare('SELECT COALESCE(SUM(COALESCE(cash_out, amount)), 0) AS t FROM returns WHERE bday(created_at) BETWEEN ? AND ?').get(from, to).t);
     const sp = salesProfit.p - (rets.amount - rets.cost);
     const exp = expenses.reduce((a, e) => a + e.total, 0);
+    // Simple day-by-day, like the owner's own sheet: sales, how it was paid, expenses, and the cash left
+    const simple = {};
+    const dayRow = (d) => (simple[d] ||= { day: d, sales: 0, invoices: 0, cash: 0, card: 0, instapay: 0, wallet: 0, expenses: 0, drawer_out: 0, adjust: 0 });
+    for (const r of db.prepare(`SELECT bday(created_at) AS d, SUM(total - returned_total) AS t, COUNT(*) AS n FROM sales WHERE bday(created_at) BETWEEN ? AND ? GROUP BY d`).all(from, to)) {
+      Object.assign(dayRow(r.d), { sales: round2(r.t), invoices: r.n });
+    }
+    for (const r of db.prepare(`SELECT method, day, SUM(amount) AS t FROM (${IN}) GROUP BY method, day`).all(...rng)) {
+      const row = dayRow(r.day);
+      if (r.method in row) row[r.method] = round2(row[r.method] + r.t);
+    }
+    for (const r of db.prepare(`SELECT bday(r.created_at) AS d, SUM(COALESCE(r.cash_out, r.amount)) AS t FROM returns r JOIN sales s ON s.id = r.sale_id
+        WHERE s.payment_method IN ('cash','installment') AND bday(r.created_at) BETWEEN ? AND ? GROUP BY d`).all(from, to)) {
+      const row = dayRow(r.d); row.cash = round2(row.cash - r.t);
+    }
+    for (const r of db.prepare('SELECT bday(created_at) AS d, SUM(amount) AS t, SUM(CASE WHEN from_drawer = 1 THEN amount ELSE 0 END) AS dr FROM expenses WHERE bday(created_at) BETWEEN ? AND ? GROUP BY d').all(from, to)) {
+      Object.assign(dayRow(r.d), { expenses: round2(r.t), drawer_out: round2(r.dr) });
+    }
+    for (const r of db.prepare('SELECT bday(created_at) AS d, SUM(amount) AS t FROM supplier_payments WHERE from_drawer = 1 AND bday(created_at) BETWEEN ? AND ? GROUP BY d').all(from, to)) {
+      const row = dayRow(r.d); row.drawer_out = round2(row.drawer_out + r.t);
+    }
+    // Corrections ("تعديل") the owner made to match the books
+    for (const r of db.prepare("SELECT bday(created_at) AS d, SUM(CASE WHEN kind = 'in' THEN amount ELSE -amount END) AS t FROM cash_moves WHERE note LIKE 'تعديل%' AND bday(created_at) BETWEEN ? AND ? GROUP BY d").all(from, to)) {
+      dayRow(r.d).adjust = round2(r.t);
+    }
+    const simpleDays = Object.values(simple).sort((a, b) => a.day.localeCompare(b.day))
+      .map((r) => ({ ...r, cash_net: round2(r.cash - r.drawer_out + r.adjust) }));
     res.json({
       from, to,
       totals: {
@@ -229,7 +255,7 @@ module.exports = function reportRoutes(api, db) {
         late_installments: round2(lateInstallments(db).reduce((a, i) => a + i.left, 0)),
       },
       expenses: expenses.map((e) => ({ ...e, total: round2(e.total) })),
-      payments, method_days: methodDays,
+      payments, method_days: methodDays, simple_days: simpleDays,
       by_day: byDay,
     });
   });
