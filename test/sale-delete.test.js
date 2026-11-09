@@ -83,3 +83,20 @@ test('fixing how an invoice was paid moves its money in or out of the drawer', a
   assert.equal(c1.expected, c0.expected);
   assert.equal((await admin.put(`/sales/${b.id}`, { payment_method: 'bitcoin' })).status, 400);
 });
+
+test('repair money counts with sales on the home page and in the report', async () => {
+  const admin = client();
+  await admin.post('/auth/login', { username: 'admin', password: 'admin123' });
+  const before = (await admin.get('/dashboard')).data.today;
+  const r = await admin.post('/repairs', { customer_name: 'أحمد', customer_phone: '01011112222', device: 'iPhone 12', problem: 'شاشة', deposit: 200 });
+  assert.equal(r.status, 201);
+  const after = (await admin.get('/dashboard')).data.today;
+  assert.equal(after.total, before.total + 200);
+  assert.equal(after.repairs.count, 1);
+  assert.equal(after.by_method.cash.total, (before.by_method.cash?.total || 0) + 200);
+  const { today } = require('../server/util');
+  const rep = (await admin.get(`/reports/finance?from=${today()}&to=${today()}`)).data;
+  const day = rep.simple_days.find((x) => x.day === today());
+  assert.equal(day.repairs_total, 200);
+  assert.ok(day.sales >= 200);
+});

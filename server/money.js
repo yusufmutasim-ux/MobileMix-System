@@ -87,7 +87,9 @@ function drawerNow(db, upTo = null) {
         UNION ALL SELECT method, amount FROM sale_payments WHERE method <> 'cash' AND ${range}
         UNION ALL SELECT method, amount FROM repair_payments WHERE method <> 'cash' AND ${range})
       GROUP BY method`).all(from, to, from, to, from, to)) if (r.v) nonCash[r.method] = round2(r.v);
-  const salesTotal = round2(db.prepare(`SELECT SUM(total) AS v FROM sales WHERE ${range}`).get(from, to).v || 0);
+  // Sales and repairs together, as the owner counts them
+  const salesTotal = round2((db.prepare(`SELECT SUM(total) AS v FROM sales WHERE ${range}`).get(from, to).v || 0)
+    + (db.prepare(`SELECT SUM(amount) AS v FROM repair_payments WHERE ${range}`).get(from, to).v || 0));
   return { from: last ? from : null, to, opening: round2(opening), parts, expected, non_cash: nonCash, sales_total: salesTotal, last: last || null };
 }
 

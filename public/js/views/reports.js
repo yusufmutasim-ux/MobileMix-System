@@ -245,7 +245,7 @@ function simpleReport(d, from, to) {
   const cur = esc(state.settings.currency || 'ج.م');
   const days = d.simple_days || [];
   const sum = (k) => days.reduce((a, x) => a + (x[k] || 0), 0);
-  const tot = { sales: sum('sales'), cash: sum('cash'), card: sum('card'), instapay: sum('instapay'), wallet: sum('wallet'), expenses: sum('expenses'), cash_net: sum('cash_net'), invoices: sum('invoices') };
+  const tot = { repairs: sum('repairs'), sales: sum('sales'), cash: sum('cash'), card: sum('card'), instapay: sum('instapay'), wallet: sum('wallet'), expenses: sum('expenses'), cash_net: sum('cash_net'), invoices: sum('invoices') };
   const fmtDay = (x) => new Date(`${x}T12:00:00`).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', day: 'numeric', month: 'numeric' });
   const period = from === to ? fmtDay(from) : `${fmtDay(from)} — ${fmtDay(to)}`;
   const tile = (label, v, cls = '', sub = '') => `<div class="sr-tile ${cls}"><span>${label}</span><b>${n(v)} <small>${cur}</small></b>${sub ? `<small>${sub}</small>` : ''}</div>`;
@@ -254,7 +254,7 @@ function simpleReport(d, from, to) {
     <div class="card simple-rep">
       <div class="rep-period">${icon('calendar')} ${esc(period)}</div>
       <div class="sr-tiles">
-        ${tile('المبيعات', tot.sales, 'main', `${tot.invoices} فاتورة`)}
+        ${tile('المبيعات', tot.sales, 'main', `${tot.invoices} فاتورة${tot.repairs ? ` + ${tot.repairs} صيانة` : ''}`)}
         ${tile('كاش', tot.cash, 'cash')}
         ${tile('فيزا', tot.card, 'card', 'طابقها مع الماكينة')}
         ${tile('InstaPay', tot.instapay, 'insta')}
@@ -269,7 +269,7 @@ function simpleReport(d, from, to) {
         <thead><tr><th>اليوم</th><th>المبيعات</th><th>كاش</th><th>فيزا</th><th>InstaPay</th><th>المصاريف</th><th class="end">الكاش الصافي</th></tr></thead>
         <tbody>${days.length ? days.slice().reverse().map((x) => `<tr>
           <td><b style="font-weight:500">${esc(fmtDay(x.day))}</b></td>
-          <td class="num">${cell(x.sales)}</td><td class="num">${cell(x.cash)}</td><td class="num">${cell(x.card)}</td>
+          <td class="num">${cell(x.sales)}${x.repairs ? `<div class="muted small">منها صيانة ${n(x.repairs_total)}</div>` : ''}</td><td class="num">${cell(x.cash)}</td><td class="num">${cell(x.card)}</td>
           <td class="num">${cell(x.instapay + x.wallet)}</td><td class="num">${x.expenses ? `<span style="color:var(--danger)">${n(x.expenses)}</span>` : cell(0)}</td>
           <td class="end num"><b>${n(x.cash_net)}</b>${x.adjust ? `<div class="muted small">فيها تعديل ${x.adjust > 0 ? '+' : ''}${n(x.adjust)}</div>` : ''}</td></tr>`).join('')
           : emptyRow(7, 'مفيش حركة في الفترة دي')}</tbody>

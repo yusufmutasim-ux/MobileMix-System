@@ -219,9 +219,12 @@ module.exports = function reportRoutes(api, db) {
     const exp = expenses.reduce((a, e) => a + e.total, 0);
     // Simple day-by-day, like the owner's own sheet: sales, how it was paid, expenses, and the cash left
     const simple = {};
-    const dayRow = (d) => (simple[d] ||= { day: d, sales: 0, invoices: 0, cash: 0, card: 0, instapay: 0, wallet: 0, expenses: 0, drawer_out: 0, adjust: 0 });
+    const dayRow = (d) => (simple[d] ||= { day: d, sales: 0, invoices: 0, repairs: 0, repairs_total: 0, cash: 0, card: 0, instapay: 0, wallet: 0, expenses: 0, drawer_out: 0, adjust: 0 });
     for (const r of db.prepare(`SELECT bday(created_at) AS d, SUM(total - returned_total) AS t, COUNT(*) AS n FROM sales WHERE bday(created_at) BETWEEN ? AND ? GROUP BY d`).all(from, to)) {
       Object.assign(dayRow(r.d), { sales: round2(r.t), invoices: r.n });
+    }
+    for (const r of db.prepare('SELECT bday(created_at) AS d, SUM(amount) AS t, COUNT(DISTINCT repair_id) AS n FROM repair_payments WHERE bday(created_at) BETWEEN ? AND ? GROUP BY d').all(from, to)) {
+      const row = dayRow(r.d); row.sales = round2(row.sales + r.t); row.repairs = r.n; row.repairs_total = round2(r.t);
     }
     for (const r of db.prepare(`SELECT method, day, SUM(amount) AS t FROM (${IN}) GROUP BY method, day`).all(...rng)) {
       const row = dayRow(r.day);
@@ -271,15 +274,28 @@ module.exports = function reportRoutes(api, db) {
     // Today's sales by how they were paid (card money doesn't sit in the drawer)
     out.today.by_method = Object.fromEntries(db.prepare(`SELECT s.payment_method AS m, COUNT(*) AS n, COALESCE(SUM(s.total), 0) AS total FROM sales s
       WHERE bday(s.created_at) = ? ${mine} GROUP BY s.payment_method`).all(...args).map((r) => [r.m, { count: r.n, total: round2(r.total) }]));
+    // Repairs count as sales too: money taken on repairs today, by how it was paid
+    const rmine = all ? '' : 'AND user_id = ?';
+    const rp = db.prepare(`SELECT method AS m, COUNT(DISTINCT repair_id) AS n, COALESCE(SUM(amount), 0) AS total FROM repair_payments
+      WHERE bday(created_at) = ? ${rmine} GROUP BY method`).all(...args);
+    out.today.repairs = { count: new Set(db.prepare(`SELECT DISTINCT repair_id FROM repair_payments WHERE bday(created_at) = ? ${rmine}`).all(...args).map((r) => r.repair_id)).size,
+      total: round2(rp.reduce((a, r) => a + r.total, 0)) };
+    out.today.total = round2(out.today.total + out.today.repairs.total);
+    for (const r of rp) {
+      const cur = out.today.by_method[r.m] || { count: 0, total: 0 };
+      out.today.by_method[r.m] = { count: cur.count + r.n, total: round2(cur.total + r.total) };
+    }
     if (can(req.user, 'reports.view')) {
       const p = db.prepare(`SELECT COALESCE(SUM(${NET} - si.unit_cost * si.qty), 0) AS profit
                             FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE bday(s.created_at) = ?`).get(today());
       const r = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(cost), 0) AS cost
                             FROM returns WHERE bday(created_at) = ?`).get(today());
       out.today.returns = round2(r.amount);
-      out.today.profit = round2(p.profit - (r.amount - r.cost));
-      out.week = db.prepare(`SELECT bday(created_at) AS day, SUM(total) AS total FROM sales
-                             WHERE bday(created_at) >= ? GROUP BY day ORDER BY day`).all(new Date(Date.parse(`${today()}T12:00:00Z`) - 6 * 864e5).toISOString().slice(0, 10))
+      const rep = db.prepare(`SELECT COALESCE(SUM(COALESCE(r.price, 0) - (SELECT COALESCE(SUM(qty * unit_cost), 0) FROM repair_parts WHERE repair_id = r.id) - r.extra_cost), 0) AS p FROM repairs r
+                              WHERE r.status = 'delivered' AND bday(r.delivered_at) = ?`).get(today()).p;
+      out.today.profit = round2(p.profit - (r.amount - r.cost) + rep);
+      out.week = db.prepare(`SELECT day, SUM(total) AS total FROM (SELECT bday(created_at) AS day, total FROM sales
+                             UNION ALL SELECT bday(created_at), amount FROM repair_payments) WHERE day >= ? GROUP BY day ORDER BY day`).all(new Date(Date.parse(`${today()}T12:00:00Z`) - 6 * 864e5).toISOString().slice(0, 10))
         .map((d) => ({ day: d.day, total: round2(d.total) }));
     }
     if (can(req.user, 'products.view')) {

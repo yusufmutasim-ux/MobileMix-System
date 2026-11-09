@@ -18,7 +18,7 @@ export async function render(el, { actions }) {
       <div class="dash-hero-top">
         <div><span class="muted">${icon('wallet')} مبيعات النهارده</span>
           <div class="dash-big">${n(d.today.total)} <small>${cur}</small></div>
-          <span class="muted small">${d.today.invoices} فاتورة${d.today.returns ? ` • مرتجعات ${n(d.today.returns)}` : ''}</span></div>
+          <span class="muted small">${d.today.invoices} فاتورة${d.today.repairs?.count ? ` + ${d.today.repairs.count} صيانة (${n(d.today.repairs.total)})` : ''}${d.today.returns ? ` • مرتجعات ${n(d.today.returns)}` : ''}</span></div>
         ${can('sales.create') ? `<a class="btn btn-primary" href="#/pos">${icon('plus')} بيع جديد</a>` : ''}
       </div>
       <div class="dash-methods">${shown.map((m) => {
