@@ -239,7 +239,7 @@ function repairsReport(d) {
 const METHOD_COLORS = { cash: '#8aa324', card: '#2b3a9e', instapay: '#7b2ff7', wallet: '#e5383b', installment: '#d4a20c' };
 /**
  * The simple report, like the owner's own sheet: a few big numbers, then one row per day
- * (sales, cash / Visa / InstaPay, expenses, and the cash the day left). The full statement is folded below.
+ * (sales, cash / Visa, expenses, and the cash the day left). The full statement is folded below.
  */
 function simpleReport(d, from, to) {
   const cur = esc(state.settings.currency || 'ج.م');
@@ -257,7 +257,7 @@ function simpleReport(d, from, to) {
         ${tile('المبيعات', tot.sales, 'main', `${tot.invoices} فاتورة${tot.repairs ? ` + ${tot.repairs} صيانة` : ''}`)}
         ${tile('كاش', tot.cash, 'cash')}
         ${tile('فيزا', tot.card, 'card', 'طابقها مع الماكينة')}
-        ${tile('InstaPay', tot.instapay, 'insta')}
+        ${tot.instapay ? tile('InstaPay', tot.instapay, 'insta') : ''}
         ${tot.wallet ? tile('محفظة', tot.wallet, 'wallet') : ''}
         ${tile('المصاريف', tot.expenses, 'exp')}
         ${tile('الكاش الصافي', tot.cash_net, 'net', 'الكاش ناقص مصاريف الدرج')}
@@ -277,15 +277,15 @@ function simpleReport(d, from, to) {
     <div class="card">
       <div class="card-head"><h2>${icon('chart')} يوم بيوم</h2><span class="muted small">زي الدفتر</span></div>
       <div class="table-wrap"><table class="table sr-table">
-        <thead><tr><th>اليوم</th><th>المبيعات</th><th>كاش</th><th>فيزا</th><th>InstaPay</th><th>المصاريف</th><th class="end">الكاش الصافي</th></tr></thead>
+        <thead><tr><th>اليوم</th><th>المبيعات</th><th>كاش</th><th>فيزا</th>${tot.instapay + tot.wallet ? '<th>محفظة</th>' : ''}<th>المصاريف</th><th class="end">الكاش الصافي</th></tr></thead>
         <tbody>${days.length ? days.slice().reverse().map((x) => `<tr>
           <td><b style="font-weight:500">${esc(fmtDay(x.day))}</b></td>
           <td class="num">${cell(x.sales)}${x.repairs ? `<div class="muted small">منها صيانة ${n(x.repairs_total)}</div>` : ''}</td><td class="num">${cell(x.cash)}</td><td class="num">${cell(x.card)}</td>
-          <td class="num">${cell(x.instapay + x.wallet)}</td><td class="num">${x.expenses ? `<span style="color:var(--danger)">${n(x.expenses)}</span>` : cell(0)}</td>
+          ${tot.instapay + tot.wallet ? `<td class="num">${cell(x.instapay + x.wallet)}</td>` : ''}<td class="num">${x.expenses ? `<span style="color:var(--danger)">${n(x.expenses)}</span>` : cell(0)}</td>
           <td class="end num"><b>${n(x.cash_net)}</b>${x.adjust ? `<div class="muted small">فيها تعديل ${x.adjust > 0 ? '+' : ''}${n(x.adjust)}</div>` : ''}</td></tr>`).join('')
-          : emptyRow(7, 'مفيش حركة في الفترة دي')}</tbody>
+          : emptyRow(tot.instapay + tot.wallet ? 7 : 6, 'مفيش حركة في الفترة دي')}</tbody>
         ${days.length > 1 ? `<tfoot><tr><td>الإجمالي</td><td class="num">${n(tot.sales)}</td><td class="num">${n(tot.cash)}</td><td class="num">${n(tot.card)}</td>
-          <td class="num">${n(tot.instapay + tot.wallet)}</td><td class="num">${n(tot.expenses)}</td><td class="end num"><b>${n(tot.cash_net)}</b></td></tr></tfoot>` : ''}
+          ${tot.instapay + tot.wallet ? `<td class="num">${n(tot.instapay + tot.wallet)}</td>` : ''}<td class="num">${n(tot.expenses)}</td><td class="end num"><b>${n(tot.cash_net)}</b></td></tr></tfoot>` : ''}
       </table></div>
     </div>
     <details class="card more-rep"><summary><h2>${icon('receipt')} تفاصيل أكتر (الربح، الموردين، العملاء)</h2></summary>
@@ -333,7 +333,7 @@ function financeReport(d, from, to) {
           ${d.payments.length ? `<div class="pay-row total"><i></i><span>الإجمالي</span><div></div><b>${n(inTotal)} <small>${cur}</small></b></div>` : ''}
         </div>
         ${t.refunds ? `<p class="muted small" style="margin:10px 0 0">اترجع للعملاء كاش في المرتجعات: ${n(t.refunds)} ${cur}</p>` : ''}
-        ${others.length ? `<details class="more-days"><summary>InstaPay والمحافظ يوم بيوم</summary>
+        ${others.length ? `<details class="more-days"><summary>المحافظ يوم بيوم</summary>
           <div class="day-list">${others.map((x) => `<div><span>${esc(fmtDay(x.day))} — ${PAY_NAMES[x.method] || esc(x.method)}</span><small>${x.count} عملية</small><b>${n(x.total)}</b></div>`).join('')}</div></details>` : ''}
       </div>
 

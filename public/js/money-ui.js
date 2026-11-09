@@ -17,8 +17,7 @@ export function expenseModal({ beforeClose = false, closingId = null } = {}) {
       ${manager ? `<label class="field full"><span>اتدفع منين؟</span><select class="input" name="source">
           <option value="drawer">من الدرج (كاش النهارده)</option>
           <option value="cash">كاش من فلوس الشهر (مش من الدرج)</option>
-          <option value="card">من فلوس الفيزا</option>
-          <option value="instapay">من فلوس InstaPay</option></select></label>` : '<p class="muted small full" style="margin:0">المبلغ هيتخصم من الدرج.</p>'}
+          <option value="card">من فلوس الفيزا</option></select></label>` : '<p class="muted small full" style="margin:0">المبلغ هيتخصم من الدرج.</p>'}
       ${beforeClose ? `<p class="note-warn full" style="margin:0">${LATE_HINT}</p>` : ''}
     </form>`,
     foot: `<button class="btn btn-outline" data-close>إلغاء</button><button class="btn btn-primary" data-ok>${icon('check')} حفظ</button>`,

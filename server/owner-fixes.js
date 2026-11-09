@@ -45,6 +45,18 @@ const FIXES = [
       add.run('أخرى', 850, 'card', 'فيزا', adminId);
     },
   },
+  {
+    // InstaPay goes away: what was paid by InstaPay is cash. The "فيزا 850" line in the sheet was the Visa balance,
+    // not an expense. Days 1–8 are brought back to the book (the InstaPay money is now part of the cash).
+    id: '2026-11-no-instapay',
+    run(db, adminId) {
+      instapayToCash(db);
+      db.prepare("DELETE FROM expenses WHERE note = 'فيزا' AND amount = 850 AND paid_with = 'card' AND from_drawer = 0").run();
+      const book = FIXES.find((x) => x.id === '2026-11-month-1-8').days;
+      dropAdjustments(db, Object.keys(book));
+      reconcileDays(db, book, adminId);
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -63,6 +75,57 @@ function dayCash(db, day) {
   );
 }
 
+/** Bring each shop day's cash to the owner's figure with a "تعديل" cash entry (and recount the closing it falls in). */
+function reconcileDays(db, days, adminId, report = []) {
+  for (const [day, target] of Object.entries(days)) {
+    const have = dayCash(db, day);
+    const diff = round2(target - have);
+    if (Math.abs(diff) < 0.5) continue;
+    // Just before that day's own drawer closing if it was closed that day, else late that day
+    const close = db.prepare(`SELECT closed_at, opened_at FROM drawer_closings WHERE bday(closed_at) = ? AND closed_at <= ?
+                              ORDER BY closed_at DESC LIMIT 1`).get(day, shopDayEnd(day));
+    let at = `${day} 23:59:00`;
+    if (close) {
+      const before = db.prepare("SELECT datetime(?, '-1 second') AS t").get(close.closed_at).t;
+      if (!close.opened_at || before > close.opened_at) at = before;
+    }
+    const kind = diff > 0 ? 'in' : 'out';
+    db.prepare('INSERT INTO cash_moves (kind, amount, note, user_id, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(kind, Math.abs(diff), `تعديل — حسب الدفتر ${target}`, adminId, at);
+    adjustClosing(db, at, diff, kind === 'in' ? 'moves_in' : 'moves_out');
+    report.push({ day, system: have, book: target, diff });
+  }
+  return report;
+}
+
+/** Remove the "تعديل" entries of these days (their closings are recounted back). */
+function dropAdjustments(db, days) {
+  for (const day of days) {
+    for (const m of db.prepare("SELECT * FROM cash_moves WHERE note LIKE 'تعديل — حسب الدفتر%' AND bday(created_at) = ?").all(day)) {
+      db.prepare('DELETE FROM cash_moves WHERE id = ?').run(m.id);
+      adjustClosing(db, m.created_at, m.kind === 'in' ? -m.amount : m.amount, m.kind === 'in' ? 'moves_in' : 'moves_out');
+    }
+  }
+}
+
+/** Everything paid by InstaPay becomes cash (the drawer and any closing it fell in follow). */
+function instapayToCash(db) {
+  for (const s of db.prepare("SELECT * FROM sales WHERE payment_method = 'instapay'").all()) {
+    adjustClosing(db, s.created_at, Math.min(s.paid, s.total), 'sales');
+    for (const r of db.prepare('SELECT * FROM returns WHERE sale_id = ?').all(s.id)) adjustClosing(db, r.created_at, -(r.cash_out ?? r.amount), 'refunds');
+    db.prepare("UPDATE sales SET payment_method = 'cash' WHERE id = ?").run(s.id);
+  }
+  for (const p of db.prepare("SELECT * FROM sale_payments WHERE method = 'instapay'").all()) {
+    adjustClosing(db, p.created_at, p.amount, 'collections');
+    db.prepare("UPDATE sale_payments SET method = 'cash' WHERE id = ?").run(p.id);
+  }
+  for (const p of db.prepare("SELECT * FROM repair_payments WHERE method = 'instapay'").all()) {
+    adjustClosing(db, p.created_at, p.amount, 'repairs');
+    db.prepare("UPDATE repair_payments SET method = 'cash' WHERE id = ?").run(p.id);
+  }
+  db.prepare("UPDATE expenses SET paid_with = 'cash' WHERE paid_with = 'instapay'").run();
+}
+
 function applyOwnerFixes(db, fixes = FIXES) {
   const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
   if (!admin) return [];
@@ -72,24 +135,7 @@ function applyOwnerFixes(db, fixes = FIXES) {
     if (db.prepare('SELECT 1 FROM settings WHERE key = ?').get(flag)) continue;
     db.exec('BEGIN IMMEDIATE');
     try {
-      for (const [day, target] of Object.entries(f.days || {})) {
-        const have = dayCash(db, day);
-        const diff = round2(target - have);
-        if (Math.abs(diff) < 0.5) continue;
-        // Just before that day's own drawer closing if it was closed that day, else late that day
-        const close = db.prepare(`SELECT closed_at, opened_at FROM drawer_closings WHERE bday(closed_at) = ? AND closed_at <= ?
-                                  ORDER BY closed_at DESC LIMIT 1`).get(day, shopDayEnd(day));
-        let at = `${day} 23:59:00`;
-        if (close) {
-          const before = db.prepare("SELECT datetime(?, '-1 second') AS t").get(close.closed_at).t;
-          if (!close.opened_at || before > close.opened_at) at = before;
-        }
-        const kind = diff > 0 ? 'in' : 'out';
-        db.prepare('INSERT INTO cash_moves (kind, amount, note, user_id, created_at) VALUES (?, ?, ?, ?, ?)')
-          .run(kind, Math.abs(diff), `تعديل — حسب الدفتر ${target}`, admin.id, at);
-        adjustClosing(db, at, diff, kind === 'in' ? 'moves_in' : 'moves_out');
-        report.push({ day, system: have, book: target, diff });
-      }
+      reconcileDays(db, f.days || {}, admin.id, report);
       if (f.run) f.run(db, admin.id);
       for (const [k, v] of Object.entries(f.settings || {})) {
         db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, v);
@@ -109,4 +155,4 @@ function applyOwnerFixes(db, fixes = FIXES) {
   return report;
 }
 
-module.exports = { applyOwnerFixes, dayCash, FIXES };
+module.exports = { applyOwnerFixes, dayCash, reconcileDays, instapayToCash, FIXES };

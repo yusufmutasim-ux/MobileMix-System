@@ -135,8 +135,8 @@ export const MODULES = { repairs: 'الصيانة', orders: 'طلبات المو
 export const modOn = (m) => !String(state.settings?.hidden_modules || '').split(',').map((x) => x.trim()).includes(m);
 
 export const ROLE_NAMES = { admin: 'مدير', manager: 'مشرف', cashier: 'كاشير', technician: 'فني صيانة' };
-export const PAY_NAMES = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay', installment: 'تقسيط' };
-export const COLLECT_METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay' };
+export const PAY_NAMES = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', installment: 'تقسيط' };
+export const COLLECT_METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة' };
 export const STATUS_PILLS = {
   completed: '<span class="pill pill-ok">مكتملة</span>',
   partial_return: '<span class="pill pill-warn">مرتجع جزئي</span>',

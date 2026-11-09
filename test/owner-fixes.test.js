@@ -72,3 +72,33 @@ test('report: cash left after month expenses, and the Visa money kept apart', as
   assert.equal(r.card, 2150);
   assert.equal(r.card_out, 850);
 });
+
+test('InstaPay becomes cash; reconciled days still match the book; the Visa line is not an expense', () => {
+  const { applyOwnerFixes, dayCash, reconcileDays, instapayToCash } = require('../server/owner-fixes');
+  const ins = (sql, ...a) => db.prepare(sql).run(...a);
+  // 2026-11-15: 1,000 cash + 750 InstaPay; book says 2,000 cash for the day
+  ins("INSERT INTO sales (user_id, subtotal, total, paid, payment_method, created_at) VALUES (1, 1000, 1000, 1000, 'cash', '2026-11-15 13:00:00')");
+  const insta = ins("INSERT INTO sales (user_id, subtotal, total, paid, payment_method, created_at) VALUES (1, 750, 750, 750, 'instapay', '2026-11-15 14:00:00')").lastInsertRowid;
+  ins("INSERT INTO drawer_closings (user_id, opened_at, closed_at, opening, expected, counted, diff, left_in_drawer) VALUES (1, '2026-11-15 03:00:00', '2026-11-16 01:00:00', 0, 1000, 2000, 1000, 0)");
+  reconcileDays(db, { '2026-11-15': 2000 }, 1);
+  assert.equal(dayCash(db, '2026-11-15') + 1000, 2000); // 1,000 sales + 1,000 تعديل
+  ins("INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, created_at) VALUES ('أخرى', 850, 0, 'card', 'فيزا', 1, '2026-11-15 12:00:00')");
+  const fix = { id: 't-insta', run(d, a) {
+    instapayToCash(d);
+    d.prepare("DELETE FROM expenses WHERE note = 'فيزا' AND amount = 850 AND paid_with = 'card' AND from_drawer = 0").run();
+    for (const m of d.prepare("SELECT * FROM cash_moves WHERE note LIKE 'تعديل — حسب الدفتر%' AND bday(created_at) = '2026-11-15'").all()) {
+      d.prepare('DELETE FROM cash_moves WHERE id = ?').run(m.id);
+      require('../server/money').adjustClosing(d, m.created_at, m.kind === 'in' ? -m.amount : m.amount, 'moves_in');
+    }
+    reconcileDays(d, { '2026-11-15': 2000 }, a);
+  } };
+  applyOwnerFixes(db, [fix]);
+  assert.equal(db.prepare('SELECT payment_method FROM sales WHERE id = ?').get(insta).payment_method, 'cash');
+  assert.equal(dayCash(db, '2026-11-15'), 1750);
+  const adj = db.prepare("SELECT SUM(amount) AS t FROM cash_moves WHERE bday(created_at) = '2026-11-15'").get().t;
+  assert.equal(adj, 250); // 1,750 cash now + 250 = 2,000 in the book
+  const c = db.prepare("SELECT expected, diff FROM drawer_closings WHERE closed_at = '2026-11-16 01:00:00'").get();
+  assert.equal(c.expected, 2000);
+  assert.equal(c.diff, 0);
+  assert.ok(!db.prepare("SELECT 1 FROM expenses WHERE note = 'فيزا' AND amount = 850").get());
+});

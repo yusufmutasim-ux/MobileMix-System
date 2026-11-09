@@ -9,8 +9,8 @@ export async function render(el, { actions }) {
   const cur = esc(state.settings.currency || 'ج.م');
   const methods = d.today.by_method || {};
   const METHOD_STYLE = { cash: 'm-cash', card: 'm-card', instapay: 'm-insta', wallet: 'm-wallet', installment: 'm-inst' };
-  const order = ['cash', 'card', 'instapay', 'wallet', 'installment'];
-  const shown = order.filter((m) => methods[m] || ['cash', 'card', 'instapay'].includes(m));
+  const order = ['cash', 'card', 'wallet', 'installment'];
+  const shown = order.filter((m) => methods[m] || ['cash', 'card'].includes(m));
 
   // 1) Today's sales, split by how they were paid
   const hero = can('sales.create') ? `

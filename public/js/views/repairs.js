@@ -9,7 +9,7 @@ const PROBLEMS = ['شاشة مكسورة', 'تغيير بطارية', 'سوكت 
 const ACCESSORIES = ['شاحن', 'جراب', 'شريحة', 'كارت ميموري', 'علبة', 'سماعة'];
 const DEVICES = ['iPhone 11', 'iPhone 12', 'iPhone 13', 'iPhone 14', 'iPhone 15', 'Samsung A14', 'Samsung A15', 'Samsung A54', 'Samsung A55',
   'Samsung S23', 'Samsung S24', 'Xiaomi Redmi Note 12', 'Xiaomi Redmi Note 13', 'OPPO A78', 'OPPO Reno', 'Realme C55', 'Infinix Hot 40', 'Vivo Y36', 'Honor X8'];
-const METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة', instapay: 'InstaPay' };
+const METHODS = { cash: 'كاش', card: 'فيزا', wallet: 'محفظة' };
 
 export const statusPill = (s) => `<span class="pill st-${s}">${REPAIR_STATUS[s] || s}</span>`;
 
