@@ -279,10 +279,10 @@ function simpleReport(d, from, to) {
       <div class="table-wrap"><table class="table sr-table">
         <thead><tr><th>اليوم</th><th>المبيعات</th><th>كاش</th><th>فيزا</th>${tot.instapay + tot.wallet ? '<th>محفظة</th>' : ''}<th>المصاريف</th><th class="end">الكاش الصافي</th></tr></thead>
         <tbody>${days.length ? days.slice().reverse().map((x) => `<tr>
-          <td><b style="font-weight:500">${esc(fmtDay(x.day))}</b></td>
+          <td><b style="font-weight:500">${esc(fmtDay(x.day))}</b>${x.book ? '<div class="muted small">من الدفتر</div>' : ''}</td>
           <td class="num">${cell(x.sales)}${x.repairs ? `<div class="muted small">منها صيانة ${n(x.repairs_total)}</div>` : ''}</td><td class="num">${cell(x.cash)}</td><td class="num">${cell(x.card)}</td>
           ${tot.instapay + tot.wallet ? `<td class="num">${cell(x.instapay + x.wallet)}</td>` : ''}<td class="num">${x.expenses ? `<span style="color:var(--danger)">${n(x.expenses)}</span>` : cell(0)}</td>
-          <td class="end num"><b>${n(x.cash_net)}</b>${x.adjust ? `<div class="muted small">فيها تعديل ${x.adjust > 0 ? '+' : ''}${n(x.adjust)}</div>` : ''}</td></tr>`).join('')
+          <td class="end num"><b>${n(x.cash_net)}</b>${!x.book && x.adjust ? `<div class="muted small">فيها تعديل ${x.adjust > 0 ? '+' : ''}${n(x.adjust)}</div>` : ''}</td></tr>`).join('')
           : emptyRow(tot.instapay + tot.wallet ? 7 : 6, 'مفيش حركة في الفترة دي')}</tbody>
         ${days.length > 1 ? `<tfoot><tr><td>الإجمالي</td><td class="num">${n(tot.sales)}</td><td class="num">${n(tot.cash)}</td><td class="num">${n(tot.card)}</td>
           ${tot.instapay + tot.wallet ? `<td class="num">${n(tot.instapay + tot.wallet)}</td>` : ''}<td class="num">${n(tot.expenses)}</td><td class="end num"><b>${n(tot.cash_net)}</b></td></tr></tfoot>` : ''}

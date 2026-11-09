@@ -98,6 +98,15 @@ const FIXES = [
       }
     },
   },
+  {
+    // Reports take days 1–8 from the owner's book (sales, cash, Visa); the month expenses are the sheet's 16,350
+    id: '2026-11-day-book',
+    run(db) {
+      const book = FIXES.find((x) => x.id === '2026-11-month-1-8').days;
+      const put = db.prepare("INSERT INTO day_book (day, total, note) VALUES (?, ?, 'من الدفتر') ON CONFLICT(day) DO UPDATE SET total = excluded.total");
+      for (const [d, t] of Object.entries(book)) put.run(d, t);
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;

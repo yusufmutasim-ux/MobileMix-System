@@ -244,8 +244,17 @@ module.exports = function reportRoutes(api, db) {
     for (const r of db.prepare("SELECT bday(created_at) AS d, SUM(CASE WHEN kind = 'in' THEN amount ELSE -amount END) AS t FROM cash_moves WHERE note LIKE 'تعديل%' AND bday(created_at) BETWEEN ? AND ? GROUP BY d").all(from, to)) {
       dayRow(r.d).adjust = round2(r.t);
     }
+    // Days in the owner's book: its figure is the day (cash + Visa, after the day's drawer expenses)
+    const book = Object.fromEntries(db.prepare('SELECT day, total FROM day_book WHERE day BETWEEN ? AND ?').all(from, to).map((b) => [b.day, b.total]));
+    for (const d of Object.keys(book)) dayRow(d);
+    const outsideByDay = Object.fromEntries(db.prepare('SELECT bday(created_at) AS d, SUM(amount) AS t FROM expenses WHERE from_drawer = 0 AND bday(created_at) BETWEEN ? AND ? GROUP BY d')
+      .all(from, to).map((r) => [r.d, round2(r.t)]));
     const simpleDays = Object.values(simple).sort((a, b) => a.day.localeCompare(b.day))
-      .map((r) => ({ ...r, cash_net: round2(r.cash - r.drawer_out + r.adjust) }));
+      .map((r) => {
+        if (book[r.day] === undefined) return { ...r, cash_net: round2(r.cash - r.drawer_out + r.adjust) };
+        const cash = round2(book[r.day] - r.card - r.wallet - r.instapay);
+        return { ...r, book: true, sales: round2(book[r.day]), cash, expenses: outsideByDay[r.day] || 0, drawer_out: 0, adjust: 0, cash_net: cash };
+      });
     // What's left with the owner for the period: the cash the days left, minus month expenses paid in cash;
     // the card (Visa) and InstaPay money, minus what was paid out of them
     const outside = Object.fromEntries(db.prepare(`SELECT paid_with AS w, SUM(amount) AS t FROM expenses WHERE from_drawer = 0 AND bday(created_at) BETWEEN ? AND ? GROUP BY paid_with`)

@@ -401,6 +401,15 @@ CREATE TABLE IF NOT EXISTS online_orders (
   updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 -- Days the owner excused (no deduction for being absent or late that day)
+-- The owner's own book: what a shop day brought in all together (cash + Visa, after that day's drawer expenses).
+-- Reports use it for that day instead of the invoices.
+CREATE TABLE IF NOT EXISTS day_book (
+  day TEXT PRIMARY KEY,
+  total REAL NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 -- A one-week day-off swap: off_day becomes a day off, and work_day (their usual day off that week) a work day
 CREATE TABLE IF NOT EXISTS schedule_swaps (
   id INTEGER PRIMARY KEY,

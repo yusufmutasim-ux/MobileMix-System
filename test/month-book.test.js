@@ -28,4 +28,11 @@ test('month: days 1–8 bring 16,750 in all, expenses 16,350 → 400 left before
   assert.equal(days.find((d) => d.day === '2026-11-03').cash_net + days.find((d) => d.day === '2026-11-03').card, 1150);
   assert.equal(r.money_left.spent, 16350);
   assert.equal(r.money_left.total, 400);
+  // The top numbers follow the book for days 1–8
+  const sum = (k) => r.simple_days.reduce((a, d) => a + d[k], 0);
+  assert.equal(sum('sales'), 16750);
+  assert.equal(sum('card'), 500);
+  assert.equal(sum('cash'), 16250);
+  assert.equal(sum('expenses'), 16350);
+  assert.equal(sum('cash_net'), 16250);
 });
