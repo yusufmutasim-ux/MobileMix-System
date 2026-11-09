@@ -137,6 +137,16 @@ const BATCHES = [
     merge: ['ACEFAST'],
     products: [],
   },
+  {
+    // Bought with the month's money (not from the day's drawer): 5 × 95, sold at 300
+    id: '2026-11-09-vidvie-cb4050',
+    brands: ['VIDVIE'],
+    products: [],
+    purchase: {
+      note: 'اتدفعت من فلوس الشهر',
+      items: [{ name: 'VIDVIE CB4050C&i 30W Type-C to Lightning Cable (Liquid Silicone)', brand: 'VIDVIE', cat: 'شواحن وكابلات', qty: 5, cost: 95, sell: 300 }],
+    },
+  },
 ];
 
 /** Put every brand spelled like `name` (any spaces / case) under exactly `name`, products included. */
@@ -149,6 +159,42 @@ function mergeBrand(db, name) {
   db.prepare(`UPDATE products SET brand = ?, updated_at = datetime('now','localtime') WHERE ${BRAND_KEY('brand')} = ? AND brand <> ?`).run(name, brandKey(name), name);
   for (const o of others) db.prepare('DELETE FROM brands WHERE id = ?').run(o.id);
   return { brands: others.length, products: products.length };
+}
+
+/**
+ * A purchase invoice entered for the owner: new products are added (quantity 0, then received by the
+ * invoice), paid in full and not from the drawer (from_drawer: true to take it from the drawer).
+ */
+function addPurchase(db, pu, userId) {
+  const { receiveStock } = require('./stock');
+  // Already bought by hand (a purchase invoice with any of these products): don't enter it twice
+  const done = db.prepare(`SELECT 1 FROM purchase_items pi JOIN products p ON p.id = pi.product_id WHERE p.name = ? COLLATE NOCASE`);
+  if (pu.items.some((it) => done.get(it.name))) return;
+  const lines = pu.items.map((it) => {
+    let p = db.prepare('SELECT * FROM products WHERE name = ? COLLATE NOCASE').get(it.name);
+    if (!p) {
+      const brand = it.brand ? db.prepare(`SELECT name FROM brands WHERE ${BRAND_KEY('name')} = ?`).get(brandKey(it.brand))?.name ?? it.brand : null;
+      const cat = db.prepare('SELECT id FROM categories WHERE name = ?').get(it.cat)?.id ?? null;
+      const id = Number(db.prepare('INSERT INTO products (name, brand, category_id, qty, cost_price, sell_price) VALUES (?, ?, ?, 0, ?, ?)')
+        .run(it.name, brand, cat, it.cost, it.sell ?? 0).lastInsertRowid);
+      db.prepare('UPDATE products SET barcode = ? WHERE id = ?').run(`2000${String(id).padStart(8, '0')}`, id);
+      p = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    } else if (it.sell != null) {
+      db.prepare("UPDATE products SET sell_price = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(it.sell, p.id);
+    }
+    return { p, it, total: Math.round(it.qty * it.cost * 100) / 100 };
+  });
+  const total = lines.reduce((a, l) => a + l.total, 0);
+  const id = Number(db.prepare('INSERT INTO purchases (supplier_id, user_id, total, notes) VALUES (NULL, ?, ?, ?)').run(userId, total, pu.note || null).lastInsertRowid);
+  const no = `P-${String(id).padStart(6, '0')}`;
+  db.prepare('UPDATE purchases SET purchase_no = ? WHERE id = ?').run(no, id);
+  for (const l of lines) {
+    receiveStock(db, l.p, { qty: l.it.qty, cost: l.it.cost, note: `شراء ${no}`, refId: id }, userId);
+    db.prepare('INSERT INTO purchase_items (purchase_id, product_id, name, qty, unit_cost, line_total) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, l.p.id, l.p.name, l.it.qty, l.it.cost, l.total);
+  }
+  db.prepare('INSERT INTO supplier_payments (supplier_id, purchase_id, amount, from_drawer, note, user_id) VALUES (NULL, ?, ?, ?, ?, ?)')
+    .run(id, total, pu.from_drawer ? 1 : 0, `مع فاتورة ${no}`, userId);
 }
 
 function applyStockBatches(db, batches = BATCHES) {
@@ -175,6 +221,7 @@ function applyStockBatches(db, batches = BATCHES) {
         db.prepare("INSERT INTO stock_movements (product_id, type, qty_change, qty_after, note, user_id) VALUES (?, 'purchase', ?, ?, 'إدخال بضاعة', ?)")
           .run(id, p.qty, p.qty, admin.id);
       }
+      if (b.purchase) addPurchase(db, b.purchase, admin.id);
       db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(flag, new Date().toISOString());
       db.exec('COMMIT');
     } catch (e) {
