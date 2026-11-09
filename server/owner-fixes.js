@@ -57,6 +57,17 @@ const FIXES = [
       reconcileDays(db, book, adminId);
     },
   },
+  {
+    // 3,825 of the Visa money was withdrawn and went to the rent; 875 Visa is left
+    id: '2026-11-rent-from-visa',
+    run(db, adminId) {
+      const rent = db.prepare("SELECT * FROM expenses WHERE note = 'تكملة إيجار' AND amount = 13500 AND from_drawer = 0").get();
+      if (rent) db.prepare('UPDATE expenses SET amount = 9675 WHERE id = ?').run(rent.id);
+      db.prepare(`INSERT INTO expenses (category, amount, from_drawer, paid_with, note, user_id, period, created_at)
+                  VALUES ('إيجار', 3825, 0, 'card', 'تكملة إيجار (اتسحبت من الفيزا)', ?, '2026-11', ?)`)
+        .run(adminId, rent?.created_at || '2026-11-09 12:00:00');
+    },
+  },
 ];
 
 const round2 = (v) => Math.round(v * 100) / 100;

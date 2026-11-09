@@ -264,7 +264,7 @@ function simpleReport(d, from, to) {
       </div>
     </div>
     ${d.money_left ? `<div class="card money-left">
-      <div class="card-head"><h2>${icon('wallet')} الفلوس اللي معاك</h2><span class="muted small">المصاريف بتتدفع من الفيزا الأول، والباقي من الكاش</span></div>
+      <div class="card-head"><h2>${icon('wallet')} الفلوس اللي معاك</h2><span class="muted small">كل مصروف بيتخصم من المكان اللي اتدفع منه</span></div>
       <div class="ml-grid">
         <div class="ml total"><span>الباقي معاك كله</span><b>${n(d.money_left.total)} <small>${cur}</small></b>
           <small>كاش ${n(d.money_left.cash_in)} + فيزا ${n(d.money_left.card_in)} − مصاريف ${n(d.money_left.spent)}</small></div>
