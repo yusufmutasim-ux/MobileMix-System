@@ -2067,3 +2067,9 @@ body {
 .pos-cart .qty input { color: #fff; background: transparent; }
 .pos-cart .line .name, .pos-cart .lines b, .pos-cart .lines .t { color: #fff; }
 .pos-cart .row.grand span:first-child { color: #fff; }
+
+/* No glow: plain buttons and icons */
+.pos-cart #checkout, #checkout { box-shadow: none !important; }
+.quick a:hover svg, .quick a:focus-visible svg { box-shadow: none; }
+.cat-tiles button { width: auto; flex-direction: row; padding: 10px 18px; border-radius: 999px; font-size: 13.5px; }
+.pay-cards button { padding: 16px 8px; font-size: 14px; }
